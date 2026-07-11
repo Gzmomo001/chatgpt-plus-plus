@@ -6,7 +6,6 @@ import {
   commit,
   edit,
   open as openRequest,
-  relayProfileFromDraft,
 } from "./editor.ts";
 import { createPresetIntent } from "./preset-intent.ts";
 import type {
@@ -36,6 +35,14 @@ if (false) {
 
   const source = profile();
   const opened = openExisting(source, context([source]));
+  // @ts-expect-error Relay profile previews are deeply readonly.
+  opened.preview.profile.name = "mutated";
+  // @ts-expect-error Relay profile preview context arrays are readonly.
+  opened.preview.profile.contextSelection.skills.push("mutated");
+  if (opened.preview.profile.aggregate) {
+    // @ts-expect-error Relay profile preview Aggregate members are readonly.
+    opened.preview.profile.aggregate.members.push({ profileId: "mutated", weight: 1 });
+  }
   // @ts-expect-error mixedApi is a persisted legacy mode, not an editable mode.
   edit(opened, { type: "setMode", mode: "mixedApi" });
 }
@@ -148,6 +155,13 @@ describe("Relay profile editor", () => {
     assert.match(editor, /export function open\(/);
     assert.match(editor, /export function edit\(/);
     assert.match(editor, /export function commit\(/);
+    assert.deepEqual(
+      [...editor.matchAll(/export function (\w+)\(/g)].map((match) => match[1]),
+      ["open", "edit", "commit"],
+    );
+    assert.doesNotMatch(editor, /relayProfileFromDraft/);
+    assert.doesNotMatch(app, /relayProfileFromDraft/);
+    assert.doesNotMatch(app, /preview\.profile\s+as\s+RelayProfile/);
     assert.equal(editor.includes(removedCollectionEditor), false);
     assert.doesNotMatch(
       editor,
@@ -503,11 +517,11 @@ describe("Relay profile editor", () => {
     const defaultContextSelection = {
       mcpServers: ["filesystem"], skills: ["review"], plugins: [],
     };
-    const temporary = relayProfileFromDraft(openRequest({
+    const temporary = openRequest({
       settings,
       defaultContextSelection,
       focus: { type: "create", id: "temporary", name: "Temporary", mode: "official" },
-    }).draft);
+    }).preview.profile;
 
     const detailState = openRequest({
       settings,
@@ -690,6 +704,10 @@ describe("Relay profile editor", () => {
     });
     assert.equal(opened.draft.name, "Relay A");
     assert.equal(edited.draft.name, "Relay A edited");
+    assert.notEqual(edited.preview, opened.preview);
+    assert.equal(opened.preview.profile.name, "Relay A");
+    assert.equal(edited.preview.profile.name, "Relay A edited");
+    assert.notEqual(edited.preview.profile.contextSelection, edited.draft.contextSelection);
 
     const committed = commit(edited);
     assert.equal(committed.ok, true);
@@ -699,6 +717,101 @@ describe("Relay profile editor", () => {
     assert.deepEqual(committed.effect, { type: "saveSettings" });
     assert.match(committed.profile.authContents, /sk-next/);
     assert.equal(committed.settings.relayProfiles[0].name, "Relay A edited");
+  });
+
+  it("opens with an immutable best-effort profile preview derived from model rows", () => {
+    const source = profile({
+      modelList: "model-a\nmodel-b",
+      modelWindows: '{"model-a":"1M"}',
+      aggregate: {
+        strategy: "weightedRoundRobin",
+        members: [{ profileId: "member", weight: 2 }],
+      },
+      contextSelection: { mcpServers: ["filesystem"], skills: ["review"], plugins: ["docs"] },
+    });
+    const opened = openExisting(source, context([source]));
+
+    assert.equal(opened.preview.profile.modelList, "model-a\nmodel-b");
+    assert.equal(opened.preview.profile.modelWindows, '{"model-a":"1M"}');
+    assert.notEqual(opened.preview.profile.contextSelection, opened.draft.contextSelection);
+    assert.notEqual(opened.preview.profile.aggregate, opened.draft.aggregate);
+  });
+
+  it("freezes the profile preview deeply without changing its draft", () => {
+    const member = profile({ id: "member" });
+    const source = profile({
+      contextSelection: { mcpServers: ["filesystem"], skills: ["review"], plugins: ["docs"] },
+      aggregate: {
+        strategy: "weightedRoundRobin",
+        members: [{ profileId: member.id, weight: 2 }],
+      },
+    });
+    const opened = openExisting(source, context([source, member]));
+    const snapshot = structuredClone(opened);
+    const mutablePreview = opened.preview.profile as RelayProfile;
+
+    assert.throws(() => { mutablePreview.name = "mutated"; }, TypeError);
+    assert.throws(() => { mutablePreview.contextSelection.skills.push("mutated"); }, TypeError);
+    assert.throws(
+      () => { mutablePreview.aggregate?.members.push({ profileId: "mutated", weight: 1 }); },
+      TypeError,
+    );
+    assert.deepEqual(opened, snapshot);
+  });
+
+  it("commits a mutable profile equal to the latest readonly preview", () => {
+    const source = profile();
+    const edited = edit(openExisting(source, context([source])), {
+      type: "patch",
+      patch: {
+        name: "Latest",
+        contextSelection: { mcpServers: ["one"], skills: ["two"], plugins: ["three"] },
+      },
+    });
+    const committed = commit(edited);
+
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.deepEqual(committed.profile, edited.preview.profile);
+    assert.equal(Object.isFrozen(committed.profile), false);
+  });
+
+  it("refreshes the best-effort preview even when validation blocks commit", () => {
+    const source = profile();
+    const invalid = edit(openExisting(source, context([source])), {
+      type: "replaceModels",
+      models: [{ model: "adapter-model", window: "invalid" }],
+    });
+
+    assert.equal(invalid.preview.profile.modelList, "adapter-model");
+    assert.equal(invalid.preview.profile.modelWindows, '{"adapter-model":"invalid"}');
+    assert.equal(commit(invalid).ok, false);
+  });
+
+  it("keeps the preview synchronized after presets and stored-file replacements", () => {
+    const source = profile();
+    const preset = edit(openExisting(source, context([source])), {
+      type: "applyPreset",
+      preset: {
+        name: "Preset",
+        baseUrl: "https://preset.example/v1",
+        protocol: "responses",
+        model: "preset-model",
+        relayMode: "pureApi",
+        models: [{ model: "preset-model", window: "128K" }],
+      },
+    });
+    assert.equal(preset.preview.profile.modelList, "preset-model");
+    assert.equal(preset.preview.profile.modelWindows, '{"preset-model":"128K"}');
+
+    const replaced = edit(preset, {
+      type: "replaceStoredFiles",
+      configContents: preset.draft.configContents.replace("preset-model", "file-model"),
+      authContents: '{"OPENAI_API_KEY":"sk-file"}\n',
+    });
+    assert.equal(replaced.preview.profile.model, "file-model");
+    assert.equal(replaced.preview.profile.apiKey, "sk-file");
+    assert.equal(replaced.preview.profile.modelList, "preset-model");
   });
 
   it("opens canonical model rows, migrates legacy suffixes, and only hydrates active existing profiles", () => {
@@ -836,6 +949,10 @@ describe("Relay profile editor", () => {
       assert.strictEqual(next, state);
       state = next;
     }
+    assert.strictEqual(
+      edit(state, { type: "unknown-at-runtime" } as unknown as Parameters<typeof edit>[1]),
+      state,
+    );
     const committed = commit(state);
     assert.equal(committed.ok, true);
     if (!committed.ok) return;

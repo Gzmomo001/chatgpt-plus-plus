@@ -112,6 +112,18 @@ export type RelayProfileEditorSemantic = {
   switchIssue: RelayProfileIssue | null;
 };
 
+export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends readonly (infer Item)[]
+    ? readonly DeepReadonly<Item>[]
+    : T extends object
+      ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> }
+      : T;
+
+export type RelayProfileEditorPreview = {
+  readonly profile: DeepReadonly<RelayProfile>;
+};
+
 export type RelayProfileEditorState = {
   sourceId: string;
   isNew: boolean;
@@ -119,6 +131,7 @@ export type RelayProfileEditorState = {
   pendingCollectionEdit: RelayProfileCollectionEdit | null;
   issues: RelayProfileIssue[];
   semantic: RelayProfileEditorSemantic;
+  readonly preview: RelayProfileEditorPreview;
   context: RelayProfileEditorContext;
 };
 

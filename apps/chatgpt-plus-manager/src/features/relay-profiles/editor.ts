@@ -1,4 +1,5 @@
 import type {
+  DeepReadonly,
   ModelWindowRow,
   RelayAggregateConfig,
   RelayAggregateMember,
@@ -103,10 +104,36 @@ function canonicalizeRelayProfile(profile: RelayProfile, profiles: RelayProfile[
   return deriveProfileFromStoredFiles(profile);
 }
 
-export function relayProfileFromDraft(draft: RelayProfileDraft): RelayProfile {
+function projectProfile(draft: RelayProfileDraft): RelayProfile {
   const serialized = serializeRows(draft.models);
   const { models: _models, ...profile } = draft;
-  return { ...profile, ...serialized };
+  return {
+    ...profile,
+    ...serialized,
+    contextSelection: {
+      mcpServers: [...profile.contextSelection.mcpServers],
+      skills: [...profile.contextSelection.skills],
+      plugins: [...profile.contextSelection.plugins],
+    },
+    aggregate: profile.aggregate ? {
+      strategy: profile.aggregate.strategy,
+      members: profile.aggregate.members.map((member) => ({ ...member })),
+    } : profile.aggregate,
+  };
+}
+
+function projectPreviewProfile(draft: RelayProfileDraft): DeepReadonly<RelayProfile> {
+  const profile = projectProfile(draft);
+  Object.freeze(profile.contextSelection.mcpServers);
+  Object.freeze(profile.contextSelection.skills);
+  Object.freeze(profile.contextSelection.plugins);
+  Object.freeze(profile.contextSelection);
+  if (profile.aggregate) {
+    for (const member of profile.aggregate.members) Object.freeze(member);
+    Object.freeze(profile.aggregate.members);
+    Object.freeze(profile.aggregate);
+  }
+  return Object.freeze(profile);
 }
 
 export function open(
@@ -316,13 +343,7 @@ export function edit(
 export function commit(state: RelayProfileEditorState): RelayProfileCommitResult {
   const issues = issuesForState(state);
   if (issues.some((issue) => issue.blocking)) return { ok: false, issues };
-  const serialized = serializeRows(state.draft.models);
-  const { models: _models, ...draft } = state.draft;
-  const profile: RelayProfile = {
-    ...draft,
-    modelList: serialized.modelList,
-    modelWindows: serialized.modelWindows,
-  };
+  const profile = projectProfile(state.draft);
   const discardsNewDraft = state.isNew
     && state.pendingCollectionEdit?.type === "remove"
     && state.pendingCollectionEdit.profileId === state.sourceId;
@@ -586,8 +607,8 @@ function canonicalRows(rows: ModelWindowRow[]): ModelWindowRow[] {
 }
 
 function withIssues(
-  state: Omit<RelayProfileEditorState, "issues" | "semantic"> &
-    Partial<Pick<RelayProfileEditorState, "issues" | "semantic">>,
+  state: Omit<RelayProfileEditorState, "issues" | "semantic" | "preview"> &
+    Partial<Pick<RelayProfileEditorState, "issues" | "semantic" | "preview">>,
 ): RelayProfileEditorState {
   const aggregateCandidates = aggregateCandidatesFor(
     state.sourceId,
@@ -595,6 +616,7 @@ function withIssues(
   );
   return {
     ...state,
+    preview: Object.freeze({ profile: projectPreviewProfile(state.draft) }),
     issues: issuesForState(state),
     semantic: {
       aggregateCandidates,

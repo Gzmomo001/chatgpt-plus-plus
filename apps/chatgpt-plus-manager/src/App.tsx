@@ -65,11 +65,11 @@ import {
   commit,
   edit,
   open as openProfileEditor,
-  relayProfileFromDraft,
 } from "@/features/relay-profiles/editor";
 import type {
   AggregateRelayProfile,
   ApplyRelayProfilePresetIntent,
+  DeepReadonly,
   ModelWindowRow,
   RelayAggregateStrategy,
   RelayContextSelection,
@@ -82,6 +82,8 @@ import type {
   RelayProtocol,
 } from "@/features/relay-profiles/types";
 import { getLanguage, t, tf, toggleLanguage } from "@/i18n";
+
+type RelayProfileView = DeepReadonly<RelayProfile>;
 
 type Status = "ok" | "failed" | "not_implemented" | "not_checked" | string;
 
@@ -1583,12 +1585,12 @@ export function App() {
     return result && isSuccessStatus(result.status) ? result : null;
   };
 
-  const testRelayProfile = async (profile: RelayProfile) => {
+  const testRelayProfile = async (profile: RelayProfileView) => {
     const result = await run(() => call<RelayProfileTestResult>("test_relay_profile", { profile }));
     if (result) showNotice(t("供应商测试"), result.message, result.status);
   };
 
-  const diagnoseRelayProfile = async (profile: RelayProfile) => {
+  const diagnoseRelayProfile = async (profile: RelayProfileView) => {
     const result = await run(() => call<ProviderDoctorResult>("diagnose_relay_profile", { profile }));
     if (result) showNotice("Provider Doctor", result.message, result.status);
     return result ?? null;
@@ -1599,7 +1601,7 @@ export function App() {
     if (result) showNotice("Stepwise 测试", result.message, result.status);
   };
 
-  const fetchRelayProfileModels = async (profile: RelayProfile) => {
+  const fetchRelayProfileModels = async (profile: RelayProfileView) => {
     const result = await run(() => call<RelayProfileModelsResult>("fetch_relay_profile_models", { profile }));
     if (result) showNotice(t("模型列表"), result.message, result.status);
     return result && isSuccessStatus(result.status) ? result.models : null;
@@ -2201,10 +2203,10 @@ type Actions = {
   ) => Promise<BackendSettings | null>;
   deleteContextEntry: (settings: BackendSettings, kind: ContextKind, id: string) => Promise<BackendSettings | null>;
   extractRelayCommonConfig: (configContents: string) => Promise<ExtractRelayCommonConfigResult | null>;
-  testRelayProfile: (profile: RelayProfile) => Promise<void>;
-  diagnoseRelayProfile: (profile: RelayProfile) => Promise<ProviderDoctorResult | null>;
+  testRelayProfile: (profile: RelayProfileView) => Promise<void>;
+  diagnoseRelayProfile: (profile: RelayProfileView) => Promise<ProviderDoctorResult | null>;
   testStepwiseSettings: (settings: BackendSettings) => Promise<void>;
-  fetchRelayProfileModels: (profile: RelayProfile) => Promise<string[] | null>;
+  fetchRelayProfileModels: (profile: RelayProfileView) => Promise<string[] | null>;
   switchRelayProfile: (settings: BackendSettings, targetRelayId: string) => Promise<void>;
   relaySwitching: boolean;
   switchOfficialMode: () => Promise<void>;
@@ -2346,7 +2348,7 @@ function RelayScreen({
 }) {
   const normalized = normalizeSettings(form);
   const [detailProfileId, setDetailProfileId] = useState<string | null>(null);
-  const [newProfileDraft, setNewProfileDraft] = useState<RelayProfile | null>(null);
+  const [newProfileDraft, setNewProfileDraft] = useState<RelayProfileView | null>(null);
   const [thirdPartyImportOpen, setThirdPartyImportOpen] = useState(false);
   const detailProfile = newProfileDraft || (detailProfileId
     ? normalized.relayProfiles.find((profile) => profile.id === detailProfileId) || null
@@ -2357,7 +2359,7 @@ function RelayScreen({
     await actions.saveSettingsValue(next, true);
   };
   const createNewAggregateProfile = () => {
-    const draft = relayProfileFromDraft(openProfileEditor({
+    const draft = openProfileEditor({
       settings: normalized,
       defaultContextSelection: contextSelectionForAllEntries(normalized),
       focus: {
@@ -2366,7 +2368,7 @@ function RelayScreen({
         name: t("聚合供应商"),
         mode: "aggregate",
       },
-    }).draft);
+    }).preview.profile;
     setDetailProfileId(null);
     setNewProfileDraft(draft);
     if (!(draft.aggregate?.members.length ?? 0)) {
@@ -2443,7 +2445,7 @@ function RelayScreen({
             <Button
               variant="secondary"
               onClick={() => {
-                setNewProfileDraft(relayProfileFromDraft(openProfileEditor({
+                setNewProfileDraft(openProfileEditor({
                   settings: normalized,
                   defaultContextSelection: contextSelectionForAllEntries(normalized),
                   focus: {
@@ -2452,7 +2454,7 @@ function RelayScreen({
                     name: tf("供应商 {0}", [normalized.relayProfiles.length + 1]),
                     mode: "official",
                   },
-                }).draft));
+                }).preview.profile);
                 setDetailProfileId(null);
               }}
             >
@@ -3669,7 +3671,7 @@ function SortableRelayProfileCard({
   actions,
 }: {
   form: BackendSettings;
-  profile: RelayProfile;
+  profile: RelayProfileView;
   index: number;
   onFormChange: (value: BackendSettings) => void;
   onEdit: (id: string) => void;
@@ -3855,7 +3857,7 @@ function RelayProfileDetail({
   onSaved,
   actions,
 }: {
-  profile: RelayProfile;
+  profile: RelayProfileView;
   relayFiles: RelayFilesResult | null;
   form: BackendSettings;
   isNew?: boolean;
@@ -3890,7 +3892,7 @@ function RelayProfileDetail({
   useEffect(() => {
     setEditorState(openEditor());
   }, [profile.id, profile.modelList, profile.modelWindows, profile.relayMode, profile.officialMixApiKey, isActive, isNew, relayFiles?.configContents, relayFiles?.authContents]);
-  const draft = relayProfileFromDraft(editorState.draft);
+  const draft = editorState.preview.profile;
   const validationError = editorState.issues.find((issue) => issue.blocking)?.message ?? null;
   const saveDraft = async () => {
     const committed = commit(editorState);
@@ -3995,7 +3997,7 @@ function RelayProfileEditor({
   onSwitch: () => void;
   actions: Actions;
 }) {
-  const profile = relayProfileFromDraft(state.draft);
+  const profile = state.preview.profile;
   const modelWindowRows = state.draft.models;
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [doctorResult, setDoctorResult] = useState<ProviderDoctorResult | null>(null);
@@ -4251,7 +4253,7 @@ function RelayProfileEditor({
               </Button>
               <Button
                 onClick={async () => {
-                  const models = await actions.fetchRelayProfileModels(relayProfileFromDraft(state.draft));
+                  const models = await actions.fetchRelayProfileModels(state.preview.profile);
                   if (models?.length) {
                     addModelWindowRows(models.map((model) => ({ model, window: "" })));
                   }
@@ -4313,7 +4315,7 @@ function AggregateRelayProfileEditor({
   isNew?: boolean;
   onStateChange: (value: RelayProfileEditorState) => void;
 }) {
-  const profile = relayProfileFromDraft(state.draft);
+  const profile = state.preview.profile;
   const candidates = state.semantic.aggregateCandidates;
   const aggregate = state.draft.aggregate ?? { strategy: "failover", members: [] };
   const memberIds = new Set(aggregate.members.map((member) => member.profileId));
@@ -4667,13 +4669,13 @@ function RelayFileEditors({
   onProfileChange,
   actions,
 }: {
-  contextProfile: RelayProfile;
-  profile: RelayProfile;
+  contextProfile: RelayProfileView;
+  profile: RelayProfileView;
   form: BackendSettings;
   isActive: boolean;
   profileId: string;
   onFormChange: (value: BackendSettings) => void;
-  onProfileChange: (value: RelayProfile) => void;
+  onProfileChange: (value: RelayProfileView) => void;
   actions: Actions;
 }) {
   const configPreview = effectiveRelayConfigPreview(profile, form, contextProfile);
@@ -5290,7 +5292,7 @@ function withLiveEntryState(entry: CodexContextEntry, live?: CodexContextEntry):
   return live ? { ...entry, enabled: live.enabled } : { ...entry, enabled: false };
 }
 
-function contextEntriesForProfile(settings: BackendSettings, profile: RelayProfile): CodexContextEntries {
+function contextEntriesForProfile(settings: BackendSettings, profile: RelayProfileView): CodexContextEntries {
   return filterContextEntriesBySelection(contextEntriesFromSettings(settings), profile.contextSelection);
 }
 
@@ -5456,7 +5458,10 @@ function contextEntriesByKind(entries: CodexContextEntries, kind: ContextKind): 
   return dedupeContextEntryList(entries.plugins);
 }
 
-function filterContextEntriesBySelection(entries: CodexContextEntries, selection: RelayContextSelection): CodexContextEntries {
+function filterContextEntriesBySelection(
+  entries: CodexContextEntries,
+  selection: DeepReadonly<RelayContextSelection>,
+): CodexContextEntries {
   const selected = {
     mcp: new Set(selection.mcpServers.map((id) => id.trim()).filter(Boolean)),
     skill: new Set(selection.skills.map((id) => id.trim()).filter(Boolean)),
@@ -5534,7 +5539,7 @@ function setCodexGoalsFeatureInConfig(configContents: string, enabled: boolean):
   return ensureTrailingNewline(next.join("\n").trimEnd());
 }
 
-function effectiveRelayConfigPreview(profile: RelayProfile, settings: BackendSettings, contextProfile = profile): string {
+function effectiveRelayConfigPreview(profile: RelayProfileView, settings: BackendSettings, contextProfile = profile): string {
   const entries = contextEntriesForProfile(settings, contextProfile);
   const isolatedConfig = stripContextEntriesFromConfig(profile.configContents, entries);
   const configWithLimits = applyContextLimitPreview(isolatedConfig, profile);
@@ -5679,7 +5684,7 @@ function contextHeaderFromLine(line: string): { kind: ContextKind; id: string } 
   return option ? { kind: option.kind, id: path[1] } : null;
 }
 
-function applyContextLimitPreview(configContents: string, profile: RelayProfile): string {
+function applyContextLimitPreview(configContents: string, profile: RelayProfileView): string {
   const replacements: Array<[string, string]> = [
     ["model_context_window", profile.contextWindow],
     ["model_auto_compact_token_limit", profile.autoCompactLimit],
@@ -5833,7 +5838,7 @@ function contextSelectionForAllEntries(settings: BackendSettings): RelayContextS
   };
 }
 
-function relayProfileEditorStatus(profile: RelayProfile, form: BackendSettings, isNew: boolean) {
+function relayProfileEditorStatus(profile: RelayProfileView, form: BackendSettings, isNew: boolean) {
   if (isNew) return t("新建供应商需要先保存到列表");
   if (!form.relayProfilesEnabled) return t("供应商配置总开关已关闭；当前只保存配置，不写入 Codex live 文件");
   return profile.id === form.activeRelayId ? t("当前正在使用") : t("编辑后保存列表，再切换模式时会使用新配置");
@@ -6053,7 +6058,7 @@ function maskSecret(value: string): string {
 }
 
 function relayProfileConfigBrief(
-  profile: Pick<RelayProfile, "relayMode" | "officialMixApiKey" | "baseUrl" | "aggregate"> | RelayProfileCandidate,
+  profile: RelayProfileView | RelayProfileCandidate,
 ): string {
   if (profile.relayMode === "aggregate") {
     return tf("{0} · {1} 个成员", [
@@ -6065,7 +6070,7 @@ function relayProfileConfigBrief(
   return profile.baseUrl || t("未填写 URL");
 }
 
-function relayProfileModeHelp(profile: RelayProfile): string {
+function relayProfileModeHelp(profile: RelayProfileView): string {
   if (profile.relayMode === "aggregate") {
     return t("聚合供应商只保存成员和策略配置，成员来自已有 API 供应商；切为当前后会通过本地协议代理轮转请求。");
   }
