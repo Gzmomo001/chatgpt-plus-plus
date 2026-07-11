@@ -1,0 +1,22 @@
+[package]
+name = "chatgpt-plus-launcher"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "chatgpt-plus-plus"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+async-trait = "0.1"
+chatgpt-plus-core = { path = "../../crates/chatgpt-plus-core" }
+chatgpt-plus-data = { path = "../../crates/chatgpt-plus-data" }
+directories.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[build-dependencies]
+winresource.workspace = true
