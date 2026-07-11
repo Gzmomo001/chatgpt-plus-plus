@@ -13,6 +13,7 @@ import type {
   RelayProfileEditorContext,
   RelayProfileEditorState,
   RelayProfileIssue,
+  RelayProfileOpenRequest,
   RelayProfilePatch,
   RelayProfileSettings,
 } from "./types";
@@ -51,7 +52,7 @@ export function editRelayProfileCollection(
   return projectSettings(settings, profiles, activeRelayId);
 }
 
-export function normalizeRelayProfileSettings(
+function normalizeRelayProfileSettings(
   settings: RelayProfileSettings,
   defaultContextSelection: RelayContextSelection,
 ): RelayProfileSettings {
@@ -101,7 +102,7 @@ export function normalizeRelayProfileSettings(
   return projectSettings(settings, cleanupAggregateReferences(hydrated), activeRelayId);
 }
 
-export function seedRelayProfile(
+function seedRelayProfile(
   settings: RelayProfileSettings,
   mode: "official" | "pureApi" | "aggregate",
   id: string,
@@ -120,7 +121,7 @@ export function seedRelayProfile(
   return canonicalizeRelayProfile(base, settings.relayProfiles);
 }
 
-export function canonicalizeRelayProfile(profile: RelayProfile, profiles: RelayProfile[] = []): RelayProfile {
+function canonicalizeRelayProfile(profile: RelayProfile, profiles: RelayProfile[] = []): RelayProfile {
   if (profile.relayMode === "aggregate") {
     const { modelList: _modelList, modelWindows: _modelWindows, ...draft } = profile;
     const projected = projectDraft({
@@ -140,12 +141,47 @@ export function relayProfileFromDraft(draft: RelayProfileDraft): RelayProfile {
 }
 
 export function open(
-  source: RelayProfile,
-  context: RelayProfileEditorContext,
+  request: RelayProfileOpenRequest,
 ): RelayProfileEditorState {
-  const isNew = !context.profiles.some((profile) => profile.id === source.id);
+  const settings = normalizeRelayProfileSettings(
+    request.settings,
+    request.defaultContextSelection,
+  );
+  const focus = request.focus ?? {
+    type: "existing" as const,
+    profileId: settings.activeRelayId,
+  };
+  const existing = focus.type === "existing"
+    ? settings.relayProfiles.find((profile) => profile.id === focus.profileId)
+      ?? settings.relayProfiles.find((profile) => profile.id === settings.activeRelayId)
+      ?? settings.relayProfiles[0]
+    : undefined;
+  const source = focus.type === "create"
+    ? seedRelayProfile(
+        { ...settings, relayBaseUrl: request.settings.relayBaseUrl },
+        focus.mode,
+        focus.id,
+        focus.name,
+        request.defaultContextSelection,
+      )
+    : existing ?? seedRelayProfile(
+        { ...settings, relayBaseUrl: request.settings.relayBaseUrl },
+        "official",
+        focus.profileId || "default",
+        "",
+        request.defaultContextSelection,
+      );
+  const isNew = focus.type === "create" || !existing;
+  const context: RelayProfileEditorContext = {
+    profiles: settings.relayProfiles,
+    activeRelayId: settings.activeRelayId,
+    defaultContextSelection: request.defaultContextSelection,
+    settings,
+    liveFiles: request.liveFiles,
+  };
+  const usesLiveFiles = source.relayMode !== "official" || source.officialMixApiKey;
   const hydrated =
-    !isNew && source.id === context.activeRelayId && context.liveFiles
+    !isNew && source.id === context.activeRelayId && usesLiveFiles && context.liveFiles
       ? { ...source, ...context.liveFiles }
       : source;
   const semantic = deriveProfileFromStoredFiles(hydrated);
@@ -305,7 +341,7 @@ export function edit(
 }
 
 export function commit(state: RelayProfileEditorState): RelayProfileCommitResult {
-  const issues = issuesForDraft(state.draft);
+  const issues = issuesForState(state);
   if (issues.some((issue) => issue.blocking)) return { ok: false, issues };
   const serialized = serializeRows(state.draft.models);
   const { models: _models, ...draft } = state.draft;
@@ -532,7 +568,7 @@ function withIssues(
   );
   return {
     ...state,
-    issues: issuesForDraft(state.draft),
+    issues: issuesForState(state),
     semantic: {
       aggregateCandidates,
       aggregateTotalWeight: (state.draft.aggregate?.members ?? []).reduce(
@@ -543,6 +579,21 @@ function withIssues(
       switchIssue: switchIssueForDraft(state.draft),
     },
   };
+}
+
+function issuesForState(
+  state: Pick<RelayProfileEditorState, "draft" | "isNew" | "context">,
+): RelayProfileIssue[] {
+  const issues = issuesForDraft(state.draft);
+  if (state.isNew && state.context.profiles.some((profile) => profile.id === state.draft.id)) {
+    issues.push({
+      code: "duplicateProfileId",
+      field: "id",
+      message: `供应商 ID「${state.draft.id}」已存在，请重新创建后再保存。`,
+      blocking: true,
+    });
+  }
+  return issues;
 }
 
 function switchIssueForDraft(draft: RelayProfileDraft): RelayProfileIssue | null {

@@ -62,14 +62,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  canonicalizeRelayProfile,
   commit,
   edit,
   editRelayProfileCollection,
-  normalizeRelayProfileSettings,
   open as openProfileEditor,
   relayProfileFromDraft,
-  seedRelayProfile,
 } from "@/features/relay-profiles/editor";
 import type {
   AggregateRelayProfile,
@@ -1641,11 +1638,10 @@ export function App() {
       targetRelayMode: targetProfile.relayMode,
     });
     const selectedBeforeSave = activeRelayProfile(switchSettings);
-    const validationError = openProfileEditor(selectedBeforeSave, {
-      profiles: switchSettings.relayProfiles,
-      activeRelayId: switchSettings.activeRelayId,
-      defaultContextSelection: contextSelectionForAllEntries(switchSettings),
+    const validationError = openProfileEditor({
       settings: switchSettings,
+      defaultContextSelection: contextSelectionForAllEntries(switchSettings),
+      focus: { type: "existing", profileId: selectedBeforeSave.id },
     }).semantic.switchIssue?.message ?? null;
     if (validationError) {
       logDiagnostic("switchRelayProfile.validation_failed", {
@@ -2362,7 +2358,16 @@ function RelayScreen({
     await actions.saveSettingsValue(next, true);
   };
   const createNewAggregateProfile = () => {
-    const draft = seedRelayProfile(normalized, "aggregate", `aggregate-${Date.now().toString(36)}`, t("聚合供应商"), contextSelectionForAllEntries(normalized));
+    const draft = relayProfileFromDraft(openProfileEditor({
+      settings: normalized,
+      defaultContextSelection: contextSelectionForAllEntries(normalized),
+      focus: {
+        type: "create",
+        id: `aggregate-${Date.now().toString(36)}`,
+        name: t("聚合供应商"),
+        mode: "aggregate",
+      },
+    }).draft);
     setDetailProfileId(null);
     setNewProfileDraft(draft);
     if (!(draft.aggregate?.members.length ?? 0)) {
@@ -2439,7 +2444,16 @@ function RelayScreen({
             <Button
               variant="secondary"
               onClick={() => {
-                setNewProfileDraft(seedRelayProfile(normalized, "official", `relay-${Date.now().toString(36)}`, tf("供应商 {0}", [normalized.relayProfiles.length + 1]), contextSelectionForAllEntries(normalized)));
+                setNewProfileDraft(relayProfileFromDraft(openProfileEditor({
+                  settings: normalized,
+                  defaultContextSelection: contextSelectionForAllEntries(normalized),
+                  focus: {
+                    type: "create",
+                    id: `relay-${Date.now().toString(36)}`,
+                    name: tf("供应商 {0}", [normalized.relayProfiles.length + 1]),
+                    mode: "official",
+                  },
+                }).draft));
                 setDetailProfileId(null);
               }}
             >
@@ -3815,21 +3829,24 @@ function RelayProfileDetail({
 }) {
   const isActive = !isNew && profile.id === form.activeRelayId;
   const openEditor = () => {
-    const editorContext = {
-      profiles: form.relayProfiles,
-      activeRelayId: form.activeRelayId,
-      defaultContextSelection: contextSelectionForAllEntries(form),
+    const editableMode: RelayProfileEditableMode = profile.relayMode === "mixedApi"
+      ? "official"
+      : profile.relayMode;
+    return openProfileEditor({
       settings: form,
-      liveFiles: null,
-    };
-    const storedState = openProfileEditor(profile, editorContext);
-    if (!isActive || !storedState.semantic.usesLiveFiles || !relayFiles) return storedState;
-    return openProfileEditor(profile, {
-      ...editorContext,
-      liveFiles: {
+      defaultContextSelection: contextSelectionForAllEntries(form),
+      focus: isNew
+        ? {
+            type: "create",
+            id: profile.id,
+            name: profile.name,
+            mode: editableMode,
+          }
+        : { type: "existing", profileId: profile.id },
+      liveFiles: isActive && relayFiles ? {
         configContents: relayFiles.configContents,
         authContents: relayFiles.authContents,
-      },
+      } : null,
     });
   };
   const [editorState, setEditorState] = useState<RelayProfileEditorState>(openEditor);
@@ -5874,22 +5891,25 @@ function normalizeSettings(settings: BackendSettings): BackendSettings {
             userAgent: "",
           },
         ];
-  const relaySettings = normalizeRelayProfileSettings({
-    ...defaultSettings,
-    ...settings,
-    relayProfilesEnabled: settings.relayProfilesEnabled !== false,
-    computerUseGuardEnabled: settings.computerUseGuardEnabled === true,
-    codexAppImageOverlayOpacity: clampNumber(settings.codexAppImageOverlayOpacity || 35, 1, 100),
-    codexAppImageOverlayFitMode: normalizeImageOverlayFitMode(settings.codexAppImageOverlayFitMode),
-    codexAppStepwiseMaxItems: clampNumber(settings.codexAppStepwiseMaxItems ?? 6, 0, 6),
-    codexAppStepwiseMaxInputChars: clampNumber(settings.codexAppStepwiseMaxInputChars || 6000, 1000, 24000),
-    codexAppStepwiseMaxOutputTokens: clampNumber(settings.codexAppStepwiseMaxOutputTokens || 500, 100, 4000),
-    codexAppStepwiseTimeoutMs: clampNumber(settings.codexAppStepwiseTimeoutMs || 8000, 1000, 60000),
-    relayCommonConfigContents,
-    relayContextConfigContents,
-    relayProfiles: profiles,
-    activeRelayId: settings.activeRelayId,
-  }, defaultContextSelection);
+  const relaySettings = openProfileEditor({
+    settings: {
+      ...defaultSettings,
+      ...settings,
+      relayProfilesEnabled: settings.relayProfilesEnabled !== false,
+      computerUseGuardEnabled: settings.computerUseGuardEnabled === true,
+      codexAppImageOverlayOpacity: clampNumber(settings.codexAppImageOverlayOpacity || 35, 1, 100),
+      codexAppImageOverlayFitMode: normalizeImageOverlayFitMode(settings.codexAppImageOverlayFitMode),
+      codexAppStepwiseMaxItems: clampNumber(settings.codexAppStepwiseMaxItems ?? 6, 0, 6),
+      codexAppStepwiseMaxInputChars: clampNumber(settings.codexAppStepwiseMaxInputChars || 6000, 1000, 24000),
+      codexAppStepwiseMaxOutputTokens: clampNumber(settings.codexAppStepwiseMaxOutputTokens || 500, 100, 4000),
+      codexAppStepwiseTimeoutMs: clampNumber(settings.codexAppStepwiseTimeoutMs || 8000, 1000, 60000),
+      relayCommonConfigContents,
+      relayContextConfigContents,
+      relayProfiles: profiles,
+      activeRelayId: settings.activeRelayId,
+    },
+    defaultContextSelection,
+  }).context.settings;
   return relaySettings as BackendSettings;
 }
 

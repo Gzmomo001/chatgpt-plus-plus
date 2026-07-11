@@ -5,10 +5,9 @@ import { describe, it } from "node:test";
 import {
   commit,
   editRelayProfileCollection,
-  normalizeRelayProfileSettings,
   edit,
-  open,
-  seedRelayProfile,
+  open as openRequest,
+  relayProfileFromDraft,
 } from "./editor.ts";
 import { createPresetIntent } from "./preset-intent.ts";
 import type {
@@ -17,6 +16,15 @@ import type {
   RelayProfilePatch,
 } from "./types.ts";
 import { PRESETS } from "../../presets.ts";
+
+function openExisting(source: RelayProfile, editorContext: RelayProfileEditorContext) {
+  return openRequest({
+    settings: editorContext.settings,
+    defaultContextSelection: editorContext.defaultContextSelection,
+    focus: { type: "existing", profileId: source.id },
+    liveFiles: editorContext.liveFiles,
+  });
+}
 
 if (false) {
   const patch: RelayProfilePatch = {};
@@ -28,7 +36,7 @@ if (false) {
   patch.models = [];
 
   const source = profile();
-  const opened = open(source, context([source]));
+  const opened = openExisting(source, context([source]));
   // @ts-expect-error mixedApi is a persisted legacy mode, not an editable mode.
   edit(opened, { type: "setMode", mode: "mixedApi" });
 }
@@ -120,6 +128,9 @@ describe("Relay profile editor", () => {
       "clampAggregateWeight",
       "aggregateRelayProfileValidation",
       "isAggregateRelayProfile",
+      "normalizeRelayProfileSettings",
+      "seedRelayProfile",
+      "canonicalizeRelayProfile",
     ]) {
       assert.equal(app.includes(forbidden), false, `${forbidden} remains in App`);
     }
@@ -128,9 +139,18 @@ describe("Relay profile editor", () => {
     assert.doesNotMatch(app, /patch as unknown as Partial<RelayProfile>/);
     assert.doesNotMatch(app, /type: "setAggregate", aggregate: next\.aggregate/);
     assert.doesNotMatch(app, /modelList: _modelList|modelWindows: _modelWindows/);
+    assert.match(
+      app,
+      /focus:\s*isNew\s*\?\s*\{\s*type:\s*"create"/s,
+      "RelayProfileDetail must keep temporary profiles on the create path",
+    );
     assert.match(editor, /export function open\(/);
     assert.match(editor, /export function edit\(/);
     assert.match(editor, /export function commit\(/);
+    assert.doesNotMatch(
+      editor,
+      /export function (?:normalizeRelayProfileSettings|seedRelayProfile|canonicalizeRelayProfile)\(/,
+    );
     assert.doesNotMatch(
       editor,
       /export function (?:openRelayProfileEditor|editRelayProfile|commitRelayProfile)\(/,
@@ -148,7 +168,7 @@ describe("Relay profile editor", () => {
 
   it("ignores stored model fields smuggled through a generic patch", () => {
     const source = profile();
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
     const edited = edit(opened, {
       type: "patch",
       patch: {
@@ -167,7 +187,7 @@ describe("Relay profile editor", () => {
 
   it("applies a provider preset intent without losing its model metadata", () => {
     const source = profile();
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
     const preset = PRESETS.find((candidate) => candidate.id === "deepseek");
     assert.ok(preset);
     const edited = edit(opened, createPresetIntent(preset));
@@ -190,17 +210,107 @@ describe("Relay profile editor", () => {
   it("seeds a normal provider as Official using the saved relay base URL", () => {
     const settings = context([profile()]).settings;
     settings.relayBaseUrl = "https://saved.example/v1";
-    const seeded = seedRelayProfile(
+    const defaultContextSelection = {
+      mcpServers: ["filesystem"], skills: ["review"], plugins: ["docs"],
+    };
+    const opened = openRequest({
       settings,
-      "official",
-      "new-official",
-      "New provider",
-      { mcpServers: [], skills: [], plugins: [] },
-    );
-    assert.equal(seeded.relayMode, "official");
-    assert.equal(seeded.officialMixApiKey, false);
-    assert.equal(seeded.baseUrl, "https://saved.example/v1");
-    assert.equal(seeded.upstreamBaseUrl, "https://saved.example/v1");
+      defaultContextSelection,
+      focus: {
+        type: "create",
+        id: "new-official",
+        name: "New provider",
+        mode: "official",
+      },
+    });
+    const seeded = commit(opened);
+    assert.equal(seeded.ok, true);
+    if (!seeded.ok) return;
+    assert.equal(seeded.profile.relayMode, "official");
+    assert.equal(seeded.profile.officialMixApiKey, false);
+    assert.equal(seeded.profile.baseUrl, "https://saved.example/v1");
+    assert.equal(seeded.profile.upstreamBaseUrl, "https://saved.example/v1");
+    assert.deepEqual(seeded.profile.contextSelection, defaultContextSelection);
+  });
+
+  it("always opens a draft when backend settings contain no profiles", () => {
+    const settings = context([]).settings;
+    settings.relayBaseUrl = "https://saved.example/v1";
+
+    const opened = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+    });
+
+    assert.equal(opened.isNew, true);
+    assert.equal(opened.draft.id, "default");
+    assert.equal(opened.draft.baseUrl, "https://saved.example/v1");
+  });
+
+  it("reopens a temporary create profile without replacing the active existing profile", () => {
+    const active = profile({ id: "active", name: "Active" });
+    const settings = context([active]).settings;
+    settings.relayBaseUrl = "https://saved.example/v1";
+    const defaultContextSelection = {
+      mcpServers: ["filesystem"], skills: ["review"], plugins: [],
+    };
+    const temporary = relayProfileFromDraft(openRequest({
+      settings,
+      defaultContextSelection,
+      focus: { type: "create", id: "temporary", name: "Temporary", mode: "official" },
+    }).draft);
+
+    const detailState = openRequest({
+      settings,
+      defaultContextSelection,
+      focus: {
+        type: "create",
+        id: temporary.id,
+        name: temporary.name,
+        mode: temporary.relayMode === "mixedApi" ? "official" : temporary.relayMode,
+      },
+    });
+    const saved = commit(detailState);
+
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    assert.equal(saved.settings.activeRelayId, active.id);
+    assert.deepEqual(saved.settings.relayProfiles.map((candidate) => candidate.id), [
+      active.id,
+      temporary.id,
+    ]);
+    assert.equal(saved.profile.name, temporary.name);
+    assert.equal(saved.profile.relayMode, temporary.relayMode);
+    assert.deepEqual(saved.profile.contextSelection, defaultContextSelection);
+    assert.equal(saved.profile.baseUrl, "https://saved.example/v1");
+  });
+
+  it("blocks a create focus whose id is already occupied without mutating settings", () => {
+    const existing = profile({ id: "relay-a" });
+    const settings = context([existing]).settings;
+    const snapshot = structuredClone(settings);
+    const opened = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+      focus: { type: "create", id: existing.id, name: "Duplicate", mode: "official" },
+    });
+
+    assert.equal(opened.issues.some((issue) =>
+      issue.code === "duplicateProfileId" && issue.blocking
+    ), true);
+    const saved = commit(opened);
+    assert.equal(saved.ok, false);
+    if (saved.ok) return;
+    assert.equal(saved.issues.some((issue) => issue.code === "duplicateProfileId"), true);
+    assert.deepEqual(settings, snapshot);
+    assert.equal(settings.relayProfiles.filter((candidate) => candidate.id === existing.id).length, 1);
+
+    const existingState = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+      focus: { type: "existing", profileId: existing.id },
+    });
+    assert.equal(existingState.issues.some((issue) => issue.code === "duplicateProfileId"), false);
   });
 
   it("normalizes backend aggregate hydration and legacy projections in one roundtrip", () => {
@@ -215,9 +325,10 @@ describe("Relay profile editor", () => {
       members: [{ relayId: "member", weight: 3 }],
     }];
 
-    const normalized = normalizeRelayProfileSettings(settings, {
-      mcpServers: ["filesystem"], skills: [], plugins: [],
-    });
+    const normalized = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: ["filesystem"], skills: [], plugins: [] },
+    }).context.settings;
 
     const hydrated = normalized.relayProfiles.find((candidate) => candidate.id === "aggregate");
     assert.equal(hydrated?.name, "Hydrated aggregate");
@@ -234,13 +345,69 @@ describe("Relay profile editor", () => {
       authContents: '{"OPENAI_API_KEY":"sk-old","auth_mode":"chatgpt","tokens":{"access_token":"official"}}',
     });
     const settings = context([official]).settings;
-    const normalized = normalizeRelayProfileSettings(settings, {
-      mcpServers: [], skills: [], plugins: [],
-    });
+    const normalized = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+    }).context.settings;
     const result = normalized.relayProfiles[0];
     assert.equal(result.configContents, "");
     assert.doesNotMatch(result.authContents, /OPENAI_API_KEY/);
     assert.match(result.authContents, /official/);
+  });
+
+  it("seeds an Aggregate without hydrating it from active live files", () => {
+    const settings = context([profile()]).settings;
+    const opened = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+      focus: { type: "create", id: "aggregate-new", name: "Aggregate", mode: "aggregate" },
+      liveFiles: {
+        configContents: 'model = "live-model"\n',
+        authContents: '{"OPENAI_API_KEY":"sk-live"}\n',
+      },
+    });
+
+    assert.equal(opened.isNew, true);
+    assert.equal(opened.draft.relayMode, "aggregate");
+    assert.deepEqual(opened.draft.aggregate, { strategy: "failover", members: [] });
+    assert.equal(opened.draft.model, "");
+    assert.equal(opened.draft.apiKey, "");
+    assert.equal(opened.draft.configContents, "");
+  });
+
+  it("hydrates live files only for an active existing profile that semantically uses them", () => {
+    const official = profile({
+      id: "official",
+      relayMode: "official",
+      officialMixApiKey: false,
+      model: "stored-official",
+      configContents: "",
+    });
+    const active = profile({ id: "active", model: "stored-active" });
+    const settings = context([official, active]).settings;
+    settings.activeRelayId = active.id;
+    const liveFiles = {
+      configContents: active.configContents.replace("model-a", "live-model"),
+      authContents: '{"OPENAI_API_KEY":"sk-live"}\n',
+    };
+
+    const activeState = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+      focus: { type: "existing", profileId: active.id },
+      liveFiles,
+    });
+    const officialState = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+      focus: { type: "existing", profileId: official.id },
+      liveFiles,
+    });
+
+    assert.equal(activeState.draft.model, "live-model");
+    assert.equal(activeState.draft.apiKey, "sk-live");
+    assert.equal(officialState.draft.model, "stored-official");
+    assert.equal(officialState.draft.apiKey, "sk-a");
   });
   it("initializes an uninitialized context selection from the editor default", () => {
     const source = profile({
@@ -254,7 +421,7 @@ describe("Relay profile editor", () => {
       plugins: ["docs"],
     };
 
-    const opened = open(source, ctx);
+    const opened = openExisting(source, ctx);
     assert.equal(opened.draft.contextSelectionInitialized, true);
     assert.deepEqual(opened.draft.contextSelection, ctx.defaultContextSelection);
     assert.notEqual(opened.draft.contextSelection, ctx.defaultContextSelection);
@@ -262,7 +429,7 @@ describe("Relay profile editor", () => {
 
   it("opens, edits immutably, and commits a Relay profile through one lifecycle", () => {
     const source = profile();
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
 
     assert.deepEqual(opened.draft.models, [{ model: "model-a", window: "" }]);
     assert.equal("modelList" in opened.draft, false);
@@ -297,7 +464,7 @@ describe("Relay profile editor", () => {
       },
     };
 
-    const opened = open(active, ctx);
+    const opened = openExisting(active, ctx);
     assert.deepEqual(opened.draft.models, [
       { model: "model-a", window: "1M" },
       { model: "model-b", window: "32000" },
@@ -306,11 +473,15 @@ describe("Relay profile editor", () => {
     assert.equal(opened.draft.model, "live-model");
     assert.equal(opened.draft.apiKey, "sk-live");
 
-    const draftOnly = profile({ id: "relay-new", model: "stored-model" });
-    const newOpened = open(draftOnly, ctx);
+    const newOpened = openRequest({
+      settings: ctx.settings,
+      defaultContextSelection: ctx.defaultContextSelection,
+      focus: { type: "create", id: "relay-new", name: "New", mode: "official" },
+      liveFiles: ctx.liveFiles,
+    });
     assert.equal(newOpened.isNew, true);
-    assert.equal(newOpened.draft.model, "model-a");
-    assert.equal(newOpened.draft.apiKey, "sk-a");
+    assert.equal(newOpened.draft.model, "");
+    assert.equal(newOpened.draft.apiKey, "");
   });
 
   it("merges and removes model rows without mutating earlier editor states", () => {
@@ -318,7 +489,7 @@ describe("Relay profile editor", () => {
       modelList: "model-a\nmodel-b",
       modelWindows: '{"model-a":"1M"}',
     });
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
     const merged = edit(opened, {
       type: "mergeModels",
       models: [
@@ -349,7 +520,7 @@ describe("Relay profile editor", () => {
 
   it("blocks commit when a model window is not empty or a positive integer/K/M token", () => {
     const source = profile({ modelList: "a\nb\nc", modelWindows: "{}" });
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
     const invalid = edit(opened, {
       type: "replaceModels",
       models: [
@@ -370,7 +541,7 @@ describe("Relay profile editor", () => {
 
   it("transitions mode through a dedicated intent before commit", () => {
     const source = profile();
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
     const official = edit(opened, { type: "setMode", mode: "official" });
     const committed = commit(official);
 
@@ -389,7 +560,7 @@ describe("Relay profile editor", () => {
       relayMode: "aggregate",
       aggregate: { strategy: "weightedRoundRobin", members: [{ profileId: member.id, weight: 3 }] },
     });
-    const opened = open(aggregate, context([aggregate, member]));
+    const opened = openExisting(aggregate, context([aggregate, member]));
 
     for (const mode of ["official", "pureApi"] as const) {
       const edited = edit(opened, { type: "setMode", mode });
@@ -403,7 +574,7 @@ describe("Relay profile editor", () => {
 
   it("treats Aggregate-only intents as no-ops outside Aggregate mode", () => {
     const source = profile({ aggregate: null });
-    let state = open(source, context([source]));
+    let state = openExisting(source, context([source]));
     const intents = [
       { type: "setAggregateStrategy", strategy: "weightedRoundRobin" },
       { type: "toggleAggregateMember", profileId: "relay-b", selected: true },
@@ -428,7 +599,7 @@ describe("Relay profile editor", () => {
       relayMode: "aggregate",
       aggregate: { strategy: "failover", members: [{ profileId: member.id, weight: 1 }] },
     });
-    const edited = edit(open(aggregate, context([aggregate, member])), {
+    const edited = edit(openExisting(aggregate, context([aggregate, member])), {
       type: "setAggregateStrategy",
       strategy: "weightedRoundRobin",
     });
@@ -446,7 +617,7 @@ describe("Relay profile editor", () => {
       relayMode: "aggregate",
       aggregate: { strategy: "failover", members: [] },
     });
-    const selected = edit(open(aggregate, context([aggregate, member])), {
+    const selected = edit(openExisting(aggregate, context([aggregate, member])), {
       type: "toggleAggregateMember",
       profileId: member.id,
       selected: true,
@@ -467,7 +638,7 @@ describe("Relay profile editor", () => {
       relayMode: "aggregate",
       aggregate: { strategy: "weightedRoundRobin", members: [{ profileId: member.id, weight: 1 }] },
     });
-    const edited = edit(open(aggregate, context([aggregate, member])), {
+    const edited = edit(openExisting(aggregate, context([aggregate, member])), {
       type: "setAggregateMemberWeight",
       profileId: member.id,
       weight: 2000,
@@ -494,7 +665,7 @@ describe("Relay profile editor", () => {
       relayMode: "aggregate",
       aggregate: { strategy: "failover", members: [{ profileId: valid.id, weight: 3 }] },
     });
-    const opened = open(aggregate, context([aggregate, valid, noKey, nested]));
+    const opened = openExisting(aggregate, context([aggregate, valid, noKey, nested]));
 
     assert.deepEqual(
       opened.semantic?.aggregateCandidates.map((candidate) => candidate.id),
@@ -510,7 +681,7 @@ describe("Relay profile editor", () => {
       relayMode: "aggregate",
       aggregate: { strategy: "failover", members: [{ profileId: valid.id, weight: 1 }] },
     });
-    const opened = open(aggregate, context([aggregate, valid]));
+    const opened = openExisting(aggregate, context([aggregate, valid]));
     const candidate = opened.semantic.aggregateCandidates[0];
 
     assert.notStrictEqual(candidate, valid);
@@ -548,10 +719,10 @@ describe("Relay profile editor", () => {
     });
     const ctx = context([official, pure, mixed, aggregate]);
 
-    const officialState = open(official, ctx);
-    const pureState = open(pure, ctx);
-    const mixedState = open(mixed, ctx);
-    const aggregateState = open(aggregate, ctx);
+    const officialState = openExisting(official, ctx);
+    const pureState = openExisting(pure, ctx);
+    const mixedState = openExisting(mixed, ctx);
+    const aggregateState = openExisting(aggregate, ctx);
 
     assert.equal(officialState.semantic.usesLiveFiles, false);
     assert.equal(officialState.semantic.switchIssue, null);
@@ -581,8 +752,8 @@ describe("Relay profile editor", () => {
     });
     const ctx = context([official, pure]);
 
-    const officialState = open(official, ctx);
-    const pureState = open(pure, ctx);
+    const officialState = openExisting(official, ctx);
+    const pureState = openExisting(pure, ctx);
 
     assert.equal(officialState.issues[0]?.code, "invalidModelWindow");
     assert.equal(officialState.semantic.switchIssue, null);
@@ -592,7 +763,7 @@ describe("Relay profile editor", () => {
 
   it("projects Official, Official mixed, Pure API, and Aggregate modes consistently", () => {
     const source = profile();
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
 
     const official = edit(opened, { type: "setMode", mode: "official" });
     assert.equal(official.draft.configContents, "");
@@ -628,7 +799,7 @@ describe("Relay profile editor", () => {
 
   it("projects context limits as root integer keys and removes them when cleared", () => {
     const source = profile();
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
     const configured = edit(opened, {
       type: "patch",
       patch: { contextWindow: "64K", autoCompactLimit: "50_000" },
@@ -649,7 +820,7 @@ describe("Relay profile editor", () => {
 
   it("replaces stored files and derives semantic fields from them", () => {
     const source = profile();
-    const opened = open(source, context([source]));
+    const opened = openExisting(source, context([source]));
     const replaced = edit(opened, {
       type: "replaceStoredFiles",
       configContents: [
@@ -687,7 +858,7 @@ describe("Relay profile editor", () => {
     const ctx = context([aggregate, member, nested]);
     ctx.activeRelayId = aggregate.id;
     ctx.settings.activeRelayId = aggregate.id;
-    const opened = open(aggregate, ctx);
+    const opened = openExisting(aggregate, ctx);
     const selected = edit(opened, {
       type: "toggleAggregateMember",
       profileId: "relay-b",
@@ -717,7 +888,12 @@ describe("Relay profile editor", () => {
 
   it("excludes Relay profiles without both Base URL and API key from Aggregate membership", () => {
     const valid = profile({ id: "relay-valid" });
-    const noUrl = profile({ id: "relay-no-url", baseUrl: "", upstreamBaseUrl: "" });
+    const noUrl = profile({
+      id: "relay-no-url",
+      baseUrl: "",
+      upstreamBaseUrl: "",
+      configContents: "",
+    });
     const noKey = profile({ id: "relay-no-key", apiKey: "", authContents: "{}" });
     const aggregate = profile({
       id: "aggregate-a",
@@ -725,7 +901,7 @@ describe("Relay profile editor", () => {
       aggregate: { strategy: "failover", members: [] },
     });
     const ctx = context([aggregate, valid, noUrl, noKey]);
-    const validSelected = edit(open(aggregate, ctx), {
+    const validSelected = edit(openExisting(aggregate, ctx), {
       type: "toggleAggregateMember", profileId: "relay-valid", selected: true,
     });
     const noUrlSelected = edit(validSelected, {
@@ -758,7 +934,7 @@ describe("Relay profile editor", () => {
     const ctx = context([member, aggregate]);
     ctx.activeRelayId = aggregate.id;
     ctx.settings.activeRelayId = aggregate.id;
-    const result = commit(open(aggregate, ctx));
+    const result = commit(openExisting(aggregate, ctx));
 
     assert.equal(result.ok, true);
     if (!result.ok) return;

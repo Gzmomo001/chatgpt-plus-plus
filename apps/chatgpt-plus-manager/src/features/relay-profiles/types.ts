@@ -84,6 +84,20 @@ export type RelayProfileEditorContext = {
   liveFiles?: { configContents: string; authContents: string } | null;
 };
 
+export type RelayProfileOpenRequest = {
+  settings: RelayProfileSettings;
+  defaultContextSelection: RelayContextSelection;
+  focus?:
+    | { type: "existing"; profileId: string }
+    | {
+        type: "create";
+        id: string;
+        name: string;
+        mode: RelayProfileEditableMode;
+      };
+  liveFiles?: { configContents: string; authContents: string } | null;
+};
+
 export type RelayProfileIssue = {
   code: string;
   field: string;
