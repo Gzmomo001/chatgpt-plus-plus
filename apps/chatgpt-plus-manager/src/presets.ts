@@ -7,9 +7,9 @@
  * 去掉了 cc-switch 原始的商业合作标记（isPartner、partnerPromotionKey）。
  */
 
-export type PresetCategory = "official" | "aggregator" | "third_party" | "cn_official";
+import type { RelayProtocol } from "./features/relay-profiles/types";
 
-export type RelayProtocol = "responses" | "chatCompletions";
+export type PresetCategory = "official" | "aggregator" | "third_party" | "cn_official";
 
 export interface ProviderPreset {
   id: string;

@@ -1,10 +1,9 @@
 import { useState, useMemo } from "react";
-import type { ProviderPreset, RelayProtocol } from "../presets";
-import { PRESETS } from "../presets";
+import type { ProviderPreset } from "../../../presets";
+import { PRESETS } from "../../../presets";
 import { t, tf } from "@/i18n";
-import type { RelayProfile } from "../relay-profile-editor";
-
-export type PresetPatch = Partial<RelayProfile>;
+import type { ApplyRelayProfilePresetIntent } from "../types";
+import { createPresetIntent } from "../preset-intent";
 
 const categoryLabels: Record<string, string> = {
   official: t("官方"),
@@ -17,24 +16,10 @@ const initialFor = (name: string): string => {
   return name.charAt(0).toUpperCase();
 };
 
-export function createPresetPatch(preset: ProviderPreset): PresetPatch {
-  return {
-    name: preset.name,
-    baseUrl: preset.baseUrl,
-    upstreamBaseUrl: preset.baseUrl,
-    protocol: preset.protocol,
-    model: preset.model,
-    testModel: preset.model,
-    modelList: preset.modelList?.join("\n") ?? "",
-    relayMode: preset.category === "official" ? "official" : "pureApi",
-    officialMixApiKey: false,
-  };
-}
-
 export function ProviderPresetSelector({
   onSelect,
 }: {
-  onSelect: (patch: PresetPatch) => void;
+  onSelect: (intent: ApplyRelayProfilePresetIntent) => void;
 }) {
   const [collapsed, setCollapsed] = useState(true);
   const [query, setQuery] = useState("");
@@ -53,7 +38,7 @@ export function ProviderPresetSelector({
   }, [query]);
 
   const handleSelect = (preset: ProviderPreset) => {
-    onSelect(createPresetPatch(preset));
+    onSelect(createPresetIntent(preset));
     setCollapsed(true);
     setQuery("");
   };

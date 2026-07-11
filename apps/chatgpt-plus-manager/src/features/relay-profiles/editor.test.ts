@@ -1,17 +1,32 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
-  commitRelayProfile,
+  commit,
   editRelayProfileCollection,
   normalizeRelayProfileSettings,
-  editRelayProfile,
-  openRelayProfileEditor,
+  edit,
+  open,
   seedRelayProfile,
-  type RelayProfile,
-  type RelayProfileEditorContext,
-} from "./relay-profile-editor.ts";
+} from "./editor.ts";
+import { createPresetIntent } from "./preset-intent.ts";
+import type {
+  RelayProfile,
+  RelayProfileEditorContext,
+  RelayProfilePatch,
+} from "./types.ts";
+import { PRESETS } from "../../presets.ts";
+
+if (false) {
+  const patch: RelayProfilePatch = {};
+  // @ts-expect-error Relay profile patches cannot advertise stored model fields.
+  patch.modelList = "model-a";
+  // @ts-expect-error Relay profile patches cannot advertise stored model-window fields.
+  patch.modelWindows = "{}";
+  // @ts-expect-error Relay profile patches cannot advertise structured model rows.
+  patch.models = [];
+}
 
 function profile(patch: Partial<RelayProfile> = {}): RelayProfile {
   return {
@@ -76,7 +91,13 @@ describe("Relay profile editor", () => {
     });
     assert.equal(activated.activeRelayId, source.id);
 
-    const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+    const app = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    const editor = readFileSync(new URL("./editor.ts", import.meta.url), "utf8");
+    const types = readFileSync(new URL("./types.ts", import.meta.url), "utf8");
+    const selector = readFileSync(
+      new URL("./components/ProviderPresetSelector.tsx", import.meta.url),
+      "utf8",
+    );
     for (const forbidden of [
       "deriveRelayProfileFromFiles",
       "applyRelayProfilePatchToFiles",
@@ -94,21 +115,64 @@ describe("Relay profile editor", () => {
     assert.doesNotMatch(app, /from ["']\.\/model-windows["']/);
     assert.doesNotMatch(app, /patch as unknown as Partial<RelayProfile>/);
     assert.doesNotMatch(app, /type: "setAggregate", aggregate: next\.aggregate/);
+    assert.doesNotMatch(app, /modelList: _modelList|modelWindows: _modelWindows/);
+    assert.match(editor, /export function open\(/);
+    assert.match(editor, /export function edit\(/);
+    assert.match(editor, /export function commit\(/);
+    assert.doesNotMatch(
+      editor,
+      /export function (?:openRelayProfileEditor|editRelayProfile|commitRelayProfile)\(/,
+    );
+    assert.equal(existsSync(new URL("../../relay-profile-editor.ts", import.meta.url)), false);
+    assert.equal(existsSync(new URL("../../relay-profile-editor.test.ts", import.meta.url)), false);
+    assert.equal(
+      existsSync(new URL("../../components/ProviderPresetSelector.tsx", import.meta.url)),
+      false,
+    );
+    assert.equal((types.match(/export type RelayProfile\s*=/g) ?? []).length, 1);
+    assert.doesNotMatch(editor, /export type RelayProfile\s*=/);
+    assert.doesNotMatch(selector, /(?:export )?type RelayProfile\s*=/);
   });
 
-  it("accepts a full preset-like profile patch and preserves its model list on commit", () => {
+  it("ignores stored model fields smuggled through a generic patch", () => {
     const source = profile();
-    const opened = openRelayProfileEditor(source, context([source]));
-    const edited = editRelayProfile(opened, {
+    const opened = open(source, context([source]));
+    const edited = edit(opened, {
       type: "patch",
-      patch: { name: "Preset", modelList: "a\nb", modelWindows: '{"b":"1M"}' },
+      patch: {
+        name: "Patched",
+        modelList: "smuggled-a\nsmuggled-b",
+        modelWindows: '{"smuggled-b":"1M"}',
+      } as unknown as RelayProfilePatch,
     });
-    const committed = commitRelayProfile(edited);
+    const committed = commit(edited);
     assert.equal(committed.ok, true);
     if (!committed.ok) return;
-    assert.equal(committed.profile.name, "Preset");
-    assert.equal(committed.profile.modelList, "a\nb");
-    assert.equal(committed.profile.modelWindows, '{"b":"1M"}');
+    assert.equal(committed.profile.name, "Patched");
+    assert.equal(committed.profile.modelList, source.modelList);
+    assert.equal(committed.profile.modelWindows, source.modelWindows);
+  });
+
+  it("applies a provider preset intent without losing its model metadata", () => {
+    const source = profile();
+    const opened = open(source, context([source]));
+    const preset = PRESETS.find((candidate) => candidate.id === "deepseek");
+    assert.ok(preset);
+    const edited = edit(opened, createPresetIntent(preset));
+    const committed = commit(edited);
+
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.equal(committed.profile.name, preset.name);
+    assert.equal(committed.profile.baseUrl, preset.baseUrl);
+    assert.equal(committed.profile.upstreamBaseUrl, preset.baseUrl);
+    assert.equal(committed.profile.protocol, preset.protocol);
+    assert.equal(committed.profile.model, preset.model);
+    assert.equal(committed.profile.testModel, preset.model);
+    assert.equal(committed.profile.modelList, preset.modelList?.join("\n"));
+    assert.equal(committed.profile.modelWindows, "{}");
+    assert.equal(committed.profile.relayMode, "pureApi");
+    assert.equal(committed.profile.officialMixApiKey, false);
   });
 
   it("seeds a normal provider as Official using the saved relay base URL", () => {
@@ -178,7 +242,7 @@ describe("Relay profile editor", () => {
       plugins: ["docs"],
     };
 
-    const opened = openRelayProfileEditor(source, ctx);
+    const opened = open(source, ctx);
     assert.equal(opened.draft.contextSelectionInitialized, true);
     assert.deepEqual(opened.draft.contextSelection, ctx.defaultContextSelection);
     assert.notEqual(opened.draft.contextSelection, ctx.defaultContextSelection);
@@ -186,20 +250,20 @@ describe("Relay profile editor", () => {
 
   it("opens, edits immutably, and commits a Relay profile through one lifecycle", () => {
     const source = profile();
-    const opened = openRelayProfileEditor(source, context([source]));
+    const opened = open(source, context([source]));
 
     assert.deepEqual(opened.draft.models, [{ model: "model-a", window: "" }]);
     assert.equal("modelList" in opened.draft, false);
     assert.equal("modelWindows" in opened.draft, false);
 
-    const edited = editRelayProfile(opened, {
+    const edited = edit(opened, {
       type: "patch",
       patch: { name: "Relay A edited", apiKey: "sk-next" },
     });
     assert.equal(opened.draft.name, "Relay A");
     assert.equal(edited.draft.name, "Relay A edited");
 
-    const committed = commitRelayProfile(edited);
+    const committed = commit(edited);
     assert.equal(committed.ok, true);
     if (!committed.ok) return;
     assert.equal(committed.profile.name, "Relay A edited");
@@ -221,7 +285,7 @@ describe("Relay profile editor", () => {
       },
     };
 
-    const opened = openRelayProfileEditor(active, ctx);
+    const opened = open(active, ctx);
     assert.deepEqual(opened.draft.models, [
       { model: "model-a", window: "1M" },
       { model: "model-b", window: "32000" },
@@ -231,7 +295,7 @@ describe("Relay profile editor", () => {
     assert.equal(opened.draft.apiKey, "sk-live");
 
     const draftOnly = profile({ id: "relay-new", model: "stored-model" });
-    const newOpened = openRelayProfileEditor(draftOnly, ctx);
+    const newOpened = open(draftOnly, ctx);
     assert.equal(newOpened.isNew, true);
     assert.equal(newOpened.draft.model, "model-a");
     assert.equal(newOpened.draft.apiKey, "sk-a");
@@ -242,8 +306,8 @@ describe("Relay profile editor", () => {
       modelList: "model-a\nmodel-b",
       modelWindows: '{"model-a":"1M"}',
     });
-    const opened = openRelayProfileEditor(source, context([source]));
-    const merged = editRelayProfile(opened, {
+    const opened = open(source, context([source]));
+    const merged = edit(opened, {
       type: "mergeModels",
       models: [
         { model: " model-a ", window: "200K" },
@@ -251,7 +315,7 @@ describe("Relay profile editor", () => {
         { model: "model-c", window: "1M" },
       ],
     });
-    const removed = editRelayProfile(merged, { type: "removeModel", model: "model-b" });
+    const removed = edit(merged, { type: "removeModel", model: "model-b" });
 
     assert.deepEqual(opened.draft.models, [
       { model: "model-a", window: "1M" },
@@ -261,7 +325,7 @@ describe("Relay profile editor", () => {
       { model: "model-a", window: "1M" },
       { model: "model-c", window: "32000" },
     ]);
-    const committed = commitRelayProfile(removed);
+    const committed = commit(removed);
     assert.equal(committed.ok, true);
     if (!committed.ok) return;
     assert.equal(committed.profile.modelList, "model-a\nmodel-c");
@@ -273,8 +337,8 @@ describe("Relay profile editor", () => {
 
   it("blocks commit when a model window is not empty or a positive integer/K/M token", () => {
     const source = profile({ modelList: "a\nb\nc", modelWindows: "{}" });
-    const opened = openRelayProfileEditor(source, context([source]));
-    const invalid = editRelayProfile(opened, {
+    const opened = open(source, context([source]));
+    const invalid = edit(opened, {
       type: "replaceModels",
       models: [
         { model: "a", window: "0" },
@@ -283,7 +347,7 @@ describe("Relay profile editor", () => {
       ],
     });
 
-    const result = commitRelayProfile(invalid);
+    const result = commit(invalid);
     assert.equal(result.ok, false);
     if (result.ok) return;
     assert.deepEqual(
@@ -294,16 +358,16 @@ describe("Relay profile editor", () => {
 
   it("projects Official, Official mixed, Pure API, and Aggregate modes consistently", () => {
     const source = profile();
-    const opened = openRelayProfileEditor(source, context([source]));
+    const opened = open(source, context([source]));
 
-    const official = editRelayProfile(opened, {
+    const official = edit(opened, {
       type: "patch",
       patch: { relayMode: "official", officialMixApiKey: false },
     });
     assert.equal(official.draft.configContents, "");
     assert.doesNotMatch(official.draft.authContents, /OPENAI_API_KEY/);
 
-    const mixed = editRelayProfile(official, {
+    const mixed = edit(official, {
       type: "patch",
       patch: {
         relayMode: "official",
@@ -317,14 +381,14 @@ describe("Relay profile editor", () => {
     assert.match(mixed.draft.configContents, /experimental_bearer_token = "sk-mixed"/);
     assert.doesNotMatch(mixed.draft.authContents, /OPENAI_API_KEY/);
 
-    const pure = editRelayProfile(mixed, {
+    const pure = edit(mixed, {
       type: "patch",
       patch: { relayMode: "pureApi", apiKey: "sk-pure" },
     });
     assert.match(pure.draft.authContents, /sk-pure/);
     assert.doesNotMatch(pure.draft.configContents, /experimental_bearer_token/);
 
-    const aggregate = editRelayProfile(pure, {
+    const aggregate = edit(pure, {
       type: "setAggregate",
       aggregate: {
         strategy: "weightedRoundRobin",
@@ -340,8 +404,8 @@ describe("Relay profile editor", () => {
 
   it("projects context limits as root integer keys and removes them when cleared", () => {
     const source = profile();
-    const opened = openRelayProfileEditor(source, context([source]));
-    const configured = editRelayProfile(opened, {
+    const opened = open(source, context([source]));
+    const configured = edit(opened, {
       type: "patch",
       patch: { contextWindow: "64K", autoCompactLimit: "50_000" },
     });
@@ -351,7 +415,7 @@ describe("Relay profile editor", () => {
       /^model_auto_compact_token_limit = 50000$/m,
     );
 
-    const cleared = editRelayProfile(configured, {
+    const cleared = edit(configured, {
       type: "patch",
       patch: { contextWindow: "", autoCompactLimit: "" },
     });
@@ -361,8 +425,8 @@ describe("Relay profile editor", () => {
 
   it("replaces stored files and derives semantic fields from them", () => {
     const source = profile();
-    const opened = openRelayProfileEditor(source, context([source]));
-    const replaced = editRelayProfile(opened, {
+    const opened = open(source, context([source]));
+    const replaced = edit(opened, {
       type: "replaceStoredFiles",
       configContents: [
         'model = "raw-model"',
@@ -399,8 +463,8 @@ describe("Relay profile editor", () => {
     const ctx = context([aggregate, member, nested]);
     ctx.activeRelayId = aggregate.id;
     ctx.settings.activeRelayId = aggregate.id;
-    const opened = openRelayProfileEditor(aggregate, ctx);
-    const edited = editRelayProfile(opened, {
+    const opened = open(aggregate, ctx);
+    const edited = edit(opened, {
       type: "setAggregate",
       aggregate: {
         strategy: "weightedRoundRobin",
@@ -415,11 +479,11 @@ describe("Relay profile editor", () => {
     });
     assert.deepEqual(edited.draft.aggregate?.members, [{ profileId: "relay-b", weight: 1 }]);
 
-    const empty = editRelayProfile(edited, {
+    const empty = edit(edited, {
       type: "setAggregate",
       aggregate: { strategy: "failover", members: [] },
     });
-    const result = commitRelayProfile(empty);
+    const result = commit(empty);
     assert.equal(result.ok, false);
     if (result.ok) return;
     assert.equal(result.issues[0].code, "aggregateMembersRequired");
@@ -435,7 +499,7 @@ describe("Relay profile editor", () => {
       aggregate: { strategy: "failover", members: [] },
     });
     const ctx = context([aggregate, valid, noUrl, noKey]);
-    const edited = editRelayProfile(openRelayProfileEditor(aggregate, ctx), {
+    const edited = edit(open(aggregate, ctx), {
       type: "setAggregate",
       aggregate: {
         strategy: "failover",
@@ -470,7 +534,7 @@ describe("Relay profile editor", () => {
     const ctx = context([member, aggregate]);
     ctx.activeRelayId = aggregate.id;
     ctx.settings.activeRelayId = aggregate.id;
-    const result = commitRelayProfile(openRelayProfileEditor(aggregate, ctx));
+    const result = commit(open(aggregate, ctx));
 
     assert.equal(result.ok, true);
     if (!result.ok) return;

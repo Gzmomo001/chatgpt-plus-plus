@@ -1,115 +1,22 @@
+import type {
+  ModelWindowRow,
+  RelayAggregateConfig,
+  RelayAggregateMember,
+  RelayAggregateStrategy,
+  RelayContextSelection,
+  RelayProfile,
+  RelayProfileCollectionEdit,
+  RelayProfileCommitResult,
+  RelayProfileDraft,
+  RelayProfileEdit,
+  RelayProfileEditorContext,
+  RelayProfileEditorState,
+  RelayProfileIssue,
+  RelayProfilePatch,
+  RelayProfileSettings,
+} from "./types";
+
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
-
-export type ModelWindowRow = {
-  model: string;
-  window: string;
-};
-
-export type RelayProtocol = "responses" | "chatCompletions";
-export type RelayMode = "official" | "mixedApi" | "pureApi" | "aggregate";
-export type RelayAggregateStrategy =
-  | "failover"
-  | "conversationRoundRobin"
-  | "requestRoundRobin"
-  | "weightedRoundRobin";
-
-export type RelayContextSelection = {
-  mcpServers: string[];
-  skills: string[];
-  plugins: string[];
-};
-
-export type RelayAggregateMember = { profileId: string; weight: number };
-export type RelayAggregateConfig = {
-  strategy: RelayAggregateStrategy;
-  members: RelayAggregateMember[];
-};
-
-export type AggregateRelayProfile = {
-  id: string;
-  name: string;
-  strategy: RelayAggregateStrategy;
-  members: Array<{ relayId: string; weight: number }>;
-};
-
-export type RelayProfile = {
-  id: string;
-  name: string;
-  model: string;
-  baseUrl: string;
-  upstreamBaseUrl: string;
-  apiKey: string;
-  protocol: RelayProtocol;
-  relayMode: RelayMode;
-  officialMixApiKey: boolean;
-  testModel: string;
-  configContents: string;
-  authContents: string;
-  useCommonConfig: boolean;
-  contextSelection: RelayContextSelection;
-  contextSelectionInitialized: boolean;
-  contextWindow: string;
-  autoCompactLimit: string;
-  modelList: string;
-  modelWindows: string;
-  userAgent: string;
-  aggregate?: RelayAggregateConfig | null;
-};
-
-export type RelayProfileDraft = Omit<RelayProfile, "modelList" | "modelWindows"> & {
-  models: ModelWindowRow[];
-};
-
-export type RelayProfileSettings = {
-  relayProfiles: RelayProfile[];
-  activeRelayId: string;
-  relayBaseUrl: string;
-  relayApiKey: string;
-  aggregateRelayProfiles: AggregateRelayProfile[];
-  activeAggregateRelayId: string;
-  [key: string]: unknown;
-};
-
-export type RelayProfileEditorContext = {
-  profiles: RelayProfile[];
-  activeRelayId: string;
-  defaultContextSelection: RelayContextSelection;
-  settings: RelayProfileSettings;
-  liveFiles?: { configContents: string; authContents: string } | null;
-};
-
-export type RelayProfileIssue = {
-  code: string;
-  field: string;
-  message: string;
-  blocking: boolean;
-};
-
-export type RelayProfileEditorState = {
-  sourceId: string;
-  isNew: boolean;
-  draft: RelayProfileDraft;
-  issues: RelayProfileIssue[];
-  context: RelayProfileEditorContext;
-};
-
-export type RelayProfileEdit =
-  | { type: "patch"; patch: Partial<RelayProfile> }
-  | { type: "replaceModels"; models: ModelWindowRow[] }
-  | { type: "mergeModels"; models: ModelWindowRow[] }
-  | { type: "removeModel"; model: string }
-  | { type: "replaceStoredFiles"; configContents: string; authContents: string }
-  | { type: "setAggregate"; aggregate: RelayAggregateConfig };
-
-export type RelayProfileCommitResult =
-  | { ok: true; profile: RelayProfile; settings: RelayProfileSettings }
-  | { ok: false; issues: RelayProfileIssue[] };
-
-export type RelayProfileCollectionEdit =
-  | { type: "activate"; profileId: string }
-  | { type: "duplicate"; profileId: string; id: string; name: string }
-  | { type: "reorder"; profileId: string; targetId: string }
-  | { type: "remove"; profileId: string };
 
 export function editRelayProfileCollection(
   settings: RelayProfileSettings,
@@ -233,17 +140,13 @@ export function normalizeRelayAggregateConfig(
   return normalizeAggregate(aggregate, aggregateId, profiles);
 }
 
-export function relayModelRows(profile: Pick<RelayProfile, "modelList" | "modelWindows">): ModelWindowRow[] {
-  return modelRows(profile.modelList, profile.modelWindows);
-}
-
 export function relayProfileFromDraft(draft: RelayProfileDraft): RelayProfile {
   const serialized = serializeRows(draft.models);
   const { models: _models, ...profile } = draft;
   return { ...profile, ...serialized };
 }
 
-export function openRelayProfileEditor(
+export function open(
   source: RelayProfile,
   context: RelayProfileEditorContext,
 ): RelayProfileEditorState {
@@ -282,45 +185,60 @@ export function openRelayProfileEditor(
   return withIssues(state);
 }
 
-export function editRelayProfile(
+export function edit(
   state: RelayProfileEditorState,
-  edit: RelayProfileEdit,
+  intent: RelayProfileEdit,
 ): RelayProfileEditorState {
-  if (edit.type === "replaceModels") {
-    return withIssues({ ...state, draft: { ...state.draft, models: canonicalRows(edit.models) } });
+  if (intent.type === "applyPreset") {
+    const draft = projectDraft({
+      ...state.draft,
+      name: intent.preset.name,
+      baseUrl: intent.preset.baseUrl,
+      upstreamBaseUrl: intent.preset.baseUrl,
+      protocol: intent.preset.protocol,
+      model: intent.preset.model,
+      testModel: intent.preset.model,
+      relayMode: intent.preset.relayMode,
+      officialMixApiKey: false,
+      models: canonicalRows(intent.preset.models),
+    });
+    return withIssues({ ...state, draft });
   }
-  if (edit.type === "mergeModels") {
+  if (intent.type === "replaceModels") {
+    return withIssues({ ...state, draft: { ...state.draft, models: canonicalRows(intent.models) } });
+  }
+  if (intent.type === "mergeModels") {
     return withIssues({
       ...state,
       draft: {
         ...state.draft,
-        models: canonicalRows([...state.draft.models, ...edit.models]),
+        models: canonicalRows([...state.draft.models, ...intent.models]),
       },
     });
   }
-  if (edit.type === "removeModel") {
-    const target = edit.model.trim();
+  if (intent.type === "removeModel") {
+    const target = intent.model.trim();
     const models = state.draft.models.filter((row) => row.model.trim() !== target);
     return withIssues({
       ...state,
       draft: { ...state.draft, models: models.length ? models : [{ model: "", window: "" }] },
     });
   }
-  if (edit.type === "setAggregate") {
+  if (intent.type === "setAggregate") {
     const draft = projectDraft({
       ...state.draft,
       relayMode: "aggregate",
-      aggregate: normalizeAggregate(edit.aggregate, state.sourceId, state.context.profiles),
+      aggregate: normalizeAggregate(intent.aggregate, state.sourceId, state.context.profiles),
     });
     return withIssues({ ...state, draft });
   }
-  if (edit.type === "replaceStoredFiles") {
+  if (intent.type === "replaceStoredFiles") {
     const serialized = serializeRows(state.draft.models);
     const { models, ...current } = state.draft;
     const derived = deriveProfileFromStoredFiles({
       ...current,
-      configContents: edit.configContents,
-      authContents: edit.authContents,
+      configContents: intent.configContents,
+      authContents: intent.authContents,
       modelList: serialized.modelList,
       modelWindows: serialized.modelWindows,
     });
@@ -332,29 +250,36 @@ export function editRelayProfile(
     const draft: RelayProfileDraft = { ...derivedDraft, models: structuredClone(models) };
     return withIssues({ ...state, draft });
   }
-  if (edit.type !== "patch") return state;
-  const serialized = serializeRows(state.draft.models);
-  const models = edit.patch.modelList !== undefined || edit.patch.modelWindows !== undefined
-    ? modelRows(
-        edit.patch.modelList ?? serialized.modelList,
-        edit.patch.modelWindows ?? serialized.modelWindows,
-      )
-    : state.draft.models;
-  const { modelList: _modelList, modelWindows: _modelWindows, aggregate, ...profilePatch } = structuredClone(edit.patch);
-  let patched: RelayProfileDraft = { ...state.draft, ...profilePatch, models };
+  if (intent.type !== "patch") return state;
+  const {
+    modelList: _modelList,
+    modelWindows: _modelWindows,
+    models: _models,
+    aggregate,
+    ...profilePatch
+  } = structuredClone(intent.patch) as RelayProfilePatch & {
+    modelList?: unknown;
+    modelWindows?: unknown;
+    models?: unknown;
+  };
+  let patched: RelayProfileDraft = {
+    ...state.draft,
+    ...profilePatch,
+    models: state.draft.models,
+  };
   if (aggregate !== undefined) {
     patched = {
       ...patched,
       aggregate: normalizeAggregate(aggregate, state.sourceId, state.context.profiles),
     };
   }
-  if (edit.patch.baseUrl !== undefined) patched.upstreamBaseUrl = edit.patch.baseUrl;
-  if (edit.patch.upstreamBaseUrl !== undefined) patched.baseUrl = edit.patch.upstreamBaseUrl;
+  if (intent.patch.baseUrl !== undefined) patched.upstreamBaseUrl = intent.patch.baseUrl;
+  if (intent.patch.upstreamBaseUrl !== undefined) patched.baseUrl = intent.patch.upstreamBaseUrl;
   const draft = projectDraft(patched);
   return withIssues({ ...state, draft });
 }
 
-export function commitRelayProfile(state: RelayProfileEditorState): RelayProfileCommitResult {
+export function commit(state: RelayProfileEditorState): RelayProfileCommitResult {
   const issues = issuesForDraft(state.draft);
   if (issues.some((issue) => issue.blocking)) return { ok: false, issues };
   const serialized = serializeRows(state.draft.models);

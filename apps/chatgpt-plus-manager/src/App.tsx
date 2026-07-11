@@ -52,8 +52,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { ProviderPresetSelector } from "@/components/ProviderPresetSelector";
-import type { PresetPatch } from "@/components/ProviderPresetSelector";
+import { ProviderPresetSelector } from "@/features/relay-profiles/components/ProviderPresetSelector";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { Badge as UiBadge } from "@/components/ui/badge";
@@ -64,24 +63,28 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   canonicalizeRelayProfile,
-  commitRelayProfile,
-  editRelayProfile as editRelayProfileState,
+  commit,
+  edit,
   editRelayProfileCollection,
   normalizeRelayProfileSettings,
   normalizeRelayAggregateConfig,
-  openRelayProfileEditor,
+  open as openProfileEditor,
   relayProfileFromDraft,
   seedRelayProfile,
-  type AggregateRelayProfile,
-  type ModelWindowRow,
-  type RelayAggregateConfig,
-  type RelayAggregateStrategy,
-  type RelayContextSelection,
-  type RelayMode,
-  type RelayProfile,
-  type RelayProfileEditorState,
-  type RelayProtocol,
-} from "./relay-profile-editor";
+} from "@/features/relay-profiles/editor";
+import type {
+  AggregateRelayProfile,
+  ApplyRelayProfilePresetIntent,
+  ModelWindowRow,
+  RelayAggregateConfig,
+  RelayAggregateStrategy,
+  RelayContextSelection,
+  RelayMode,
+  RelayProfile,
+  RelayProfileEditorState,
+  RelayProfilePatch,
+  RelayProtocol,
+} from "@/features/relay-profiles/types";
 import { getLanguage, t, tf, toggleLanguage } from "@/i18n";
 
 type Status = "ok" | "failed" | "not_implemented" | "not_checked" | string;
@@ -2365,7 +2368,7 @@ function RelayScreen({
       );
     }
   };
-  const editRelayProfile = async (profileId: string) => {
+  const openRelayProfileDetail = async (profileId: string) => {
     setNewProfileDraft(null);
     setDetailProfileId(
       normalized.relayProfiles.some((item) => item.id === profileId) ? profileId : null,
@@ -2479,7 +2482,7 @@ function RelayScreen({
           </div>
           <RelayProfileList
             form={normalized}
-            onEdit={(profileId) => void editRelayProfile(profileId)}
+            onEdit={(profileId) => void openRelayProfileDetail(profileId)}
             onFormChange={saveRelaySettings}
             disabled={!normalized.relayProfilesEnabled || actions.relaySwitching}
             actions={actions}
@@ -3807,7 +3810,7 @@ function RelayProfileDetail({
 }) {
   const isActive = !isNew && profile.id === form.activeRelayId;
   const profileUsesLiveFiles = relayProfileUsesLiveFiles(profile);
-  const openEditor = () => openRelayProfileEditor(profile, {
+  const openEditor = () => openProfileEditor(profile, {
     profiles: form.relayProfiles,
     activeRelayId: form.activeRelayId,
     defaultContextSelection: contextSelectionForAllEntries(form),
@@ -3824,14 +3827,14 @@ function RelayProfileDetail({
   const draft = relayProfileFromDraft(editorState.draft);
   const validationError = editorState.issues.find((issue) => issue.blocking)?.message ?? null;
   const saveDraft = async () => {
-    const committed = commitRelayProfile(editorState);
+    const committed = commit(editorState);
     if (!committed.ok) return;
     await onFormChange(committed.settings as BackendSettings);
     onSaved?.();
   };
   const switchDraft = () => {
     if (isNew || !form.relayProfilesEnabled) return;
-    const committed = commitRelayProfile(editorState);
+    const committed = commit(editorState);
     if (!committed.ok) return;
     const next = editRelayProfileCollection(committed.settings, { type: "activate", profileId: profile.id });
     void actions.switchRelayProfile(next as BackendSettings, profile.id);
@@ -3859,7 +3862,7 @@ function RelayProfileDetail({
         isActive={isActive}
         profileId={profile.id}
         onFormChange={onFormChange}
-        onProfileChange={(next) => setEditorState((current) => editRelayProfileState(current, {
+        onProfileChange={(next) => setEditorState((current) => edit(current, {
           type: "replaceStoredFiles",
           configContents: next.configContents,
           authContents: next.authContents,
@@ -3927,30 +3930,29 @@ function RelayProfileEditor({
         profile={profile}
         form={form}
         isNew={isNew}
-        onProfileChange={(next) => onStateChange(editRelayProfileState(state, { type: "patch", patch: next }))}
+        onProfileChange={(next) => onStateChange(edit(state, { type: "patch", patch: next }))}
       />
     );
   }
 
   const showApiFields = profile.relayMode !== "official" || profile.officialMixApiKey;
-  const updateDraft = (patch: Partial<RelayProfile>) => {
-    const { modelList: _modelList, modelWindows: _modelWindows, ...draftPatch } = patch;
-    onStateChange(editRelayProfileState(state, { type: "patch", patch: draftPatch }));
+  const updateDraft = (patch: RelayProfilePatch) => {
+    onStateChange(edit(state, { type: "patch", patch }));
   };
   const updateModelWindowRow = (index: number, patch: Partial<ModelWindowRow>) => {
-    onStateChange(editRelayProfileState(state, { type: "replaceModels", models: modelWindowRows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)) }));
+    onStateChange(edit(state, { type: "replaceModels", models: modelWindowRows.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)) }));
   };
   const removeModelWindowRow = (index: number) => {
-    onStateChange(editRelayProfileState(state, { type: "removeModel", model: modelWindowRows[index]?.model ?? "" }));
+    onStateChange(edit(state, { type: "removeModel", model: modelWindowRows[index]?.model ?? "" }));
   };
   const addModelWindowRows = (rows: ModelWindowRow[]) => {
-    onStateChange(editRelayProfileState(state, { type: "mergeModels", models: rows }));
+    onStateChange(edit(state, { type: "mergeModels", models: rows }));
   };
   const runProviderDoctor = async () => {
     setDoctorOpen(true);
     setDoctorRunning(true);
     setDoctorResult(null);
-    const committed = commitRelayProfile(state);
+    const committed = commit(state);
     const result = await actions.diagnoseRelayProfile(committed.ok ? committed.profile : profile);
     setDoctorResult(result);
     setDoctorRunning(false);
@@ -3975,8 +3977,8 @@ function RelayProfileEditor({
       </div>
       {isNew ? (
         <ProviderPresetSelector
-          onSelect={(patch: PresetPatch) => {
-            updateDraft(patch);
+          onSelect={(intent: ApplyRelayProfilePresetIntent) => {
+            onStateChange(edit(state, intent));
           }}
         />
       ) : null}
@@ -4162,7 +4164,7 @@ function RelayProfileEditor({
             </div>
             <div className="relay-model-list-tools">
               <Button
-                onClick={() => onStateChange(editRelayProfileState(state, { type: "replaceModels", models: [...modelWindowRows, { model: "", window: "" }] }))}
+                onClick={() => onStateChange(edit(state, { type: "replaceModels", models: [...modelWindowRows, { model: "", window: "" }] }))}
                 size="sm"
                 type="button"
                 variant="secondary"
