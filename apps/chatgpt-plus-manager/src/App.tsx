@@ -35,6 +35,12 @@ import { OverviewScreen } from "@/screens/overview/OverviewScreen";
 import type { OverviewActions } from "@/screens/overview/OverviewScreen";
 import { detectLaunchCrash } from "@/screens/overview/presentation";
 import { ContextScreen } from "@/screens/context/ContextScreen";
+import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
+import type {
+  DiagnosticsResult,
+  LogsResult,
+  UpdateResult,
+} from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
 import { formatTime } from "@/shared/lib/time";
 import { CardHead, Panel, Toolbar } from "@/shared/ui/layout";
@@ -72,7 +78,7 @@ import type {
   UserScriptInventory,
   ZedOpenStrategy,
 } from "@/app/contracts";
-import { ROUTE_IDS, type Route } from "@/app/routes";
+import { loadInitialRoute, ROUTE_IDS, type Route } from "@/app/routes";
 import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -280,16 +286,6 @@ type ProviderSyncProgress = {
   result: CommandResult<ProviderSyncPayload> | null;
 };
 
-type LogsResult = CommandResult<{
-  path: string;
-  text: string;
-  lines: number;
-}>;
-
-type DiagnosticsResult = CommandResult<{
-  report: string;
-}>;
-
 type WatcherResult = CommandResult<{
   enabled: boolean;
   disabled_flag: string;
@@ -298,17 +294,6 @@ type WatcherResult = CommandResult<{
 type InstallResult = CommandResult<{
   silent_shortcut: { installed: boolean; path: string | null };
   management_shortcut: { installed: boolean; path: string | null };
-}>;
-
-type UpdateResult = CommandResult<{
-  currentVersion: string;
-  latestVersion?: string | null;
-  releaseSummary?: string;
-  assetName?: string | null;
-  assetUrl?: string | null;
-  updateAvailable?: boolean;
-  installedPath?: string;
-  progress?: number;
 }>;
 
 type AdItem = {
@@ -504,7 +489,9 @@ const defaultSettings: BackendSettings = {
 
 export function App() {
   const [theme, setTheme] = useState<Theme>(() => loadInitialTheme());
-  const [route, setRoute] = useState<Route>(() => loadInitialRoute());
+  const [route, setRoute] = useState<Route>(() =>
+    loadInitialRoute(typeof window === "undefined" ? undefined : window.location),
+  );
   const [notice, setNotice] = useState<{ title: string; message: string; status?: Status } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
@@ -2766,76 +2753,6 @@ function MaintenanceScreen({
   );
 }
 
-function AboutScreen({
-  overview,
-  update,
-  updateInstallProgress,
-  logs,
-  diagnostics,
-  actions,
-}: {
-  overview: OverviewResult | null;
-  update: UpdateResult | null;
-  updateInstallProgress: TaskProgress;
-  logs: LogsResult | null;
-  diagnostics: DiagnosticsResult | null;
-  actions: Actions;
-}) {
-  return (
-    <>
-      <Panel>
-        <CardHead title={t("关于 ChatGPT++")} detail={t("本地 Codex 增强、管理工具和安装包维护")} />
-        <CardContent>
-          <div className="metric-list">
-            <Metric label={t("ChatGPT++ 版本")} value={overview?.current_version ?? update?.currentVersion ?? "-"} />
-            <Metric label={t("Codex 版本")} value={overview?.codex_version ?? t("未检测到")} />
-            <Metric label={t("项目地址")} value="github.com/Gzmomo001/chatgpt-plus-plus" />
-          </div>
-          <Toolbar>
-            <Button onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus")} variant="secondary">
-              <ExternalLink className="h-4 w-4" />
-              {t("打开项目主页")}
-            </Button>
-            <Button onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus/issues")} variant="secondary">
-              <ExternalLink className="h-4 w-4" />
-              {t("反馈问题")}
-            </Button>
-            <Button onClick={() => void actions.openExternalUrl("https://discord.gg/y96kX7A76v")} variant="secondary">
-              <MessageCircle className="h-4 w-4" />
-              Discord
-            </Button>
-            <Button onClick={() => void actions.openExternalUrl("https://t.me/CodexPlusPlus")} variant="secondary">
-              <MessageCircle className="h-4 w-4" />
-              Telegram
-            </Button>
-          </Toolbar>
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title={t("GitHub Release 更新")} detail={tf("当前版本 {0}", [overview?.current_version ?? update?.currentVersion ?? "-"])} />
-        <CardContent>
-          <div className="metric-list">
-            <Metric label={t("状态")} value={update?.status ?? "not_checked"} />
-            <Metric label={t("最新版本")} value={update?.latestVersion ?? t("未检查")} />
-            <Metric label={t("资源")} value={update?.assetName ?? "-"} />
-            <Metric label={t("进度")} value={`${update?.progress ?? 0}%`} />
-          </div>
-          <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || t("尚未检查 GitHub Release；更新会下载并启动安装包。")} />
-          <TaskProgressBox completedTitle={t("上次更新结果")} progress={updateInstallProgress} title={t("安装包更新进度")} />
-          <Toolbar>
-            <Button onClick={() => void actions.checkUpdate()}>{t("检查更新")}</Button>
-            <Button disabled={updateInstallProgress.active} variant="secondary" onClick={() => void actions.performUpdate()}>
-              {updateInstallProgress.active ? t("正在下载安装包…") : t("下载并运行安装包")}
-            </Button>
-          </Toolbar>
-        </CardContent>
-      </Panel>
-      <LogsPanel logs={logs} actions={actions} />
-      <DiagnosticsPanel diagnostics={diagnostics} actions={actions} />
-    </>
-  );
-}
-
 function SettingsScreen({
   settings,
   theme,
@@ -3043,52 +2960,6 @@ function SettingsScreen({
         </CardContent>
       </Panel>
     </>
-  );
-}
-
-function LogsPanel({ logs, actions }: { logs: LogsResult | null; actions: Actions }) {
-  const lines = splitLogLines(logs?.text ?? "");
-  return (
-    <Panel>
-      <CardHead title={t("最近日志")} detail={logs?.path ?? ""} />
-      <CardContent>
-        <div className="log-lines">
-          {lines.length ? (
-            lines.map((line, index) => (
-              <div className="log-line" key={`${index}-${line.slice(0, 12)}`}>
-                <span>{index + 1}</span>
-                <code>{line || " "}</code>
-              </div>
-            ))
-          ) : (
-            <div className="empty">{t("暂无日志。")}</div>
-          )}
-        </div>
-        <Toolbar>
-          <Button onClick={() => void actions.refreshLogs()}>{t("刷新")}</Button>
-          <Button variant="secondary" onClick={() => void actions.copyLogs()}>
-            {t("复制")}
-          </Button>
-        </Toolbar>
-      </CardContent>
-    </Panel>
-  );
-}
-
-function DiagnosticsPanel({ diagnostics, actions }: { diagnostics: DiagnosticsResult | null; actions: Actions }) {
-  return (
-    <Panel>
-      <CardHead title={t("诊断报告")} detail={t("包含版本、路径、设置和平台信息")} />
-      <CardContent>
-        <Textarea className="log-view tall" readOnly value={diagnostics?.report ?? t("尚未生成诊断报告。")} />
-        <Toolbar>
-          <Button onClick={() => void actions.refreshDiagnostics()}>{t("重新生成")}</Button>
-          <Button variant="secondary" onClick={() => void actions.copyDiagnostics()}>
-            {t("复制报告")}
-          </Button>
-        </Toolbar>
-      </CardContent>
-    </Panel>
   );
 }
 
@@ -3424,10 +3295,6 @@ function numberOrDefault(value: string, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function splitLogLines(text: string) {
-  return text.trimEnd().split(/\r?\n/).filter((line, index, lines) => line.length > 0 || index < lines.length - 1);
-}
-
 function zedStrategyLabel(strategy: ZedOpenStrategy) {
   if (strategy === "reuseWindow") return t("复用窗口");
   if (strategy === "newWindow") return t("新窗口");
@@ -3473,13 +3340,4 @@ function loadInitialTheme(): Theme {
     window.localStorage.getItem("chatgpt-plus-theme") ??
     window.localStorage.getItem("codex-plus-theme");
   return stored === "light" ? "light" : "dark";
-}
-
-function loadInitialRoute(): Route {
-  if (typeof window === "undefined") return "overview";
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("showUpdate") === "1" || window.location.hash === "#about") {
-    return "about";
-  }
-  return "overview";
 }

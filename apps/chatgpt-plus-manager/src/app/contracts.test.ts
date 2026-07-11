@@ -306,3 +306,30 @@ test("composes Context through its screen-owned vertical slice", () => {
     assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
   }
 });
+
+test("composes diagnostics through its screen-owned vertical slice", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  const diagnosticsContracts = readFileSync(
+    new URL("../shared/contracts/diagnostics.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /import \{ AboutScreen \} from ["']@\/screens\/diagnostics\/AboutScreen["']/);
+  assert.match(app, /<AboutScreen\b/);
+  assert.match(screen, /export function AboutScreen(?:<[^>]+>)?\(/);
+  assert.match(screen, /export type DiagnosticsActions(?:<[^>]+>)?\s*=\s*\{/);
+  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
+
+  for (const definition of ["AboutScreen", "LogsPanel", "DiagnosticsPanel", "splitLogLines"]) {
+    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
+  }
+  assert.match(
+    diagnosticsContracts,
+    /export type (?:LogsResult|DiagnosticsResult|UpdateResult)\s*=\s*CommandResult</,
+  );
+  assert.doesNotMatch(app, /type (?:LogsResult|DiagnosticsResult|UpdateResult)\s*=/);
+});
