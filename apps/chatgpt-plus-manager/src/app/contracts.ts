@@ -5,6 +5,7 @@ import type {
 } from "@/features/relay-profiles/types";
 import type { EnvConflictsResult } from "@/features/relay-profiles/contracts";
 import type { CommandResult } from "@/shared/contracts/command";
+import type { ImageOverlayFitMode } from "@/shared/contracts/settings";
 
 export type {
   CcsProvidersResult,
@@ -23,7 +24,7 @@ export type {
 
 export type ZedOpenStrategy = "addToFocusedWorkspace" | "reuseWindow" | "newWindow" | "default";
 export type LaunchMode = "patch" | "relay";
-export type ImageOverlayFitMode = "fill" | "fit" | "stretch" | "tile" | "center";
+export type { ImageOverlayFitMode } from "@/shared/contracts/settings";
 export type BackendSettings = {
   codexAppPath: string;
   codexExtraArgs: string[];

@@ -333,3 +333,33 @@ test("composes diagnostics through its screen-owned vertical slice", () => {
   );
   assert.doesNotMatch(app, /type (?:LogsResult|DiagnosticsResult|UpdateResult)\s*=/);
 });
+
+test("composes Settings through its screen-owned vertical slice", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /import \{ SettingsScreen \} from ["']@\/screens\/settings\/SettingsScreen["']/);
+  assert.match(app, /<SettingsScreen\b/);
+  assert.match(screen, /export function SettingsScreen(?:<[^>]+>)?\(/);
+  assert.match(screen, /export type SettingsActions(?:<[^>]+>)?\s*=\s*\{/);
+  assert.match(screen, /export type SettingsForm\s*=\s*\{/);
+  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
+  assert.doesNotMatch(
+    app,
+    /from ["']@\/screens\/settings\/(?:presentation|[^"']*\/[^"']+)["']/,
+    "App may compose SettingsScreen but must not depend on Settings implementation modules",
+  );
+
+  for (const definition of [
+    "SettingsScreen",
+    "clampNumber",
+    "normalizeImageOverlayFitMode",
+    "codexExtraArgsToInput",
+    "inputToCodexExtraArgs",
+  ]) {
+    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
+  }
+});
