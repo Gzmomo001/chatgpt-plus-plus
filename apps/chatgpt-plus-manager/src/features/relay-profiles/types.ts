@@ -73,8 +73,10 @@ export type RelayProfileSettings = {
   relayApiKey: string;
   aggregateRelayProfiles: AggregateRelayProfile[];
   activeAggregateRelayId: string;
-  [key: string]: unknown;
 };
+
+export type ReconciledRelayProfileSettings<Settings extends RelayProfileSettings> =
+  Omit<Settings, keyof RelayProfileSettings> & RelayProfileSettings;
 
 export type RelayProfileEditorContext = {
   profiles: RelayProfile[];

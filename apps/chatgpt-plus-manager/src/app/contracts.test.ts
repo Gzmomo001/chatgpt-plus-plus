@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { TAURI_COMMAND_NAMES } from "./actions.ts";
@@ -86,4 +87,91 @@ test("publishes every frontend-known Tauri command name", () => {
     "upsert_context_entry",
     "write_diagnostic_event",
   ]);
+});
+
+test("composes Relay profiles through its feature-owned screen", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../features/relay-profiles/RelayProfilesScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  const relayContracts = readFileSync(
+    new URL("../features/relay-profiles/contracts.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /import \{ RelayProfilesScreen \} from ["']@\/features\/relay-profiles\/RelayProfilesScreen["']/);
+  assert.match(app, /<RelayProfilesScreen\b/);
+  assert.match(screen, /export function RelayProfilesScreen(?:<[^>]+>)?\(/);
+
+  for (const definition of [
+    "RelayScreen",
+    "RelayProfileList",
+    "SortableRelayProfileCard",
+    "RelayProfileDetail",
+    "RelayProfileEditor",
+    "AggregateRelayProfileEditor",
+    "EnvConflictNotice",
+    "ProviderDoctorModal",
+    "providerDoctorSteps",
+    "ensureTrailingNewline",
+    "selectedContextConfigToml",
+    "contextEntryToTomlSection",
+    "applyContextLimitPreview",
+    "normalizeDuplicateTomlTables",
+    "tomlRootKeyFromLine",
+    "tomlKey",
+    "relayProfileReadinessText",
+    "relayProfileModeSwitchedText",
+    "aggregateStrategyLabel",
+  ]) {
+    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
+  }
+  assert.doesNotMatch(app, /const aggregateStrategyOptions\b/);
+  assert.doesNotMatch(app, /@dnd-kit\//);
+  assert.doesNotMatch(app, /features\/relay-profiles\/editor/);
+  assert.doesNotMatch(app, /ProviderPresetSelector/);
+
+  assert.doesNotMatch(screen, /export type RelayProfileActions/);
+  assert.match(
+    relayContracts,
+    /export type RelayProfileFilesActions(?:<[^>]+>)?\s*=\s*Pick</,
+  );
+
+  assert.match(
+    app,
+    /\[[^\]]*\bccsProviders\s*,\s*relaySwitching\s*\]\s*,?\s*\n\s*\);/,
+    "the Relay action capability must refresh when relaySwitching changes",
+  );
+  assert.doesNotMatch(
+    screen,
+    /\}, \[actions, detailProfileId, form\.activeRelayId, newProfileDraft\]\);/,
+    "Relay file refresh must not feed relayFiles back through the actions object",
+  );
+});
+
+test("keeps app-wide settings ownership outside the Relay feature", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const appContracts = readFileSync(new URL("./contracts.ts", import.meta.url), "utf8");
+  const relayContracts = readFileSync(
+    new URL("../features/relay-profiles/contracts.ts", import.meta.url),
+    "utf8",
+  );
+  const relayController = readFileSync(
+    new URL("../features/relay-profiles/controller.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(appContracts, /export type BackendSettings\s*=\s*\{/);
+  for (const unrelated of [
+    "codexAppStepwiseEnabled",
+    "codexAppImageOverlayEnabled",
+    "codexAppZedRemoteOpen",
+    "enhancementsEnabled",
+  ]) {
+    assert.match(appContracts, new RegExp(`\\b${unrelated}\\b`));
+    assert.doesNotMatch(relayContracts, new RegExp(`\\b${unrelated}\\b`));
+  }
+  assert.doesNotMatch(relayController, /\bas Settings\b/);
+  assert.doesNotMatch(app, /relaySettings\s+as\s+BackendSettings/);
 });

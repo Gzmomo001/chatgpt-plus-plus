@@ -9,7 +9,7 @@
     "dev": "tauri dev",
     "build": "cargo build -p chatgpt-plus-launcher --release && tauri build",
     "check": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test src/app/contracts.test.ts src/features/relay-profiles/editor.test.ts",
+    "test": "node --test src/app/contracts.test.ts src/features/context/config.test.ts src/features/relay-profiles/controller.test.ts src/features/relay-profiles/editor.test.ts",
     "vite:dev": "vite --host 127.0.0.1 --port 1420",
     "vite:build": "vite build"
   },

@@ -111,6 +111,11 @@ describe("Relay profile editor", () => {
     assert.equal(activated.ok, true);
 
     const app = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    const relayScreen = readFileSync(new URL("./RelayProfilesScreen.tsx", import.meta.url), "utf8");
+    const relayDetail = readFileSync(
+      new URL("./components/RelayProfileDetail.tsx", import.meta.url),
+      "utf8",
+    );
     const editor = readFileSync(new URL("./editor.ts", import.meta.url), "utf8");
     const types = readFileSync(new URL("./types.ts", import.meta.url), "utf8");
     const selector = readFileSync(
@@ -141,14 +146,14 @@ describe("Relay profile editor", () => {
     ]) {
       assert.equal(app.includes(forbidden), false, `${forbidden} remains in App`);
     }
-    assert.match(app, /RelayProfileEditorState/);
+    assert.match(relayDetail, /RelayProfileEditorState/);
     assert.doesNotMatch(app, /from ["']\.\/model-windows["']/);
     assert.doesNotMatch(app, /patch as unknown as Partial<RelayProfile>/);
     assert.doesNotMatch(app, /type: "setAggregate", aggregate: next\.aggregate/);
     assert.doesNotMatch(app, /modelList: _modelList|modelWindows: _modelWindows/);
     assert.equal(app.includes(removedCollectionEditor), false);
     assert.match(
-      app,
+      relayDetail,
       /focus:\s*isNew\s*\?\s*\{\s*type:\s*"create"/s,
       "RelayProfileDetail must keep temporary profiles on the create path",
     );
