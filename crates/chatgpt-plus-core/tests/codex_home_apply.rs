@@ -1,4 +1,6 @@
-use chatgpt_plus_core::codex_home_apply::{CodexHomeDisposition, activate, reconcile};
+use chatgpt_plus_core::codex_home_apply::{
+    CodexHomeDisposition, CodexHomeReconcileIntent, activate, reconcile,
+};
 use chatgpt_plus_core::settings::{
     AggregateRelayMember, AggregateRelayProfile, AggregateRelayStrategy, BackendSettings,
     LaunchMode, RelayMode, RelayProfile, SettingsStore,
@@ -106,10 +108,142 @@ requires_openai_auth = true
 }
 
 #[test]
+fn explicit_clear_discards_non_official_snapshot_and_preserves_live_official_tokens() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::write(
+        home.path().join("config.toml"),
+        r#"model_provider = "custom"
+
+[model_providers.custom]
+name = "custom"
+base_url = "https://relay.example/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        home.path().join("auth.json"),
+        r#"{"OPENAI_API_KEY":"sk-live","auth_mode":"chatgpt","tokens":{"access_token":"official"}}"#,
+    )
+    .unwrap();
+    let settings = BackendSettings {
+        relay_profiles: vec![RelayProfile {
+            id: "pure".to_string(),
+            relay_mode: RelayMode::PureApi,
+            auth_contents: r#"{"OPENAI_API_KEY":"sk-snapshot"}"#.to_string(),
+            ..RelayProfile::default()
+        }],
+        active_relay_id: "pure".to_string(),
+        ..BackendSettings::default()
+    };
+
+    let outcome = reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ClearManagedRelay {
+            settings: &settings,
+        },
+    )
+    .unwrap();
+
+    let auth: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(home.path().join("auth.json")).unwrap())
+            .unwrap();
+    assert_eq!(outcome.disposition, CodexHomeDisposition::Cleared);
+    assert!(!outcome.status.configured);
+    assert!(outcome.backup_path.is_some());
+    assert!(auth.get("OPENAI_API_KEY").is_none());
+    assert_eq!(auth["auth_mode"], "chatgpt");
+    assert_eq!(auth["tokens"]["access_token"], "official");
+}
+
+#[test]
+fn explicit_clear_restores_the_active_official_auth_snapshot_even_for_mixed_mode() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::write(
+        home.path().join("auth.json"),
+        r#"{"OPENAI_API_KEY":"sk-live","tokens":{"access_token":"stale"}}"#,
+    )
+    .unwrap();
+    let official_auth = r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official-snapshot"},"account_id":"acct-1"}"#;
+    let settings = BackendSettings {
+        relay_profiles: vec![RelayProfile {
+            id: "official".to_string(),
+            relay_mode: RelayMode::Official,
+            official_mix_api_key: true,
+            auth_contents: official_auth.to_string(),
+            ..RelayProfile::default()
+        }],
+        active_relay_id: "official".to_string(),
+        ..BackendSettings::default()
+    };
+
+    let outcome = reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ClearManagedRelay {
+            settings: &settings,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(outcome.disposition, CodexHomeDisposition::Cleared);
+    assert_eq!(
+        std::fs::read_to_string(home.path().join("auth.json")).unwrap(),
+        official_auth
+    );
+}
+
+#[test]
+fn explicit_clear_works_when_relay_profiles_are_disabled() {
+    let home = tempfile::tempdir().unwrap();
+    std::fs::write(
+        home.path().join("config.toml"),
+        r#"model_provider = "custom"
+
+[model_providers.custom]
+name = "custom"
+base_url = "https://relay.example/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        home.path().join("auth.json"),
+        r#"{"OPENAI_API_KEY":"sk-live","tokens":{"access_token":"official"}}"#,
+    )
+    .unwrap();
+    let settings = BackendSettings {
+        relay_profiles_enabled: false,
+        ..pure_api_settings()
+    };
+    let original_settings = settings.clone();
+
+    let outcome = reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ClearManagedRelay {
+            settings: &settings,
+        },
+    )
+    .unwrap();
+
+    assert_eq!(outcome.disposition, CodexHomeDisposition::Cleared);
+    assert!(!outcome.status.configured);
+    assert_eq!(settings, original_settings);
+}
+
+#[test]
 fn pure_api_profile_is_applied_and_reported_from_the_written_home() {
     let home = tempfile::tempdir().unwrap();
 
-    let outcome = reconcile(home.path(), &pure_api_settings()).unwrap();
+    let settings = pure_api_settings();
+    let outcome = reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap();
 
     assert_eq!(outcome.disposition, CodexHomeDisposition::Applied);
     assert!(outcome.status.configured);
@@ -153,7 +287,13 @@ command = "keep-me"
         ..BackendSettings::default()
     };
 
-    let outcome = reconcile(home.path(), &settings).unwrap();
+    let outcome = reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap();
 
     let config = std::fs::read_to_string(home.path().join("config.toml")).unwrap();
     let auth: serde_json::Value =
@@ -180,7 +320,13 @@ fn disabled_reconciliation_returns_an_error_without_writing() {
         ..pure_api_settings()
     };
 
-    let error = reconcile(home.path(), &settings).unwrap_err();
+    let error = reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap_err();
 
     assert!(error.to_string().contains("关闭"));
     assert_eq!(
@@ -210,7 +356,13 @@ path = "/tmp/context-skill"
         ..pure_api_settings()
     };
 
-    reconcile(home.path(), &settings).unwrap();
+    reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap();
 
     let config = std::fs::read_to_string(home.path().join("config.toml")).unwrap();
     assert!(config.contains("[mcp_servers.common]"));
@@ -233,7 +385,13 @@ fn aggregate_profile_is_projected_to_the_local_proxy_through_reconcile() {
         ..BackendSettings::default()
     };
 
-    let outcome = reconcile(home.path(), &settings).unwrap();
+    let outcome = reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap();
 
     let config = std::fs::read_to_string(home.path().join("config.toml")).unwrap();
     assert_eq!(outcome.disposition, CodexHomeDisposition::Applied);
@@ -248,7 +406,13 @@ fn pure_api_profile_must_be_configured_after_the_apply_operation() {
     let mut settings = pure_api_settings();
     settings.relay_profiles[0].auth_contents = "{}".to_string();
 
-    let error = reconcile(home.path(), &settings).unwrap_err();
+    let error = reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap_err();
 
     assert!(error.to_string().contains("纯 API"));
 }
@@ -618,7 +782,55 @@ fn computer_use_guard_setting_is_forwarded_to_the_profile_apply() {
         ..pure_api_settings()
     };
 
-    reconcile(home.path(), &settings).unwrap();
+    reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap();
+
+    let config = std::fs::read_to_string(home.path().join("config.toml")).unwrap();
+    assert!(config.contains("[plugins.\"computer-use@openai-bundled\"]"));
+    assert!(config.contains("codex-computer-use.exe"));
+}
+
+#[cfg(windows)]
+#[test]
+fn computer_use_guard_setting_is_forwarded_to_explicit_clear() {
+    let home = tempfile::tempdir().unwrap();
+    let helper = home
+        .path()
+        .join("plugins")
+        .join("cache")
+        .join("openai-bundled")
+        .join("computer-use")
+        .join("26.608.12217")
+        .join("node_modules")
+        .join("@oai")
+        .join("sky")
+        .join("bin")
+        .join("windows")
+        .join("codex-computer-use.exe");
+    std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
+    std::fs::write(helper, "").unwrap();
+    std::fs::write(
+        home.path().join("config.toml"),
+        "model_provider = \"custom\"\n",
+    )
+    .unwrap();
+    let settings = BackendSettings {
+        computer_use_guard_enabled: true,
+        ..pure_api_settings()
+    };
+
+    reconcile(
+        home.path(),
+        CodexHomeReconcileIntent::ClearManagedRelay {
+            settings: &settings,
+        },
+    )
+    .unwrap();
 
     let config = std::fs::read_to_string(home.path().join("config.toml")).unwrap();
     assert!(config.contains("[plugins.\"computer-use@openai-bundled\"]"));

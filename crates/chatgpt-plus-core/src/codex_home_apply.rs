@@ -31,6 +31,12 @@ pub struct RelayProfileActivation {
     pub home: CodexHomeApplyOutcome,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CodexHomeReconcileIntent<'a> {
+    ApplyActiveProfile { settings: &'a BackendSettings },
+    ClearManagedRelay { settings: &'a BackendSettings },
+}
+
 struct CodexHomeSnapshot {
     config: Option<Vec<u8>>,
     auth: Option<Vec<u8>>,
@@ -107,7 +113,12 @@ pub fn activate(
 
     let activation: anyhow::Result<RelayProfileActivation> = (|| {
         let settings = store.load().context("读取供应商设置失败")?;
-        let home = reconcile(home, &settings)?;
+        let home = reconcile(
+            home,
+            CodexHomeReconcileIntent::ApplyActiveProfile {
+                settings: &settings,
+            },
+        )?;
         Ok(RelayProfileActivation { settings, home })
     })();
 
@@ -157,37 +168,58 @@ fn compose_rollback_error(error: anyhow::Error, rollback_failures: &[String]) ->
     }
 }
 
-pub fn reconcile(home: &Path, settings: &BackendSettings) -> anyhow::Result<CodexHomeApplyOutcome> {
-    if !settings.relay_profiles_enabled {
-        anyhow::bail!("供应商配置总开关已关闭，未写入 config.toml / auth.json。");
-    }
+pub fn reconcile(
+    home: &Path,
+    intent: CodexHomeReconcileIntent<'_>,
+) -> anyhow::Result<CodexHomeApplyOutcome> {
+    let (disposition, apply_result, requires_pure_api_postcondition) = match intent {
+        CodexHomeReconcileIntent::ApplyActiveProfile { settings } => {
+            if !settings.relay_profiles_enabled {
+                anyhow::bail!("供应商配置总开关已关闭，未写入 config.toml / auth.json。");
+            }
 
-    let profile = settings.active_relay_profile();
-    let (disposition, apply_result) = if profile.relay_mode == RelayMode::Official
-        && !profile.official_mix_api_key
-    {
-        let auth_contents =
-            (!profile.auth_contents.trim().is_empty()).then_some(profile.auth_contents.as_str());
-        let result =
-            crate::relay_config::clear_relay_config_to_home_with_auth_and_computer_use_guard(
-                home,
-                auth_contents,
-                settings.computer_use_guard_enabled,
-            )?;
-        (CodexHomeDisposition::Cleared, result)
-    } else {
-        let common_config = combined_common_config(settings);
-        let result = crate::relay_config::apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-                home,
-                &profile,
-                &common_config,
-                settings.computer_use_guard_enabled,
-            )?;
-        (CodexHomeDisposition::Applied, result)
+            let profile = settings.active_relay_profile();
+            if profile.relay_mode == RelayMode::Official && !profile.official_mix_api_key {
+                let auth_contents = (!profile.auth_contents.trim().is_empty())
+                    .then_some(profile.auth_contents.as_str());
+                let result = crate::relay_config::clear_relay_config_to_home_with_auth_and_computer_use_guard(
+                    home,
+                    auth_contents,
+                    settings.computer_use_guard_enabled,
+                )?;
+                (CodexHomeDisposition::Cleared, result, false)
+            } else {
+                let common_config = combined_common_config(settings);
+                let result = crate::relay_config::apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
+                    home,
+                    &profile,
+                    &common_config,
+                    settings.computer_use_guard_enabled,
+                )?;
+                (
+                    CodexHomeDisposition::Applied,
+                    result,
+                    profile.relay_mode == RelayMode::PureApi,
+                )
+            }
+        }
+        CodexHomeReconcileIntent::ClearManagedRelay { settings } => {
+            let profile = settings.active_relay_profile();
+            let auth_contents = (profile.relay_mode == RelayMode::Official
+                && !profile.auth_contents.trim().is_empty())
+            .then_some(profile.auth_contents.as_str());
+            let result =
+                crate::relay_config::clear_relay_config_to_home_with_auth_and_computer_use_guard(
+                    home,
+                    auth_contents,
+                    settings.computer_use_guard_enabled,
+                )?;
+            (CodexHomeDisposition::Cleared, result, false)
+        }
     };
 
     let status = relay_status_from_home(home);
-    if profile.relay_mode == RelayMode::PureApi && !status.configured {
+    if requires_pure_api_postcondition && !status.configured {
         anyhow::bail!(
             "纯 API 配置写入后未检测到完整 custom provider，请检查 config.toml 和供应商 API Key。"
         );

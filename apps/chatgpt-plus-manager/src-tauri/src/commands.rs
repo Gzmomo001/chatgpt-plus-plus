@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chatgpt_plus_core::codex_home_apply::CodexHomeReconcileIntent;
 use chatgpt_plus_core::install::SILENT_BINARY;
 use chatgpt_plus_core::models::{DeleteResult, SessionRef};
 use chatgpt_plus_core::script_market::{self, MarketScript, ScriptMarketManifest};
@@ -2547,7 +2548,10 @@ fn reconcile_relay_injection_in_home(
 ) -> CommandResult<RelayPayload> {
     let relay = settings.active_relay_profile();
     log_relay_apply_request(event, settings, &relay);
-    match chatgpt_plus_core::codex_home_apply::reconcile(home, settings) {
+    match chatgpt_plus_core::codex_home_apply::reconcile(
+        home,
+        CodexHomeReconcileIntent::ApplyActiveProfile { settings },
+    ) {
         Ok(outcome) => {
             let backup_path = outcome
                 .backup_path
@@ -2589,26 +2593,11 @@ fn clear_relay_injection_in_home(
     home: &Path,
     settings: &BackendSettings,
 ) -> CommandResult<RelayPayload> {
-    let current = settings.active_relay_profile();
-    let official_auth = if current.relay_mode == chatgpt_plus_core::settings::RelayMode::Official {
-        current.auth_contents
-    } else {
-        String::new()
-    };
-    let clear_profile_id = "manager-official-clear".to_string();
-    let mut intent = settings.clone();
-    intent.relay_profiles_enabled = true;
-    intent.active_relay_id = clear_profile_id.clone();
-    intent.relay_profiles = vec![RelayProfile {
-        id: clear_profile_id,
-        name: "Official".to_string(),
-        relay_mode: chatgpt_plus_core::settings::RelayMode::Official,
-        official_mix_api_key: false,
-        auth_contents: official_auth,
-        ..RelayProfile::default()
-    }];
     log_manager_event("manager.clear_relay_injection.start", json!({}));
-    match chatgpt_plus_core::codex_home_apply::reconcile(home, &intent) {
+    match chatgpt_plus_core::codex_home_apply::reconcile(
+        home,
+        CodexHomeReconcileIntent::ClearManagedRelay { settings },
+    ) {
         Ok(outcome) => {
             let backup_path = outcome
                 .backup_path
@@ -3145,6 +3134,24 @@ mod tests {
         assert!(!commands_source.contains(&legacy_clear));
         assert!(commands_source.contains("codex_home_apply::reconcile"));
         assert!(commands_source.contains("codex_home_apply::activate"));
+        let explicit_clear_intent = ["CodexHomeReconcileIntent::", "ClearManagedRelay"].concat();
+        assert!(commands_source.contains(&explicit_clear_intent));
+
+        let clear_adapter = commands_source
+            .split("fn clear_relay_injection_in_home(")
+            .nth(1)
+            .unwrap()
+            .split("fn log_relay_apply_request(")
+            .next()
+            .unwrap();
+        let synthetic_profile_id = ["manager-official", "-clear"].concat();
+        let local_auth_decision = ["official", "_auth"].concat();
+        let relay_mode_branch = ["Relay", "Mode::"].concat();
+        let synthetic_profile = ["Relay", "Profile {"].concat();
+        assert!(!clear_adapter.contains(&synthetic_profile_id));
+        assert!(!clear_adapter.contains(&local_auth_decision));
+        assert!(!clear_adapter.contains(&relay_mode_branch));
+        assert!(!clear_adapter.contains(&synthetic_profile));
 
         let app_source = include_str!("../../src/App.tsx");
         let snapshot_roundtrip = ["snapshotActiveRelayFiles", "BeforeSwitch"].concat();
@@ -3152,48 +3159,6 @@ mod tests {
         assert!(!app_source.contains(&snapshot_roundtrip));
         assert!(!app_source.contains(&previous_argument));
         assert!(app_source.contains("targetRelayId"));
-    }
-
-    #[test]
-    fn clear_adapter_discards_non_official_auth_snapshot_and_preserves_live_official_tokens() {
-        let temp = tempfile::tempdir().unwrap();
-        std::fs::write(
-            temp.path().join("config.toml"),
-            r#"model_provider = "custom"
-
-[model_providers.custom]
-name = "custom"
-base_url = "https://relay.example/v1"
-wire_api = "responses"
-requires_openai_auth = true
-"#,
-        )
-        .unwrap();
-        std::fs::write(
-            temp.path().join("auth.json"),
-            r#"{"OPENAI_API_KEY":"sk-live","auth_mode":"chatgpt","tokens":{"access_token":"official"}}"#,
-        )
-        .unwrap();
-        let settings = BackendSettings {
-            relay_profiles: vec![RelayProfile {
-                id: "pure".to_string(),
-                relay_mode: chatgpt_plus_core::settings::RelayMode::PureApi,
-                auth_contents: r#"{"OPENAI_API_KEY":"sk-snapshot"}"#.to_string(),
-                ..RelayProfile::default()
-            }],
-            active_relay_id: "pure".to_string(),
-            ..BackendSettings::default()
-        };
-
-        let result = clear_relay_injection_in_home(temp.path(), &settings);
-
-        let auth: Value =
-            serde_json::from_str(&std::fs::read_to_string(temp.path().join("auth.json")).unwrap())
-                .unwrap();
-        assert_eq!(result.status, "ok");
-        assert!(!result.payload.configured);
-        assert!(auth.get("OPENAI_API_KEY").is_none());
-        assert_eq!(auth["tokens"]["access_token"], "official");
     }
 
     #[test]
@@ -3629,7 +3594,13 @@ requires_openai_auth = true
             ..BackendSettings::default()
         };
 
-        chatgpt_plus_core::codex_home_apply::reconcile(temp.path(), &settings).unwrap();
+        chatgpt_plus_core::codex_home_apply::reconcile(
+            temp.path(),
+            CodexHomeReconcileIntent::ApplyActiveProfile {
+                settings: &settings,
+            },
+        )
+        .unwrap();
 
         let applied = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
         assert!(applied.contains("model_provider = \"ai\""));
