@@ -3,21 +3,18 @@ import type {
   AggregateRelayProfile,
   RelayProfile,
 } from "@/features/relay-profiles/types";
-import type {
-  CommandResult,
-  EnvConflictsResult,
-} from "@/features/relay-profiles/contracts";
+import type { EnvConflictsResult } from "@/features/relay-profiles/contracts";
+import type { CommandResult } from "@/shared/contracts/command";
 
 export type {
   CcsProvidersResult,
-  CommandResult,
   EnvConflictsResult,
   ExtractRelayCommonConfigResult,
   ProviderDoctorResult,
   RelayFilesResult,
   RelayProfileView,
-  Status,
 } from "@/features/relay-profiles/contracts";
+export type { CommandResult, Status } from "@/shared/contracts/command";
 export type {
   ContextEntries as CodexContextEntries,
   ContextEntry as CodexContextEntry,

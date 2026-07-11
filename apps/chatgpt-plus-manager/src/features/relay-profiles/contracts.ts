@@ -6,11 +6,8 @@ import type {
   ReconciledRelayProfileSettings,
 } from "./types";
 import type { ContextEntries } from "@/features/context/config";
-export type Status = "ok" | "failed" | "not_implemented" | "not_checked" | string;
-export type CommandResult<T> = T & {
-  status: Status;
-  message: string;
-};
+import type { CommandResult, Status } from "@/shared/contracts/command";
+export type { CommandResult, Status } from "@/shared/contracts/command";
 export type RelayProfileView = DeepReadonly<RelayProfile>;
 export type RelayFilesResult = CommandResult<{
   configPath: string;

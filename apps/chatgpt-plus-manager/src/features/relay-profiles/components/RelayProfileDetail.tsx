@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { ContextEntries } from "@/features/context/config";
 import { Button } from "@/components/ui/button";
 import { t } from "@/i18n";
+import { Toolbar } from "@/shared/ui/layout";
 import { RelayProfileEditor } from "./RelayProfileEditor";
 import { RelayProfileFilesEditor } from "./RelayProfileFilesEditor";
 import { commitRelayChanges } from "../controller";
@@ -19,11 +20,6 @@ import type {
   RelayProfileEditorState,
   ReconciledRelayProfileSettings,
 } from "../types";
-function Toolbar({ children }: {
-  children: React.ReactNode;
-}) {
-  return <div className="toolbar">{children}</div>;
-}
 export function RelayProfileDetail<Settings extends RelaySettings>({ profile, relayFiles, form, contextEntries, defaultContextSelection, isNew = false, onBack, onFormChange, onSaved, actions }: {
   profile: RelayProfileView;
   relayFiles: RelayFilesResult | null;

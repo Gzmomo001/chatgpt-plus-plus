@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
 import { TAURI_COMMAND_NAMES } from "./actions.ts";
@@ -174,4 +174,61 @@ test("keeps app-wide settings ownership outside the Relay feature", () => {
   }
   assert.doesNotMatch(relayController, /\bas Settings\b/);
   assert.doesNotMatch(app, /relaySettings\s+as\s+BackendSettings/);
+});
+
+test("composes Overview through its screen-owned vertical slice", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/overview/OverviewScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  const relayEditor = readFileSync(
+    new URL("../features/relay-profiles/components/RelayProfileEditor.tsx", import.meta.url),
+    "utf8",
+  );
+  const relayDetail = readFileSync(
+    new URL("../features/relay-profiles/components/RelayProfileDetail.tsx", import.meta.url),
+    "utf8",
+  );
+  const overviewPresentation = readFileSync(
+    new URL("../screens/overview/presentation.ts", import.meta.url),
+    "utf8",
+  );
+  const appContracts = readFileSync(new URL("./contracts.ts", import.meta.url), "utf8");
+  const relayContracts = readFileSync(
+    new URL("../features/relay-profiles/contracts.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /import \{ OverviewScreen \} from ["']@\/screens\/overview\/OverviewScreen["']/);
+  assert.match(app, /<OverviewScreen\b/);
+  assert.match(screen, /export function OverviewScreen(?:<[^>]+>)?\(/);
+  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(/);
+
+  for (const definition of ["OverviewScreen", "LatestLaunch", "healthItems"]) {
+    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
+  }
+  assert.doesNotMatch(
+    app,
+    /prev\s*===\s*["']running["'][\s\S]{0,240}["'](?:stopped|failed|crashed)["']/,
+    "launch crash transition decisions belong to the Overview controller",
+  );
+
+  assert.match(relayEditor, /import \{ Metric \} from ["']@\/shared\/ui\/metric["']/);
+  assert.doesNotMatch(relayEditor, /function Metric\(/);
+  assert.match(relayDetail, /import \{ Toolbar \} from ["']@\/shared\/ui\/layout["']/);
+  assert.doesNotMatch(relayDetail, /function Toolbar\(/);
+
+  assert.match(app, /import type \{ OverviewResult \} from ["']@\/shared\/contracts\/overview["']/);
+  assert.match(appContracts, /from ["']@\/shared\/contracts\/command["']/);
+  assert.match(relayContracts, /from ["']@\/shared\/contracts\/command["']/);
+  assert.doesNotMatch(overviewPresentation, /export type (?:OverviewResult|PathState|LaunchStatus)\b/);
+
+  const screensRoot = new URL("../screens/", import.meta.url);
+  const screenEntries = readdirSync(screensRoot, { recursive: true, encoding: "utf8" }) as string[];
+  for (const entry of screenEntries) {
+    if (!/\.[cm]?[jt]sx?$/.test(entry)) continue;
+    const source = readFileSync(new URL(entry, screensRoot), "utf8");
+    assert.doesNotMatch(source, /from ["']@\/app(?:\/|["'])/, `${entry} must not import from app`);
+  }
 });

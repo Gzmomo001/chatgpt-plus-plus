@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { t, tf } from "@/i18n";
+import { Metric } from "@/shared/ui/metric";
 import { ProviderPresetSelector } from "./ProviderPresetSelector";
 import { ProviderDoctorModal } from "./RelayFeedback";
 import { runProviderDiagnosis } from "../controller";
@@ -13,7 +14,6 @@ import { aggregateStrategyHelp, aggregateStrategyLabel, aggregateStrategyOptions
 import type { ProviderDoctorResult, RelayProfileActions, RelaySettings } from "../contracts";
 import type { ApplyRelayProfilePresetIntent, ModelWindowRow, RelayAggregateStrategy, RelayProfileEditableMode, RelayProfileEditorState, RelayProfilePatch } from "../types";
 function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) { return <Label className={"field " + className}><span>{label}</span>{children}</Label>; }
-function Metric({ label, value }: { label: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong></div>; }
 
 export function RelayProfileEditor<Settings extends RelaySettings>({ state, form, isNew = false, onStateChange, onSwitch, actions }: {
   state: RelayProfileEditorState;
