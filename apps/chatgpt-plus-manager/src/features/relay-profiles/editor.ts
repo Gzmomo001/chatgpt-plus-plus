@@ -7,6 +7,7 @@ import type {
   RelayProfile,
   RelayProfileCandidate,
   RelayProfileCollectionEdit,
+  RelayProfileCommitEffect,
   RelayProfileCommitResult,
   RelayProfileDraft,
   RelayProfileEdit,
@@ -19,38 +20,6 @@ import type {
 } from "./types";
 
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
-
-export function editRelayProfileCollection(
-  settings: RelayProfileSettings,
-  intent: RelayProfileCollectionEdit,
-): RelayProfileSettings {
-  let profiles = settings.relayProfiles.map((profile) => structuredClone(profile));
-  let activeRelayId = settings.activeRelayId;
-  if (intent.type === "activate") {
-    if (profiles.some((profile) => profile.id === intent.profileId)) activeRelayId = intent.profileId;
-  } else if (intent.type === "duplicate") {
-    const index = profiles.findIndex((profile) => profile.id === intent.profileId);
-    if (index >= 0) {
-      profiles.splice(index + 1, 0, canonicalizeRelayProfile({
-        ...profiles[index],
-        id: intent.id,
-        name: intent.name,
-      }, profiles));
-    }
-  } else if (intent.type === "reorder") {
-    const from = profiles.findIndex((profile) => profile.id === intent.profileId);
-    const to = profiles.findIndex((profile) => profile.id === intent.targetId);
-    if (from >= 0 && to >= 0 && from !== to) {
-      const [moved] = profiles.splice(from, 1);
-      profiles.splice(to, 0, moved);
-    }
-  } else {
-    profiles = profiles.filter((profile) => profile.id !== intent.profileId);
-    profiles = cleanupAggregateReferences(profiles);
-    if (!profiles.some((profile) => profile.id === activeRelayId)) activeRelayId = profiles[0]?.id ?? "";
-  }
-  return projectSettings(settings, profiles, activeRelayId);
-}
 
 function normalizeRelayProfileSettings(
   settings: RelayProfileSettings,
@@ -208,6 +177,7 @@ export function open(
     sourceId: source.id,
     isNew,
     draft,
+    pendingCollectionEdit: null,
     issues: [],
     context: cloneContext(context),
   };
@@ -218,6 +188,9 @@ export function edit(
   state: RelayProfileEditorState,
   intent: RelayProfileEdit,
 ): RelayProfileEditorState {
+  if (isCollectionEdit(intent)) {
+    return withIssues({ ...state, pendingCollectionEdit: structuredClone(intent) });
+  }
   if (intent.type === "setMode") {
     const draft = projectDraft({
       ...state.draft,
@@ -350,40 +323,94 @@ export function commit(state: RelayProfileEditorState): RelayProfileCommitResult
     modelList: serialized.modelList,
     modelWindows: serialized.modelWindows,
   };
-  let relayProfiles = state.isNew
-    ? [...state.context.profiles, profile]
-    : state.context.profiles.map((candidate) =>
-        candidate.id === state.sourceId ? profile : candidate,
-      );
+  const discardsNewDraft = state.isNew
+    && state.pendingCollectionEdit?.type === "remove"
+    && state.pendingCollectionEdit.profileId === state.sourceId;
+  const removesCurrent = !discardsNewDraft
+    && state.pendingCollectionEdit?.type === "remove"
+    && state.pendingCollectionEdit.profileId === state.sourceId;
+  let relayProfiles = removesCurrent
+    ? state.context.profiles.filter((candidate) => candidate.id !== state.sourceId)
+    : state.isNew
+      ? discardsNewDraft
+        ? state.context.profiles
+        : [...state.context.profiles, profile]
+      : state.context.profiles.map((candidate) =>
+          candidate.id === state.sourceId ? profile : candidate,
+        );
+  let activeRelayId = state.context.activeRelayId;
+  let effect: RelayProfileCommitEffect = { type: "saveSettings" };
+  if (discardsNewDraft) {
+    effect = { type: "updateSettings" };
+  } else if (state.pendingCollectionEdit) {
+    const applied = applyCollectionEdit(
+      relayProfiles,
+      activeRelayId,
+      state.pendingCollectionEdit,
+    );
+    relayProfiles = applied.relayProfiles;
+    activeRelayId = applied.activeRelayId;
+    effect = applied.effect;
+  }
   relayProfiles = cleanupAggregateReferences(relayProfiles);
-  const activeRelayId = relayProfiles.some((candidate) => candidate.id === state.context.activeRelayId)
-    ? state.context.activeRelayId
+  activeRelayId = relayProfiles.some((candidate) => candidate.id === activeRelayId)
+    ? activeRelayId
     : relayProfiles[0]?.id ?? "";
-  const active = relayProfiles.find((candidate) => candidate.id === activeRelayId) ?? profile;
-  const aggregateRelayProfiles = relayProfiles
-    .filter((candidate) => candidate.relayMode === "aggregate")
-    .map((candidate) => ({
-      id: candidate.id,
-      name: candidate.name,
-      strategy: candidate.aggregate?.strategy ?? "failover",
-      members: (candidate.aggregate?.members ?? []).map((member) => ({
-        relayId: member.profileId,
-        weight: member.weight,
-      })),
-    }));
   return {
     ok: true,
     profile,
+    effect,
     switchIssue: switchIssueForDraft(state.draft),
-    settings: {
-      ...state.context.settings,
-      relayProfiles,
-      activeRelayId,
-      relayBaseUrl: active.relayMode === "aggregate" ? PROTOCOL_PROXY_BASE_URL : active.baseUrl,
-      relayApiKey: active.apiKey,
-      aggregateRelayProfiles,
-      activeAggregateRelayId: active.relayMode === "aggregate" ? active.id : "",
-    },
+    settings: projectSettings(state.context.settings, relayProfiles, activeRelayId),
+  };
+}
+
+function isCollectionEdit(intent: RelayProfileEdit): intent is RelayProfileCollectionEdit {
+  return intent.type === "activate"
+    || intent.type === "duplicate"
+    || intent.type === "reorder"
+    || intent.type === "remove";
+}
+
+function applyCollectionEdit(
+  relayProfiles: RelayProfile[],
+  activeRelayId: string,
+  intent: RelayProfileCollectionEdit,
+): {
+  relayProfiles: RelayProfile[];
+  activeRelayId: string;
+  effect: RelayProfileCommitEffect;
+} {
+  const profiles = relayProfiles.map((candidate) => structuredClone(candidate));
+  if (intent.type === "activate") {
+    return {
+      relayProfiles: profiles,
+      activeRelayId: intent.profileId,
+      effect: { type: "switchProfile", profileId: intent.profileId },
+    };
+  }
+  if (intent.type === "duplicate") {
+    const sourceIndex = profiles.findIndex((candidate) => candidate.id === intent.profileId);
+    profiles.splice(sourceIndex + 1, 0, canonicalizeRelayProfile({
+      ...profiles[sourceIndex],
+      id: intent.id,
+      name: intent.name,
+    }, profiles));
+    return { relayProfiles: profiles, activeRelayId, effect: { type: "updateSettings" } };
+  }
+  if (intent.type === "reorder") {
+    const from = profiles.findIndex((candidate) => candidate.id === intent.profileId);
+    const to = profiles.findIndex((candidate) => candidate.id === intent.targetId);
+    if (from !== to) {
+      const [moved] = profiles.splice(from, 1);
+      profiles.splice(to, 0, moved);
+    }
+    return { relayProfiles: profiles, activeRelayId, effect: { type: "updateSettings" } };
+  }
+  return {
+    relayProfiles: profiles.filter((candidate) => candidate.id !== intent.profileId),
+    activeRelayId,
+    effect: { type: "updateSettings" },
   };
 }
 
@@ -582,16 +609,48 @@ function withIssues(
 }
 
 function issuesForState(
-  state: Pick<RelayProfileEditorState, "draft" | "isNew" | "context">,
+  state: Pick<
+    RelayProfileEditorState,
+    "sourceId" | "draft" | "isNew" | "context" | "pendingCollectionEdit"
+  >,
 ): RelayProfileIssue[] {
-  const issues = issuesForDraft(state.draft);
-  if (state.isNew && state.context.profiles.some((profile) => profile.id === state.draft.id)) {
+  const discardsCurrentDraft = state.pendingCollectionEdit?.type === "remove"
+    && state.pendingCollectionEdit.profileId === state.sourceId;
+  const issues = discardsCurrentDraft ? [] : issuesForDraft(state.draft);
+  if (
+    !discardsCurrentDraft
+    && state.isNew
+    && state.context.profiles.some((profile) => profile.id === state.draft.id)
+  ) {
     issues.push({
       code: "duplicateProfileId",
       field: "id",
       message: `供应商 ID「${state.draft.id}」已存在，请重新创建后再保存。`,
       blocking: true,
     });
+  }
+  const intent = state.pendingCollectionEdit;
+  if (intent) {
+    const ids = new Set(state.context.profiles.map((profile) => profile.id));
+    if (state.isNew) ids.add(state.draft.id);
+    const missing = !ids.has(intent.profileId)
+      || (intent.type === "reorder" && !ids.has(intent.targetId));
+    if (missing) {
+      issues.push({
+        code: "collectionTargetMissing",
+        field: "relayProfiles",
+        message: "目标供应商不存在，集合操作已停止。",
+        blocking: true,
+      });
+    }
+    if (intent.type === "duplicate" && ids.has(intent.id)) {
+      issues.push({
+        code: "duplicateProfileId",
+        field: "id",
+        message: `供应商 ID「${intent.id}」已存在，请使用新的 ID。`,
+        blocking: true,
+      });
+    }
   }
   return issues;
 }

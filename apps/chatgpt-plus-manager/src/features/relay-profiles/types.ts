@@ -116,6 +116,7 @@ export type RelayProfileEditorState = {
   sourceId: string;
   isNew: boolean;
   draft: RelayProfileDraft;
+  pendingCollectionEdit: RelayProfileCollectionEdit | null;
   issues: RelayProfileIssue[];
   semantic: RelayProfileEditorSemantic;
   context: RelayProfileEditorContext;
@@ -145,13 +146,20 @@ export type RelayProfileEdit =
   | { type: "replaceModels"; models: ModelWindowRow[] }
   | { type: "mergeModels"; models: ModelWindowRow[] }
   | { type: "removeModel"; model: string }
-  | { type: "replaceStoredFiles"; configContents: string; authContents: string };
+  | { type: "replaceStoredFiles"; configContents: string; authContents: string }
+  | RelayProfileCollectionEdit;
+
+export type RelayProfileCommitEffect =
+  | { type: "saveSettings" }
+  | { type: "updateSettings" }
+  | { type: "switchProfile"; profileId: string };
 
 export type RelayProfileCommitResult =
   | {
       ok: true;
       profile: RelayProfile;
       settings: RelayProfileSettings;
+      effect: RelayProfileCommitEffect;
       switchIssue: RelayProfileIssue | null;
     }
   | { ok: false; issues: RelayProfileIssue[] };

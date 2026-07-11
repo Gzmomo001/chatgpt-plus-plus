@@ -205,14 +205,22 @@ fn relay_settings_keeps_profile_config_and_auth_files_isolated() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let app_tsx = manifest_dir.parent().unwrap().join("src/App.tsx");
     let app_tsx = std::fs::read_to_string(&app_tsx).expect("read manager App.tsx");
+    let editor_ts = manifest_dir
+        .parent()
+        .unwrap()
+        .join("src/features/relay-profiles/editor.ts");
+    let editor_ts = std::fs::read_to_string(&editor_ts).expect("read Relay profile editor");
     let commands_rs = manifest_dir.join("src/commands.rs");
     let commands_rs = std::fs::read_to_string(&commands_rs).expect("read manager commands.rs");
 
     assert!(!app_tsx.contains("snapshotActiveRelayFilesBeforeSwitch"));
     assert!(!app_tsx.contains("previousActiveRelayId"));
     assert!(app_tsx.contains("targetRelayId"));
-    assert!(app_tsx.contains("relayProfileSwitchValidation(selectedBeforeSave)"));
-    assert!(app_tsx.contains("缺少独立 config.toml"));
+    assert!(app_tsx.contains("const validationError = openProfileEditor({"));
+    assert!(app_tsx.contains("profileId: selectedBeforeSave.id"));
+    assert!(app_tsx.contains("}).semantic.switchIssue?.message ?? null"));
+    assert!(!app_tsx.contains("relayProfileSwitchValidation"));
+    assert!(editor_ts.contains("缺少独立 config.toml"));
     assert!(!app_tsx.contains("relayProfileSwitchCommand"));
     assert!(app_tsx.contains("const createNewAggregateProfile = () =>"));
     assert!(app_tsx.contains("onClick={createNewAggregateProfile}"));

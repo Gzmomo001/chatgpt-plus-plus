@@ -4,7 +4,6 @@ import { describe, it } from "node:test";
 
 import {
   commit,
-  editRelayProfileCollection,
   edit,
   open as openRequest,
   relayProfileFromDraft,
@@ -98,11 +97,11 @@ describe("Relay profile editor", () => {
   it("owns collection mutations and is the only production editor seam", () => {
     const source = profile();
     const settings = context([source]).settings;
-    const activated = editRelayProfileCollection(settings, {
+    const activated = commit(edit(openExisting(source, context([source])), {
       type: "activate",
       profileId: source.id,
-    });
-    assert.equal(activated.activeRelayId, source.id);
+    }));
+    assert.equal(activated.ok, true);
 
     const app = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
     const editor = readFileSync(new URL("./editor.ts", import.meta.url), "utf8");
@@ -111,6 +110,7 @@ describe("Relay profile editor", () => {
       new URL("./components/ProviderPresetSelector.tsx", import.meta.url),
       "utf8",
     );
+    const removedCollectionEditor = ["editRelayProfile", "Collection"].join("");
     for (const forbidden of [
       "deriveRelayProfileFromFiles",
       "applyRelayProfilePatchToFiles",
@@ -139,6 +139,7 @@ describe("Relay profile editor", () => {
     assert.doesNotMatch(app, /patch as unknown as Partial<RelayProfile>/);
     assert.doesNotMatch(app, /type: "setAggregate", aggregate: next\.aggregate/);
     assert.doesNotMatch(app, /modelList: _modelList|modelWindows: _modelWindows/);
+    assert.equal(app.includes(removedCollectionEditor), false);
     assert.match(
       app,
       /focus:\s*isNew\s*\?\s*\{\s*type:\s*"create"/s,
@@ -147,6 +148,7 @@ describe("Relay profile editor", () => {
     assert.match(editor, /export function open\(/);
     assert.match(editor, /export function edit\(/);
     assert.match(editor, /export function commit\(/);
+    assert.equal(editor.includes(removedCollectionEditor), false);
     assert.doesNotMatch(
       editor,
       /export function (?:normalizeRelayProfileSettings|seedRelayProfile|canonicalizeRelayProfile)\(/,
@@ -164,6 +166,253 @@ describe("Relay profile editor", () => {
     assert.equal((types.match(/export type RelayProfile\s*=/g) ?? []).length, 1);
     assert.doesNotMatch(editor, /export type RelayProfile\s*=/);
     assert.doesNotMatch(selector, /(?:export )?type RelayProfile\s*=/);
+  });
+
+  it("activates through open, edit, and commit while projecting legacy fields", () => {
+    const first = profile({ id: "first", baseUrl: "https://first.example/v1", apiKey: "sk-first" });
+    const second = profile({
+      id: "second",
+      relayMode: "aggregate",
+      baseUrl: "",
+      upstreamBaseUrl: "",
+      apiKey: "",
+      aggregate: { strategy: "failover", members: [{ profileId: first.id, weight: 1 }] },
+    });
+    const ctx = context([first, second]);
+    const result = commit(edit(openExisting(first, ctx), { type: "activate", profileId: second.id }));
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.effect, { type: "switchProfile", profileId: second.id });
+    assert.equal(result.settings.activeRelayId, second.id);
+    assert.equal(result.settings.activeAggregateRelayId, second.id);
+    assert.equal(result.settings.relayBaseUrl, "http://127.0.0.1:57321/v1");
+    assert.equal(result.settings.relayApiKey, "");
+  });
+
+  it("duplicates a canonical profile immediately after its source", () => {
+    const source = profile({ id: "source", modelList: "model-a\nmodel-a\nmodel-b" });
+    const tail = profile({ id: "tail" });
+    const result = commit(edit(openExisting(source, context([source, tail])), {
+      type: "duplicate",
+      profileId: source.id,
+      id: "copy",
+      name: "Copy",
+    }));
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.effect, { type: "updateSettings" });
+    assert.deepEqual(result.settings.relayProfiles.map((candidate) => candidate.id), ["source", "copy", "tail"]);
+    assert.equal(result.settings.relayProfiles[1].name, "Copy");
+    assert.equal(result.settings.relayProfiles[1].modelList, "model-a\nmodel-b");
+  });
+
+  it("blocks duplicate id collisions without changing settings", () => {
+    const source = profile({ id: "source" });
+    const occupied = profile({ id: "occupied" });
+    const settings = context([source, occupied]).settings;
+    const snapshot = structuredClone(settings);
+    const edited = edit(openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+      focus: { type: "existing", profileId: source.id },
+    }), { type: "duplicate", profileId: source.id, id: occupied.id, name: "Collision" });
+    const result = commit(edited);
+
+    assert.equal(edited.issues.some((issue) => issue.code === "duplicateProfileId" && issue.blocking), true);
+    assert.equal(result.ok, false);
+    assert.deepEqual(settings, snapshot);
+  });
+
+  it("reorders profiles while preserving the active profile and legacy projection", () => {
+    const first = profile({ id: "first" });
+    const second = profile({ id: "second" });
+    const third = profile({ id: "third" });
+    const ctx = context([first, second, third]);
+    ctx.activeRelayId = second.id;
+    ctx.settings.activeRelayId = second.id;
+    const result = commit(edit(openExisting(first, ctx), {
+      type: "reorder",
+      profileId: third.id,
+      targetId: first.id,
+    }));
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.effect, { type: "updateSettings" });
+    assert.deepEqual(result.settings.relayProfiles.map((candidate) => candidate.id), ["third", "first", "second"]);
+    assert.equal(result.settings.activeRelayId, second.id);
+    assert.equal(result.settings.relayBaseUrl, second.baseUrl);
+  });
+
+  it("removes the current draft without re-adding it and cleans aggregate references", () => {
+    const removed = profile({ id: "removed" });
+    const fallback = profile({ id: "fallback", baseUrl: "https://fallback.example/v1", apiKey: "sk-fallback" });
+    const aggregate = profile({
+      id: "aggregate",
+      relayMode: "aggregate",
+      baseUrl: "",
+      upstreamBaseUrl: "",
+      apiKey: "",
+      aggregate: {
+        strategy: "weightedRoundRobin",
+        members: [
+          { profileId: removed.id, weight: 2 },
+          { profileId: fallback.id, weight: 3 },
+        ],
+      },
+    });
+    const ctx = context([removed, fallback, aggregate]);
+    const result = commit(edit(openExisting(removed, ctx), { type: "remove", profileId: removed.id }));
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.effect, { type: "updateSettings" });
+    assert.deepEqual(result.settings.relayProfiles.map((candidate) => candidate.id), ["fallback", "aggregate"]);
+    assert.equal(result.settings.activeRelayId, fallback.id);
+    assert.deepEqual(result.settings.aggregateRelayProfiles[0].members, [
+      { relayId: fallback.id, weight: 3 },
+    ]);
+  });
+
+  it("removes the current profile even when its discarded draft is invalid", () => {
+    const invalidAggregate = profile({
+      id: "invalid-aggregate",
+      relayMode: "aggregate",
+      baseUrl: "",
+      upstreamBaseUrl: "",
+      apiKey: "",
+      aggregate: { strategy: "failover", members: [] },
+    });
+    const fallback = profile({ id: "fallback" });
+    const aggregateResult = commit(edit(
+      openExisting(invalidAggregate, context([invalidAggregate, fallback])),
+      { type: "remove", profileId: invalidAggregate.id },
+    ));
+
+    assert.equal(aggregateResult.ok, true);
+    if (!aggregateResult.ok) return;
+    assert.deepEqual(aggregateResult.effect, { type: "updateSettings" });
+    assert.deepEqual(aggregateResult.settings.relayProfiles.map((candidate) => candidate.id), [fallback.id]);
+
+    const invalidWindow = profile({
+      id: "invalid-window",
+      modelWindows: '{"model-a":"not-a-window"}',
+    });
+    const referringAggregate = profile({
+      id: "referring-aggregate",
+      relayMode: "aggregate",
+      baseUrl: "",
+      upstreamBaseUrl: "",
+      apiKey: "",
+      aggregate: {
+        strategy: "failover",
+        members: [{ profileId: invalidWindow.id, weight: 2 }],
+      },
+    });
+    const windowResult = commit(edit(
+      openExisting(invalidWindow, context([invalidWindow, fallback, referringAggregate])),
+      { type: "remove", profileId: invalidWindow.id },
+    ));
+
+    assert.equal(windowResult.ok, true);
+    if (!windowResult.ok) return;
+    assert.equal(windowResult.settings.relayProfiles.some((candidate) => candidate.id === invalidWindow.id), false);
+    assert.deepEqual(
+      windowResult.settings.relayProfiles.find((candidate) => candidate.id === referringAggregate.id)?.aggregate?.members,
+      [],
+    );
+  });
+
+  it("keeps draft validation when removing a different profile", () => {
+    const invalidCurrent = profile({
+      id: "invalid-current",
+      modelWindows: '{"model-a":"not-a-window"}',
+    });
+    const removed = profile({ id: "removed" });
+    const settings = context([invalidCurrent, removed]).settings;
+    const snapshot = structuredClone(settings);
+    const result = commit(edit(openExisting(invalidCurrent, context([invalidCurrent, removed])), {
+      type: "remove",
+      profileId: removed.id,
+    }));
+
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.issues.some((issue) => issue.code === "invalidModelWindow"), true);
+    }
+    assert.deepEqual(settings, snapshot);
+  });
+
+  it("discards an occupied-id create draft without deleting the persisted profile", () => {
+    const existing = profile({
+      id: "relay-a",
+      name: "Persisted Relay",
+      configContents: profile().configContents.replace("model-a", "persisted-model"),
+      model: "persisted-model",
+      modelList: "persisted-model",
+      apiKey: "sk-persisted",
+      authContents: '{"OPENAI_API_KEY":"sk-persisted"}\n',
+    });
+    const settings = context([existing]).settings;
+    const snapshot = structuredClone(settings);
+    const opened = openRequest({
+      settings,
+      defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+      focus: {
+        type: "create",
+        id: existing.id,
+        name: "Unsaved Collision",
+        mode: "official",
+      },
+    });
+    const result = commit(edit(opened, { type: "remove", profileId: existing.id }));
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.effect, { type: "updateSettings" });
+    assert.equal(result.settings.activeRelayId, existing.id);
+    assert.deepEqual(result.settings.relayProfiles, [existing]);
+    assert.deepEqual(settings, snapshot);
+  });
+
+  it("blocks missing collection targets without mutating inputs", () => {
+    const source = profile({ id: "source" });
+    const settings = context([source]).settings;
+    const snapshot = structuredClone(settings);
+    for (const intent of [
+      { type: "activate" as const, profileId: "missing" },
+      { type: "duplicate" as const, profileId: "missing", id: "copy", name: "Copy" },
+      { type: "reorder" as const, profileId: source.id, targetId: "missing" },
+      { type: "remove" as const, profileId: "missing" },
+    ]) {
+      const result = commit(edit(openRequest({
+        settings,
+        defaultContextSelection: { mcpServers: [], skills: [], plugins: [] },
+        focus: { type: "existing", profileId: source.id },
+      }), intent));
+      assert.equal(result.ok, false, intent.type);
+      if (!result.ok) {
+        assert.equal(result.issues.some((issue) => issue.code === "collectionTargetMissing" && issue.blocking), true);
+      }
+      assert.deepEqual(settings, snapshot);
+    }
+  });
+
+  it("saves a dirty detail draft and activates it in one commit", () => {
+    const first = profile({ id: "first" });
+    const second = profile({ id: "second", name: "Before" });
+    const ctx = context([first, second]);
+    const dirty = edit(openExisting(second, ctx), { type: "patch", patch: { name: "After" } });
+    const result = commit(edit(dirty, { type: "activate", profileId: second.id }));
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.effect, { type: "switchProfile", profileId: second.id });
+    assert.equal(result.profile.name, "After");
+    assert.equal(result.settings.relayProfiles.find((candidate) => candidate.id === second.id)?.name, "After");
+    assert.equal(result.settings.activeRelayId, second.id);
   });
 
   it("ignores stored model fields smuggled through a generic patch", () => {
@@ -447,6 +696,7 @@ describe("Relay profile editor", () => {
     if (!committed.ok) return;
     assert.equal(committed.profile.name, "Relay A edited");
     assert.equal(committed.profile.apiKey, "sk-next");
+    assert.deepEqual(committed.effect, { type: "saveSettings" });
     assert.match(committed.profile.authContents, /sk-next/);
     assert.equal(committed.settings.relayProfiles[0].name, "Relay A edited");
   });

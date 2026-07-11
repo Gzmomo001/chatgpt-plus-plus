@@ -64,7 +64,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   commit,
   edit,
-  editRelayProfileCollection,
   open as openProfileEditor,
   relayProfileFromDraft,
 } from "@/features/relay-profiles/editor";
@@ -3625,8 +3624,18 @@ function RelayProfileList({
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const next = editRelayProfileCollection(form, { type: "reorder", profileId: String(active.id), targetId: String(over.id) }) as BackendSettings;
-    if (next !== form) onFormChange(next);
+    const result = commit(edit(openProfileEditor({
+      settings: form,
+      defaultContextSelection: contextSelectionForAllEntries(form),
+      focus: { type: "existing", profileId: String(active.id) },
+    }), {
+      type: "reorder",
+      profileId: String(active.id),
+      targetId: String(over.id),
+    }));
+    if (result.ok && result.effect.type !== "switchProfile") {
+      void onFormChange(result.settings as BackendSettings);
+    }
   };
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -3710,8 +3719,17 @@ function SortableRelayProfileCard({
           onClick={(event) => {
             event.stopPropagation();
             if (disabled) return;
-            const next = editRelayProfileCollection(form, { type: "activate", profileId: profile.id }) as BackendSettings;
-            void actions.switchRelayProfile(next, profile.id);
+            const result = commit(edit(openProfileEditor({
+              settings: form,
+              defaultContextSelection: contextSelectionForAllEntries(form),
+              focus: { type: "existing", profileId: profile.id },
+            }), { type: "activate", profileId: profile.id }));
+            if (result.ok && result.effect.type === "switchProfile") {
+              void actions.switchRelayProfile(
+                result.settings as BackendSettings,
+                result.effect.profileId,
+              );
+            }
           }}
           size="sm"
           title={disabled ? t("供应商切换不可用") : active ? t("当前正在使用") : t("设为当前")}
@@ -3748,7 +3766,19 @@ function SortableRelayProfileCard({
           <Button
             onClick={(event) => {
               event.stopPropagation();
-              onFormChange(editRelayProfileCollection(form, { type: "duplicate", profileId: profile.id, id: `relay-${Date.now().toString(36)}`, name: tf("{0} 副本", [profile.name || t("未命名供应商")]) }) as BackendSettings);
+              const result = commit(edit(openProfileEditor({
+                settings: form,
+                defaultContextSelection: contextSelectionForAllEntries(form),
+                focus: { type: "existing", profileId: profile.id },
+              }), {
+                type: "duplicate",
+                profileId: profile.id,
+                id: `relay-${Date.now().toString(36)}`,
+                name: tf("{0} 副本", [profile.name || t("未命名供应商")]),
+              }));
+              if (result.ok && result.effect.type !== "switchProfile") {
+                void onFormChange(result.settings as BackendSettings);
+              }
             }}
             size="icon"
             title={t("复制")}
@@ -3760,7 +3790,14 @@ function SortableRelayProfileCard({
             disabled={form.relayProfiles.length <= 1}
             onClick={(event) => {
               event.stopPropagation();
-              onFormChange(editRelayProfileCollection(form, { type: "remove", profileId: profile.id }) as BackendSettings);
+              const result = commit(edit(openProfileEditor({
+                settings: form,
+                defaultContextSelection: contextSelectionForAllEntries(form),
+                focus: { type: "existing", profileId: profile.id },
+              }), { type: "remove", profileId: profile.id }));
+              if (result.ok && result.effect.type !== "switchProfile") {
+                void onFormChange(result.settings as BackendSettings);
+              }
             }}
             size="icon"
             title={t("删除供应商")}
@@ -3858,15 +3895,26 @@ function RelayProfileDetail({
   const saveDraft = async () => {
     const committed = commit(editorState);
     if (!committed.ok) return;
-    await onFormChange(committed.settings as BackendSettings);
+    if (committed.effect.type === "switchProfile") {
+      await actions.switchRelayProfile(
+        committed.settings as BackendSettings,
+        committed.effect.profileId,
+      );
+    } else {
+      await onFormChange(committed.settings as BackendSettings);
+    }
     onSaved?.();
   };
   const switchDraft = () => {
     if (isNew || !form.relayProfilesEnabled) return;
-    const committed = commit(editorState);
+    const committed = commit(edit(editorState, { type: "activate", profileId: profile.id }));
     if (!committed.ok) return;
-    const next = editRelayProfileCollection(committed.settings, { type: "activate", profileId: profile.id });
-    void actions.switchRelayProfile(next as BackendSettings, profile.id);
+    if (committed.effect.type === "switchProfile") {
+      void actions.switchRelayProfile(
+        committed.settings as BackendSettings,
+        committed.effect.profileId,
+      );
+    }
   };
   return (
     <div className="relay-detail-page" key={profile.id}>
