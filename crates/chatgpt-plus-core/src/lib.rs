@@ -27,7 +27,6 @@ pub mod provider_import;
 pub mod proxy;
 pub mod relay_config;
 pub mod relay_rotation;
-pub mod relay_switch;
 pub mod routes;
 pub mod script_market;
 pub mod settings;

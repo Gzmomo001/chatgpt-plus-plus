@@ -659,6 +659,10 @@ pub struct SettingsStore {
     path: PathBuf,
 }
 
+pub(crate) struct RawSettingsSnapshot {
+    contents: Option<Vec<u8>>,
+}
+
 impl Default for SettingsStore {
     fn default() -> Self {
         Self::new(crate::paths::default_settings_path())
@@ -685,6 +689,34 @@ impl SettingsStore {
         Ok(normalize_settings_config_sections(
             serde_json::from_str(&contents).unwrap_or_default(),
         ))
+    }
+
+    pub(crate) fn capture_raw_snapshot(&self) -> anyhow::Result<RawSettingsSnapshot> {
+        let contents = match fs::read(&self.path) {
+            Ok(contents) => Some(contents),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!("failed to snapshot settings {}", self.path.display())
+                });
+            }
+        };
+        Ok(RawSettingsSnapshot { contents })
+    }
+
+    pub(crate) fn restore_raw_snapshot(
+        &self,
+        snapshot: &RawSettingsSnapshot,
+    ) -> anyhow::Result<()> {
+        match snapshot.contents.as_deref() {
+            Some(contents) => atomic_write(&self.path, contents),
+            None => match fs::remove_file(&self.path) {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(error) => Err(error)
+                    .with_context(|| format!("failed to remove settings {}", self.path.display())),
+            },
+        }
     }
 
     pub fn save(&self, settings: &BackendSettings) -> anyhow::Result<()> {
@@ -1661,6 +1693,34 @@ experimental_bearer_token = "sk-existing""#
                 .contains(r#"experimental_bearer_token = "22222222222222222222222222222222222""#)
         );
         assert!(!profile.auth_contents.contains("OPENAI_API_KEY"));
+    }
+
+    #[test]
+    fn raw_snapshot_restores_exact_invalid_settings_bytes() {
+        let dir = temp_dir();
+        let path = dir.join("settings.json");
+        let store = SettingsStore::new(path.clone());
+        let original = b"{not valid json\n";
+        std::fs::write(&path, original).unwrap();
+        let snapshot = store.capture_raw_snapshot().unwrap();
+        store.save(&BackendSettings::default()).unwrap();
+
+        store.restore_raw_snapshot(&snapshot).unwrap();
+
+        assert_eq!(std::fs::read(path).unwrap(), original);
+    }
+
+    #[test]
+    fn raw_snapshot_removes_a_settings_file_that_was_originally_absent() {
+        let dir = temp_dir();
+        let path = dir.join("settings.json");
+        let store = SettingsStore::new(path.clone());
+        let snapshot = store.capture_raw_snapshot().unwrap();
+        store.save(&BackendSettings::default()).unwrap();
+
+        store.restore_raw_snapshot(&snapshot).unwrap();
+
+        assert!(!path.exists());
     }
 
     #[test]

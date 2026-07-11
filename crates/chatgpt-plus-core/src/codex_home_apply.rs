@@ -1,3 +1,4 @@
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -27,12 +28,45 @@ pub struct RelayProfileActivation {
     pub home: CodexHomeApplyOutcome,
 }
 
+struct CodexHomeSnapshot {
+    config: Option<Vec<u8>>,
+    auth: Option<Vec<u8>>,
+}
+
+impl CodexHomeSnapshot {
+    fn capture(home: &Path) -> anyhow::Result<Self> {
+        Ok(Self {
+            config: read_optional_file(&home.join("config.toml"))
+                .context("快照 Codex config.toml 失败")?,
+            auth: read_optional_file(&home.join("auth.json"))
+                .context("快照 Codex auth.json 失败")?,
+        })
+    }
+
+    fn restore(&self, home: &Path) -> anyhow::Result<()> {
+        let mut failures = Vec::new();
+        for (name, contents) in [("config.toml", &self.config), ("auth.json", &self.auth)] {
+            if let Err(error) = restore_optional_file(&home.join(name), contents.as_deref()) {
+                failures.push(format!("{name}: {error}"));
+            }
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            anyhow::bail!(failures.join("；"))
+        }
+    }
+}
+
 pub fn activate(
     store: &SettingsStore,
     home: &Path,
     requested: BackendSettings,
     target_id: &str,
 ) -> anyhow::Result<RelayProfileActivation> {
+    let settings_snapshot = store
+        .capture_raw_snapshot()
+        .context("快照原供应商设置失败")?;
     let original = store.load().context("读取当前供应商设置失败")?;
     let mut selected = requested;
     if !selected.relay_profiles_enabled {
@@ -57,13 +91,18 @@ pub fn activate(
         .find(|profile| profile.id == target_id)
         .expect("target existence checked above");
     validate_activation_target(target)?;
+    let home_snapshot = CodexHomeSnapshot::capture(home)?;
 
     if let Err(error) = store.save(&selected) {
-        let _ = store.save(&original);
-        return Err(error).context("保存供应商设置失败");
+        let error = error.context("保存供应商设置失败");
+        let mut rollback_failures = Vec::new();
+        if let Err(rollback_error) = store.restore_raw_snapshot(&settings_snapshot) {
+            rollback_failures.push(format!("恢复原供应商设置失败：{rollback_error}"));
+        }
+        return Err(compose_rollback_error(error, &rollback_failures));
     }
 
-    let activation = (|| {
+    let activation: anyhow::Result<RelayProfileActivation> = (|| {
         let settings = store.load().context("读取供应商设置失败")?;
         let home = reconcile(home, &settings)?;
         Ok(RelayProfileActivation { settings, home })
@@ -72,11 +111,46 @@ pub fn activate(
     match activation {
         Ok(activation) => Ok(activation),
         Err(error) => {
-            if let Err(rollback_error) = store.save(&original) {
-                return Err(error).context(format!("恢复原供应商设置失败：{rollback_error}"));
+            let mut rollback_failures = Vec::new();
+            if let Err(rollback_error) = store.restore_raw_snapshot(&settings_snapshot) {
+                rollback_failures.push(format!("恢复原供应商设置失败：{rollback_error}"));
             }
-            Err(error)
+            if let Err(restore_error) = home_snapshot.restore(home) {
+                rollback_failures.push(format!("恢复 Codex home 失败：{restore_error}"));
+            }
+            Err(compose_rollback_error(error, &rollback_failures))
         }
+    }
+}
+
+fn read_optional_file(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
+    match std::fs::read(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn restore_optional_file(path: &Path, contents: Option<&[u8]>) -> anyhow::Result<()> {
+    match contents {
+        Some(contents) => crate::settings::atomic_write(path, contents),
+        None => match std::fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error.into()),
+        },
+    }
+}
+
+fn compose_rollback_error(error: anyhow::Error, rollback_failures: &[String]) -> anyhow::Error {
+    if rollback_failures.is_empty() {
+        error
+    } else {
+        let original_cause = error.to_string();
+        error.context(format!(
+            "{original_cause}；回滚失败：{}",
+            rollback_failures.join("；")
+        ))
     }
 }
 
@@ -191,4 +265,37 @@ fn validate_activation_target(profile: &RelayProfile) -> anyhow::Result<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compose_rollback_error;
+
+    #[test]
+    fn rollback_error_message_contains_original_and_all_rollback_failures() {
+        let error = compose_rollback_error(
+            anyhow::anyhow!("activation postcondition failed"),
+            &[
+                "settings rollback failed".to_string(),
+                "home rollback failed".to_string(),
+            ],
+        );
+
+        let visible = error.to_string();
+        assert!(visible.contains("activation postcondition failed"));
+        assert!(visible.contains("settings rollback failed"));
+        assert!(visible.contains("home rollback failed"));
+        assert_eq!(
+            error.chain().last().unwrap().to_string(),
+            "activation postcondition failed"
+        );
+    }
+
+    #[test]
+    fn rollback_error_without_failures_is_returned_without_extra_context() {
+        let error = compose_rollback_error(anyhow::anyhow!("activation failed"), &[]);
+
+        assert_eq!(error.to_string(), "activation failed");
+        assert_eq!(error.chain().count(), 1);
+    }
 }

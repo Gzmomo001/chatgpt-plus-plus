@@ -1,5 +1,8 @@
 use chatgpt_plus_core::codex_home_apply::{CodexHomeDisposition, activate, reconcile};
-use chatgpt_plus_core::settings::{BackendSettings, RelayMode, RelayProfile, SettingsStore};
+use chatgpt_plus_core::settings::{
+    AggregateRelayMember, AggregateRelayProfile, AggregateRelayStrategy, BackendSettings,
+    LaunchMode, RelayMode, RelayProfile, SettingsStore,
+};
 
 #[test]
 fn relay_config_exposes_no_superseded_mutation_functions() {
@@ -68,6 +71,8 @@ fn write_live_pure_api(home: &std::path::Path, base_url: &str, api_key: &str) {
         format!(
             r#"model = "live-edited-model"
 model_provider = "live_provider"
+model_context_window = 1000000
+model_auto_compact_token_limit = 900000
 
 [model_providers.live_provider]
 name = "live_provider"
@@ -262,7 +267,10 @@ fn activation_backfills_the_stored_previous_profile_before_selecting_the_target(
     assert_eq!(activation.settings.active_relay_id, "b");
     assert!(previous.config_contents.contains("live-edited-model"));
     assert!(previous.config_contents.contains("live_provider"));
+    assert_eq!(previous.context_window, "1000000");
+    assert_eq!(previous.auto_compact_limit, "900000");
     assert_eq!(store.load().unwrap(), activation.settings);
+    assert_eq!(activation.settings.launch_mode, LaunchMode::Patch);
     assert_eq!(activation.home.disposition, CodexHomeDisposition::Applied);
 }
 
@@ -354,6 +362,8 @@ fn activation_rolls_settings_back_when_pure_api_postcondition_fails() {
     };
     store.save(&original).unwrap();
     let persisted_original = store.load().unwrap();
+    let original_config = std::fs::read(home.join("config.toml")).unwrap();
+    let original_auth = std::fs::read(home.join("auth.json")).unwrap();
     let mut unconfigured = pure_profile("empty-key", "https://empty.example/v1", "");
     unconfigured.auth_contents = "{}".to_string();
     let requested = BackendSettings {
@@ -366,6 +376,207 @@ fn activation_rolls_settings_back_when_pure_api_postcondition_fails() {
 
     assert!(error.to_string().contains("纯 API"));
     assert_eq!(store.load().unwrap(), persisted_original);
+    assert_eq!(
+        std::fs::read(home.join("config.toml")).unwrap(),
+        original_config
+    );
+    assert_eq!(
+        std::fs::read(home.join("auth.json")).unwrap(),
+        original_auth
+    );
+}
+
+#[test]
+fn activation_removes_home_files_created_before_a_postcondition_failure() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("codex");
+    let store = SettingsStore::new(temp.path().join("settings.json"));
+    let original = BackendSettings {
+        active_relay_id: "empty-key".to_string(),
+        relay_profiles: vec![pure_profile(
+            "empty-key",
+            "https://old.example/v1",
+            "sk-old",
+        )],
+        ..BackendSettings::default()
+    };
+    store.save(&original).unwrap();
+    let persisted_original = store.load().unwrap();
+    let mut unconfigured = pure_profile("empty-key", "https://empty.example/v1", "");
+    unconfigured.auth_contents = "{}".to_string();
+    let requested = BackendSettings {
+        active_relay_id: "empty-key".to_string(),
+        relay_profiles: vec![unconfigured],
+        ..BackendSettings::default()
+    };
+
+    let error = activate(&store, &home, requested, "empty-key").unwrap_err();
+
+    assert!(error.to_string().contains("纯 API"));
+    assert_eq!(store.load().unwrap(), persisted_original);
+    assert!(!home.join("config.toml").exists());
+    assert!(!home.join("auth.json").exists());
+}
+
+#[test]
+fn activation_restores_the_exact_raw_settings_after_a_postcondition_failure() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("codex");
+    write_live_pure_api(&home, "https://a.example/v1", "sk-a");
+    let settings_path = temp.path().join("settings.json");
+    let raw_settings = br#"{
+  "futureExtension": { "preserveExactly": true },
+  "activeRelayId": "a",
+  "relayProfiles": [
+    {
+      "id": "a", "name": "A", "relayMode": "pureApi",
+      "configContents": "model_provider = \"custom\"\n\n[model_providers.custom]\nname = \"custom\"\nbase_url = \"https://a.example/v1\"\nwire_api = \"responses\"\nrequires_openai_auth = true\n",
+      "authContents": "{\"OPENAI_API_KEY\":\"sk-a\"}"
+    }
+  ]
+}
+"#;
+    std::fs::write(&settings_path, raw_settings).unwrap();
+    let store = SettingsStore::new(settings_path.clone());
+    let original = store.load().unwrap();
+    let mut unconfigured = pure_profile("empty-key", "https://empty.example/v1", "");
+    unconfigured.auth_contents = "{}".to_string();
+    let mut requested = original;
+    requested.relay_profiles.push(unconfigured);
+
+    let error = activate(&store, &home, requested, "empty-key").unwrap_err();
+
+    assert!(error.to_string().contains("纯 API"));
+    assert_eq!(std::fs::read(settings_path).unwrap(), raw_settings);
+}
+
+#[test]
+fn activation_removes_a_settings_file_created_before_a_postcondition_failure() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("codex");
+    let settings_path = temp.path().join("settings.json");
+    let store = SettingsStore::new(settings_path.clone());
+    let mut unconfigured = pure_profile("default", "https://empty.example/v1", "");
+    unconfigured.auth_contents = "{}".to_string();
+    let requested = BackendSettings {
+        active_relay_id: "default".to_string(),
+        relay_profiles: vec![unconfigured],
+        ..BackendSettings::default()
+    };
+
+    let error = activate(&store, &home, requested, "default").unwrap_err();
+
+    assert!(error.to_string().contains("纯 API"), "{error:#}");
+    assert!(!settings_path.exists());
+}
+
+#[test]
+fn activation_accepts_an_aggregate_target_with_an_empty_config_snapshot() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("codex");
+    std::fs::create_dir(&home).unwrap();
+    let store = SettingsStore::new(temp.path().join("settings.json"));
+    let api = pure_profile("api", "https://api.example/v1", "sk-api");
+    let aggregate = RelayProfile {
+        id: "agg".to_string(),
+        name: "聚合供应商 1".to_string(),
+        relay_mode: RelayMode::Aggregate,
+        config_contents: String::new(),
+        auth_contents: String::new(),
+        ..RelayProfile::default()
+    };
+    let original = BackendSettings {
+        active_relay_id: "api".to_string(),
+        relay_profiles: vec![api.clone(), aggregate.clone()],
+        ..BackendSettings::default()
+    };
+    store.save(&original).unwrap();
+    let requested = BackendSettings {
+        active_relay_id: "agg".to_string(),
+        relay_profiles: vec![api, aggregate],
+        aggregate_relay_profiles: vec![AggregateRelayProfile {
+            id: "agg".to_string(),
+            name: "聚合供应商 1".to_string(),
+            strategy: AggregateRelayStrategy::Failover,
+            members: vec![AggregateRelayMember {
+                relay_id: "api".to_string(),
+                weight: 1,
+            }],
+        }],
+        active_aggregate_relay_id: "agg".to_string(),
+        ..BackendSettings::default()
+    };
+
+    let activation = activate(&store, &home, requested, "agg").unwrap();
+    let live = std::fs::read_to_string(home.join("config.toml")).unwrap();
+
+    assert!(activation.home.status.configured);
+    assert_eq!(store.load().unwrap().active_relay_id, "agg");
+    assert!(live.contains(r#"base_url = "http://127.0.0.1:57321/v1""#));
+}
+
+#[test]
+fn activation_returns_the_normalized_previous_official_profile() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("codex");
+    std::fs::create_dir(&home).unwrap();
+    std::fs::write(
+        home.join("config.toml"),
+        r#"model = "gpt-5.5"
+model_reasoning_effort = "high"
+model_provider = "custom"
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "https://third-party.example/v1"
+
+[features]
+goals = true
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        home.join("auth.json"),
+        r#"{"OPENAI_API_KEY":"sk-third-party"}"#,
+    )
+    .unwrap();
+    let store = SettingsStore::new(temp.path().join("settings.json"));
+    let official = RelayProfile {
+        id: "official".to_string(),
+        name: "官方".to_string(),
+        relay_mode: RelayMode::Official,
+        official_mix_api_key: false,
+        auth_contents: r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official"}}"#
+            .to_string(),
+        ..RelayProfile::default()
+    };
+    let pure = pure_profile("api", "https://third-party.example/v1", "sk-third-party");
+    let original = BackendSettings {
+        active_relay_id: "official".to_string(),
+        relay_profiles: vec![official.clone(), pure.clone()],
+        ..BackendSettings::default()
+    };
+    store.save(&original).unwrap();
+    let requested = BackendSettings {
+        active_relay_id: "api".to_string(),
+        relay_profiles: vec![official, pure],
+        ..BackendSettings::default()
+    };
+
+    let activation = activate(&store, &home, requested, "api").unwrap();
+    let returned = activation
+        .settings
+        .relay_profiles
+        .iter()
+        .find(|profile| profile.id == "official")
+        .unwrap();
+
+    assert_eq!(returned.relay_mode, RelayMode::Official);
+    assert!(!returned.official_mix_api_key);
+    assert!(returned.config_contents.is_empty());
+    assert!(returned.api_key.is_empty());
 }
 
 #[cfg(windows)]
