@@ -5,6 +5,7 @@ export type ModelWindowRow = {
 
 export type RelayProtocol = "responses" | "chatCompletions";
 export type RelayMode = "official" | "mixedApi" | "pureApi" | "aggregate";
+export type RelayProfileEditableMode = Exclude<RelayMode, "mixedApi">;
 export type RelayAggregateStrategy =
   | "failover"
   | "conversationRoundRobin"
@@ -54,6 +55,13 @@ export type RelayProfile = {
   aggregate?: RelayAggregateConfig | null;
 };
 
+export type RelayProfileCandidate = Omit<Pick<
+  RelayProfile,
+  "id" | "name" | "relayMode" | "protocol" | "baseUrl" | "officialMixApiKey"
+>, "relayMode"> & {
+  relayMode: Exclude<RelayMode, "aggregate">;
+};
+
 export type RelayProfileDraft = Omit<RelayProfile, "modelList" | "modelWindows"> & {
   models: ModelWindowRow[];
 };
@@ -83,15 +91,25 @@ export type RelayProfileIssue = {
   blocking: boolean;
 };
 
+export type RelayProfileEditorSemantic = {
+  aggregateCandidates: RelayProfileCandidate[];
+  aggregateTotalWeight: number;
+  usesLiveFiles: boolean;
+  switchIssue: RelayProfileIssue | null;
+};
+
 export type RelayProfileEditorState = {
   sourceId: string;
   isNew: boolean;
   draft: RelayProfileDraft;
   issues: RelayProfileIssue[];
+  semantic: RelayProfileEditorSemantic;
   context: RelayProfileEditorContext;
 };
 
-export type RelayProfilePatch = Partial<Omit<RelayProfileDraft, "models">>;
+export type RelayProfilePatch = Partial<
+  Omit<RelayProfileDraft, "models" | "relayMode" | "aggregate">
+>;
 
 export type ApplyRelayProfilePresetIntent = {
   type: "applyPreset";
@@ -106,14 +124,22 @@ export type ApplyRelayProfilePresetIntent = {
 export type RelayProfileEdit =
   | { type: "patch"; patch: RelayProfilePatch }
   | ApplyRelayProfilePresetIntent
+  | { type: "setMode"; mode: RelayProfileEditableMode }
+  | { type: "setAggregateStrategy"; strategy: RelayAggregateStrategy }
+  | { type: "toggleAggregateMember"; profileId: string; selected: boolean }
+  | { type: "setAggregateMemberWeight"; profileId: string; weight: number }
   | { type: "replaceModels"; models: ModelWindowRow[] }
   | { type: "mergeModels"; models: ModelWindowRow[] }
   | { type: "removeModel"; model: string }
-  | { type: "replaceStoredFiles"; configContents: string; authContents: string }
-  | { type: "setAggregate"; aggregate: RelayAggregateConfig };
+  | { type: "replaceStoredFiles"; configContents: string; authContents: string };
 
 export type RelayProfileCommitResult =
-  | { ok: true; profile: RelayProfile; settings: RelayProfileSettings }
+  | {
+      ok: true;
+      profile: RelayProfile;
+      settings: RelayProfileSettings;
+      switchIssue: RelayProfileIssue | null;
+    }
   | { ok: false; issues: RelayProfileIssue[] };
 
 export type RelayProfileCollectionEdit =

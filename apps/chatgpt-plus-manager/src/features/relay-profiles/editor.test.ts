@@ -26,6 +26,11 @@ if (false) {
   patch.modelWindows = "{}";
   // @ts-expect-error Relay profile patches cannot advertise structured model rows.
   patch.models = [];
+
+  const source = profile();
+  const opened = open(source, context([source]));
+  // @ts-expect-error mixedApi is a persisted legacy mode, not an editable mode.
+  edit(opened, { type: "setMode", mode: "mixedApi" });
 }
 
 function profile(patch: Partial<RelayProfile> = {}): RelayProfile {
@@ -108,6 +113,13 @@ describe("Relay profile editor", () => {
       "modelWindowRowsFromProfile",
       "serializeModelWindowRows",
       "mergeModelWindowRows",
+      "relayProfileSwitchValidation",
+      "relayProfileUsesLiveFiles",
+      "aggregateMemberCandidates",
+      "isApiRelayProfile",
+      "clampAggregateWeight",
+      "aggregateRelayProfileValidation",
+      "isAggregateRelayProfile",
     ]) {
       assert.equal(app.includes(forbidden), false, `${forbidden} remains in App`);
     }
@@ -356,21 +368,239 @@ describe("Relay profile editor", () => {
     );
   });
 
+  it("transitions mode through a dedicated intent before commit", () => {
+    const source = profile();
+    const opened = open(source, context([source]));
+    const official = edit(opened, { type: "setMode", mode: "official" });
+    const committed = commit(official);
+
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.equal(committed.profile.relayMode, "official");
+    assert.equal(committed.profile.officialMixApiKey, false);
+    assert.equal(committed.profile.configContents, "");
+    assert.doesNotMatch(committed.profile.authContents, /OPENAI_API_KEY/);
+  });
+
+  it("clears Aggregate config when transitioning to Official or Pure API", () => {
+    const member = profile({ id: "relay-b" });
+    const aggregate = profile({
+      id: "aggregate-a",
+      relayMode: "aggregate",
+      aggregate: { strategy: "weightedRoundRobin", members: [{ profileId: member.id, weight: 3 }] },
+    });
+    const opened = open(aggregate, context([aggregate, member]));
+
+    for (const mode of ["official", "pureApi"] as const) {
+      const edited = edit(opened, { type: "setMode", mode });
+      assert.equal(edited.draft.aggregate, null);
+      const committed = commit(edited);
+      assert.equal(committed.ok, true);
+      if (!committed.ok) continue;
+      assert.equal(committed.profile.aggregate, null);
+    }
+  });
+
+  it("treats Aggregate-only intents as no-ops outside Aggregate mode", () => {
+    const source = profile({ aggregate: null });
+    let state = open(source, context([source]));
+    const intents = [
+      { type: "setAggregateStrategy", strategy: "weightedRoundRobin" },
+      { type: "toggleAggregateMember", profileId: "relay-b", selected: true },
+      { type: "setAggregateMemberWeight", profileId: "relay-b", weight: 12 },
+    ] as const;
+
+    for (const intent of intents) {
+      const next = edit(state, intent);
+      assert.strictEqual(next, state);
+      state = next;
+    }
+    const committed = commit(state);
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.equal(committed.profile.aggregate, null);
+  });
+
+  it("changes Aggregate strategy through a dedicated intent", () => {
+    const member = profile({ id: "relay-b" });
+    const aggregate = profile({
+      id: "aggregate-a",
+      relayMode: "aggregate",
+      aggregate: { strategy: "failover", members: [{ profileId: member.id, weight: 1 }] },
+    });
+    const edited = edit(open(aggregate, context([aggregate, member])), {
+      type: "setAggregateStrategy",
+      strategy: "weightedRoundRobin",
+    });
+    const committed = commit(edited);
+
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.equal(committed.profile.aggregate?.strategy, "weightedRoundRobin");
+  });
+
+  it("toggles an Aggregate member through a dedicated intent", () => {
+    const member = profile({ id: "relay-b" });
+    const aggregate = profile({
+      id: "aggregate-a",
+      relayMode: "aggregate",
+      aggregate: { strategy: "failover", members: [] },
+    });
+    const selected = edit(open(aggregate, context([aggregate, member])), {
+      type: "toggleAggregateMember",
+      profileId: member.id,
+      selected: true,
+    });
+    const committed = commit(selected);
+
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.deepEqual(committed.profile.aggregate?.members, [
+      { profileId: member.id, weight: 1 },
+    ]);
+  });
+
+  it("clamps Aggregate member weight through a dedicated intent", () => {
+    const member = profile({ id: "relay-b" });
+    const aggregate = profile({
+      id: "aggregate-a",
+      relayMode: "aggregate",
+      aggregate: { strategy: "weightedRoundRobin", members: [{ profileId: member.id, weight: 1 }] },
+    });
+    const edited = edit(open(aggregate, context([aggregate, member])), {
+      type: "setAggregateMemberWeight",
+      profileId: member.id,
+      weight: 2000,
+    });
+    const committed = commit(edited);
+
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.deepEqual(committed.profile.aggregate?.members, [
+      { profileId: member.id, weight: 999 },
+    ]);
+  });
+
+  it("returns Aggregate candidates and total weight as state semantic data", () => {
+    const valid = profile({ id: "relay-valid" });
+    const noKey = profile({ id: "relay-no-key", apiKey: "", authContents: "{}" });
+    const nested = profile({
+      id: "aggregate-nested",
+      relayMode: "aggregate",
+      aggregate: { strategy: "failover", members: [{ profileId: valid.id, weight: 1 }] },
+    });
+    const aggregate = profile({
+      id: "aggregate-a",
+      relayMode: "aggregate",
+      aggregate: { strategy: "failover", members: [{ profileId: valid.id, weight: 3 }] },
+    });
+    const opened = open(aggregate, context([aggregate, valid, noKey, nested]));
+
+    assert.deepEqual(
+      opened.semantic?.aggregateCandidates.map((candidate) => candidate.id),
+      ["relay-valid"],
+    );
+    assert.equal(opened.semantic?.aggregateTotalWeight, 3);
+  });
+
+  it("exposes Aggregate candidates as minimal detached DTOs", () => {
+    const valid = profile({ id: "relay-valid", name: "Valid" });
+    const aggregate = profile({
+      id: "aggregate-a",
+      relayMode: "aggregate",
+      aggregate: { strategy: "failover", members: [{ profileId: valid.id, weight: 1 }] },
+    });
+    const opened = open(aggregate, context([aggregate, valid]));
+    const candidate = opened.semantic.aggregateCandidates[0];
+
+    assert.notStrictEqual(candidate, valid);
+    assert.deepEqual(Object.keys(candidate).sort(), [
+      "baseUrl",
+      "id",
+      "name",
+      "officialMixApiKey",
+      "protocol",
+      "relayMode",
+    ]);
+    assert.equal("apiKey" in candidate, false);
+    assert.equal("authContents" in candidate, false);
+    assert.equal("configContents" in candidate, false);
+  });
+
+  it("returns uses-live-files and switch eligibility for every Relay mode", () => {
+    const official = profile({
+      id: "official",
+      relayMode: "official",
+      officialMixApiKey: false,
+      configContents: "",
+    });
+    const pure = profile({ id: "pure", configContents: "" });
+    const mixed = profile({
+      id: "mixed",
+      relayMode: "official",
+      officialMixApiKey: true,
+      authContents: '{"OPENAI_API_KEY":"sk-mixed"}\n',
+    });
+    const aggregate = profile({
+      id: "aggregate",
+      relayMode: "aggregate",
+      aggregate: { strategy: "failover", members: [] },
+    });
+    const ctx = context([official, pure, mixed, aggregate]);
+
+    const officialState = open(official, ctx);
+    const pureState = open(pure, ctx);
+    const mixedState = open(mixed, ctx);
+    const aggregateState = open(aggregate, ctx);
+
+    assert.equal(officialState.semantic.usesLiveFiles, false);
+    assert.equal(officialState.semantic.switchIssue, null);
+    assert.equal(pureState.semantic.usesLiveFiles, true);
+    assert.equal(pureState.semantic.switchIssue?.code, "storedConfigRequired");
+    assert.equal(mixedState.semantic.usesLiveFiles, true);
+    assert.equal(mixedState.semantic.switchIssue?.code, "officialMixedAuthApiKey");
+    assert.equal(aggregateState.semantic.usesLiveFiles, true);
+    assert.equal(aggregateState.semantic.switchIssue?.code, "aggregateMembersRequired");
+  });
+
+  it("derives switch eligibility independently from save issues", () => {
+    const official = profile({
+      id: "official-invalid-window",
+      relayMode: "official",
+      officialMixApiKey: false,
+      configContents: "",
+      modelList: "model-a",
+      modelWindows: '{"model-a":"invalid"}',
+    });
+    const pure = profile({
+      id: "pure-invalid-window",
+      relayMode: "pureApi",
+      configContents: "",
+      modelList: "model-a",
+      modelWindows: '{"model-a":"invalid"}',
+    });
+    const ctx = context([official, pure]);
+
+    const officialState = open(official, ctx);
+    const pureState = open(pure, ctx);
+
+    assert.equal(officialState.issues[0]?.code, "invalidModelWindow");
+    assert.equal(officialState.semantic.switchIssue, null);
+    assert.equal(pureState.issues[0]?.code, "invalidModelWindow");
+    assert.equal(pureState.semantic.switchIssue?.code, "storedConfigRequired");
+  });
+
   it("projects Official, Official mixed, Pure API, and Aggregate modes consistently", () => {
     const source = profile();
     const opened = open(source, context([source]));
 
-    const official = edit(opened, {
-      type: "patch",
-      patch: { relayMode: "official", officialMixApiKey: false },
-    });
+    const official = edit(opened, { type: "setMode", mode: "official" });
     assert.equal(official.draft.configContents, "");
     assert.doesNotMatch(official.draft.authContents, /OPENAI_API_KEY/);
 
     const mixed = edit(official, {
       type: "patch",
       patch: {
-        relayMode: "official",
         officialMixApiKey: true,
         baseUrl: "https://mixed.example/v1",
         apiKey: "sk-mixed",
@@ -381,20 +611,14 @@ describe("Relay profile editor", () => {
     assert.match(mixed.draft.configContents, /experimental_bearer_token = "sk-mixed"/);
     assert.doesNotMatch(mixed.draft.authContents, /OPENAI_API_KEY/);
 
-    const pure = edit(mixed, {
+    const pure = edit(edit(mixed, { type: "setMode", mode: "pureApi" }), {
       type: "patch",
-      patch: { relayMode: "pureApi", apiKey: "sk-pure" },
+      patch: { apiKey: "sk-pure" },
     });
     assert.match(pure.draft.authContents, /sk-pure/);
     assert.doesNotMatch(pure.draft.configContents, /experimental_bearer_token/);
 
-    const aggregate = edit(pure, {
-      type: "setAggregate",
-      aggregate: {
-        strategy: "weightedRoundRobin",
-        members: [{ profileId: "relay-b", weight: 4 }],
-      },
-    });
+    const aggregate = edit(pure, { type: "setMode", mode: "aggregate" });
     assert.equal(aggregate.draft.relayMode, "aggregate");
     assert.equal(aggregate.draft.baseUrl, "");
     assert.equal(aggregate.draft.apiKey, "");
@@ -464,29 +688,31 @@ describe("Relay profile editor", () => {
     ctx.activeRelayId = aggregate.id;
     ctx.settings.activeRelayId = aggregate.id;
     const opened = open(aggregate, ctx);
-    const edited = edit(opened, {
-      type: "setAggregate",
-      aggregate: {
-        strategy: "weightedRoundRobin",
-        members: [
-          { profileId: "aggregate-a", weight: 2 },
-          { profileId: "aggregate-b", weight: 2 },
-          { profileId: "missing", weight: 2 },
-          { profileId: "relay-b", weight: 0 },
-          { profileId: "relay-b", weight: 2000 },
-        ],
-      },
+    const selected = edit(opened, {
+      type: "toggleAggregateMember",
+      profileId: "relay-b",
+      selected: true,
+    });
+    const edited = edit(selected, {
+      type: "setAggregateMemberWeight",
+      profileId: "relay-b",
+      weight: 0,
     });
     assert.deepEqual(edited.draft.aggregate?.members, [{ profileId: "relay-b", weight: 1 }]);
 
     const empty = edit(edited, {
-      type: "setAggregate",
-      aggregate: { strategy: "failover", members: [] },
+      type: "toggleAggregateMember",
+      profileId: "relay-b",
+      selected: false,
     });
     const result = commit(empty);
     assert.equal(result.ok, false);
     if (result.ok) return;
     assert.equal(result.issues[0].code, "aggregateMembersRequired");
+    assert.equal(
+      result.issues.find((issue) => issue.blocking)?.message,
+      "聚合供应商至少需要勾选 1 个已填写 Base URL / Key 的 API 供应商。",
+    );
   });
 
   it("excludes Relay profiles without both Base URL and API key from Aggregate membership", () => {
@@ -499,16 +725,14 @@ describe("Relay profile editor", () => {
       aggregate: { strategy: "failover", members: [] },
     });
     const ctx = context([aggregate, valid, noUrl, noKey]);
-    const edited = edit(open(aggregate, ctx), {
-      type: "setAggregate",
-      aggregate: {
-        strategy: "failover",
-        members: [
-          { profileId: "relay-valid", weight: 1 },
-          { profileId: "relay-no-url", weight: 1 },
-          { profileId: "relay-no-key", weight: 1 },
-        ],
-      },
+    const validSelected = edit(open(aggregate, ctx), {
+      type: "toggleAggregateMember", profileId: "relay-valid", selected: true,
+    });
+    const noUrlSelected = edit(validSelected, {
+      type: "toggleAggregateMember", profileId: "relay-no-url", selected: true,
+    });
+    const edited = edit(noUrlSelected, {
+      type: "toggleAggregateMember", profileId: "relay-no-key", selected: true,
     });
 
     assert.deepEqual(edited.draft.aggregate?.members, [

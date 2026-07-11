@@ -67,7 +67,6 @@ import {
   edit,
   editRelayProfileCollection,
   normalizeRelayProfileSettings,
-  normalizeRelayAggregateConfig,
   open as openProfileEditor,
   relayProfileFromDraft,
   seedRelayProfile,
@@ -76,11 +75,12 @@ import type {
   AggregateRelayProfile,
   ApplyRelayProfilePresetIntent,
   ModelWindowRow,
-  RelayAggregateConfig,
   RelayAggregateStrategy,
   RelayContextSelection,
   RelayMode,
   RelayProfile,
+  RelayProfileCandidate,
+  RelayProfileEditableMode,
   RelayProfileEditorState,
   RelayProfilePatch,
   RelayProtocol,
@@ -1641,7 +1641,12 @@ export function App() {
       targetRelayMode: targetProfile.relayMode,
     });
     const selectedBeforeSave = activeRelayProfile(switchSettings);
-    const validationError = relayProfileSwitchValidation(selectedBeforeSave);
+    const validationError = openProfileEditor(selectedBeforeSave, {
+      profiles: switchSettings.relayProfiles,
+      activeRelayId: switchSettings.activeRelayId,
+      defaultContextSelection: contextSelectionForAllEntries(switchSettings),
+      settings: switchSettings,
+    }).semantic.switchIssue?.message ?? null;
     if (validationError) {
       logDiagnostic("switchRelayProfile.validation_failed", {
         targetRelayId: selectedBeforeSave.id,
@@ -3703,14 +3708,14 @@ function SortableRelayProfileCard({
         </Button>
         <span className="relay-card-extra">
           <Button
-            disabled={isAggregateRelayProfile(profile)}
+            disabled={profile.relayMode === "aggregate"}
             onClick={(event) => {
               event.stopPropagation();
-              if (isAggregateRelayProfile(profile)) return;
+              if (profile.relayMode === "aggregate") return;
               void actions.testRelayProfile(profile);
             }}
             size="icon"
-            title={isAggregateRelayProfile(profile) ? t("聚合供应商会在真实对话中轮转成员，请测试成员供应商") : t("发送 hi 测试")}
+            title={profile.relayMode === "aggregate" ? t("聚合供应商会在真实对话中轮转成员，请测试成员供应商") : t("发送 hi 测试")}
             variant="ghost"
           >
             <TestTube className="h-4 w-4" />
@@ -3809,21 +3814,28 @@ function RelayProfileDetail({
   actions: Actions;
 }) {
   const isActive = !isNew && profile.id === form.activeRelayId;
-  const profileUsesLiveFiles = relayProfileUsesLiveFiles(profile);
-  const openEditor = () => openProfileEditor(profile, {
-    profiles: form.relayProfiles,
-    activeRelayId: form.activeRelayId,
-    defaultContextSelection: contextSelectionForAllEntries(form),
-    settings: form,
-    liveFiles: isActive && profileUsesLiveFiles && relayFiles ? {
-      configContents: relayFiles.configContents,
-      authContents: relayFiles.authContents,
-    } : null,
-  });
+  const openEditor = () => {
+    const editorContext = {
+      profiles: form.relayProfiles,
+      activeRelayId: form.activeRelayId,
+      defaultContextSelection: contextSelectionForAllEntries(form),
+      settings: form,
+      liveFiles: null,
+    };
+    const storedState = openProfileEditor(profile, editorContext);
+    if (!isActive || !storedState.semantic.usesLiveFiles || !relayFiles) return storedState;
+    return openProfileEditor(profile, {
+      ...editorContext,
+      liveFiles: {
+        configContents: relayFiles.configContents,
+        authContents: relayFiles.authContents,
+      },
+    });
+  };
   const [editorState, setEditorState] = useState<RelayProfileEditorState>(openEditor);
   useEffect(() => {
     setEditorState(openEditor());
-  }, [profile.id, profile.modelList, profile.modelWindows, profileUsesLiveFiles, isActive, isNew, relayFiles?.configContents, relayFiles?.authContents]);
+  }, [profile.id, profile.modelList, profile.modelWindows, profile.relayMode, profile.officialMixApiKey, isActive, isNew, relayFiles?.configContents, relayFiles?.authContents]);
   const draft = relayProfileFromDraft(editorState.draft);
   const validationError = editorState.issues.find((issue) => issue.blocking)?.message ?? null;
   const saveDraft = async () => {
@@ -3854,7 +3866,7 @@ function RelayProfileDetail({
         </Toolbar>
       </div>
         <RelayProfileEditor state={editorState} form={form} isNew={isNew} onStateChange={setEditorState} onSwitch={switchDraft} actions={actions} />
-      {isAggregateRelayProfile(draft) ? null : (
+      {editorState.draft.relayMode === "aggregate" ? null : (
       <RelayFileEditors
         contextProfile={profile}
         profile={draft}
@@ -3924,13 +3936,13 @@ function RelayProfileEditor({
   const [doctorResult, setDoctorResult] = useState<ProviderDoctorResult | null>(null);
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [doctorRunning, setDoctorRunning] = useState(false);
-  if (isAggregateRelayProfile(profile)) {
+  if (state.draft.relayMode === "aggregate") {
     return (
       <AggregateRelayProfileEditor
-        profile={profile}
+        state={state}
         form={form}
         isNew={isNew}
-        onProfileChange={(next) => onStateChange(edit(state, { type: "patch", patch: next }))}
+        onStateChange={onStateChange}
       />
     );
   }
@@ -3994,8 +4006,8 @@ function RelayProfileEditor({
             className="field-select"
             value={profile.relayMode}
             onChange={(event) => {
-              const relayMode = event.currentTarget.value as RelayMode;
-              updateDraft(relayMode === "official" ? { relayMode, officialMixApiKey: false } : { relayMode });
+              const relayMode = event.currentTarget.value as RelayProfileEditableMode;
+              onStateChange(edit(state, { type: "setMode", mode: relayMode }));
             }}
           >
             <option value="official">{t("官方登录")}</option>
@@ -4226,41 +4238,20 @@ function RelayProfileEditor({
 }
 
 function AggregateRelayProfileEditor({
-  profile,
+  state,
   form,
   isNew = false,
-  onProfileChange,
+  onStateChange,
 }: {
-  profile: RelayProfile;
+  state: RelayProfileEditorState;
   form: BackendSettings;
   isNew?: boolean;
-  onProfileChange: (value: RelayProfile) => void;
+  onStateChange: (value: RelayProfileEditorState) => void;
 }) {
-  const candidates = aggregateMemberCandidates(form, profile.id);
-  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
-  const aggregate = {
-    strategy: profile.aggregate?.strategy ?? "failover",
-    members: (profile.aggregate?.members ?? []).filter((member) => candidateIds.has(member.profileId)),
-  } as RelayAggregateConfig;
+  const profile = relayProfileFromDraft(state.draft);
+  const candidates = state.semantic.aggregateCandidates;
+  const aggregate = state.draft.aggregate ?? { strategy: "failover", members: [] };
   const memberIds = new Set(aggregate.members.map((member) => member.profileId));
-  const updateAggregate = (nextAggregate: RelayAggregateConfig) => {
-    onProfileChange({ ...profile, aggregate: nextAggregate });
-  };
-  const toggleMember = (profileId: string, checked: boolean) => {
-    const members = checked
-      ? [...aggregate.members, { profileId, weight: 1 }]
-      : aggregate.members.filter((member) => member.profileId !== profileId);
-    updateAggregate({ ...aggregate, members });
-  };
-  const updateWeight = (profileId: string, weight: number) => {
-    updateAggregate({
-      ...aggregate,
-      members: aggregate.members.map((member) =>
-        member.profileId === profileId ? { ...member, weight: clampAggregateWeight(weight) } : member,
-      ),
-    });
-  };
-  const totalWeight = aggregate.members.reduce((total, member) => total + clampAggregateWeight(member.weight), 0);
 
   return (
     <div className="relay-profile-editor aggregate-editor">
@@ -4275,14 +4266,14 @@ function AggregateRelayProfileEditor({
         <Field className="relay-field-name" label={t("名称")}>
           <Input
             value={profile.name}
-            onChange={(event) => onProfileChange({ ...profile, name: event.currentTarget.value })}
+            onChange={(event) => onStateChange(edit(state, { type: "patch", patch: { name: event.currentTarget.value } }))}
             placeholder={t("例如 主力聚合池")}
           />
         </Field>
         <Field className="relay-field-test-model" label={t("测试模型")}>
           <Input
             value={profile.testModel}
-            onChange={(event) => onProfileChange({ ...profile, testModel: event.currentTarget.value })}
+            onChange={(event) => onStateChange(edit(state, { type: "patch", patch: { testModel: event.currentTarget.value } }))}
             placeholder={tf("留空使用默认：{0}", [form.relayTestModel || defaultSettings.relayTestModel])}
           />
         </Field>
@@ -4290,7 +4281,7 @@ function AggregateRelayProfileEditor({
           <select
             className="field-select"
             value={aggregate.strategy}
-            onChange={(event) => updateAggregate({ ...aggregate, strategy: event.currentTarget.value as RelayAggregateStrategy })}
+            onChange={(event) => onStateChange(edit(state, { type: "setAggregateStrategy", strategy: event.currentTarget.value as RelayAggregateStrategy }))}
           >
             {aggregateStrategyOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -4305,7 +4296,7 @@ function AggregateRelayProfileEditor({
           <button
             className={`mode-option aggregate-strategy-option ${aggregate.strategy === option.value ? "active" : ""}`}
             key={option.value}
-            onClick={() => updateAggregate({ ...aggregate, strategy: option.value })}
+            onClick={() => onStateChange(edit(state, { type: "setAggregateStrategy", strategy: option.value }))}
             type="button"
           >
             <strong>{option.label}</strong>
@@ -4330,7 +4321,11 @@ function AggregateRelayProfileEditor({
                 <label className={`aggregate-member-row ${checked ? "selected" : ""}`} key={candidate.id}>
                   <input
                     checked={checked}
-                    onChange={(event) => toggleMember(candidate.id, event.currentTarget.checked)}
+                    onChange={(event) => onStateChange(edit(state, {
+                      type: "toggleAggregateMember",
+                      profileId: candidate.id,
+                      selected: event.currentTarget.checked,
+                    }))}
                     type="checkbox"
                   />
                   <span className="aggregate-member-summary">
@@ -4342,7 +4337,11 @@ function AggregateRelayProfileEditor({
                     <Input
                       disabled={!checked}
                       min={1}
-                      onChange={(event) => updateWeight(candidate.id, Number.parseInt(event.currentTarget.value, 10))}
+                      onChange={(event) => onStateChange(edit(state, {
+                        type: "setAggregateMemberWeight",
+                        profileId: candidate.id,
+                        weight: Number.parseInt(event.currentTarget.value, 10),
+                      }))}
                       type="number"
                       value={String(member?.weight ?? 1)}
                     />
@@ -4358,7 +4357,7 @@ function AggregateRelayProfileEditor({
       <div className="relay-grid compact aggregate-preview">
         <Metric label={t("策略")} value={aggregateStrategyLabel(aggregate.strategy)} />
         <Metric label={t("成员数量")} value={tf("{0} 个", [aggregate.members.length])} />
-        <Metric label={t("总权重")} value={`${totalWeight}`} />
+        <Metric label={t("总权重")} value={`${state.semantic.aggregateTotalWeight}`} />
         <Metric label={t("序列化字段")} value="aggregate.strategy / aggregate.members" />
       </div>
       <div className="hint-line relay-protocol-hint">
@@ -5985,17 +5984,21 @@ function maskSecret(value: string): string {
   return `${trimmed.slice(0, 6)}…${trimmed.slice(-4)}`;
 }
 
-function relayProfileConfigBrief(profile: RelayProfile): string {
-  if (isAggregateRelayProfile(profile)) {
-    const aggregate = normalizeRelayAggregateConfig(profile.aggregate, profile.id, []);
-    return tf("{0} · {1} 个成员", [aggregateStrategyLabel(aggregate.strategy), aggregate.members.length]);
+function relayProfileConfigBrief(
+  profile: Pick<RelayProfile, "relayMode" | "officialMixApiKey" | "baseUrl" | "aggregate"> | RelayProfileCandidate,
+): string {
+  if (profile.relayMode === "aggregate") {
+    return tf("{0} · {1} 个成员", [
+      aggregateStrategyLabel(profile.aggregate?.strategy ?? "failover"),
+      profile.aggregate?.members.length ?? 0,
+    ]);
   }
   if (profile.relayMode === "official") return profile.officialMixApiKey ? t("混入 API Key") : t("不写 API 文件");
   return profile.baseUrl || t("未填写 URL");
 }
 
 function relayProfileModeHelp(profile: RelayProfile): string {
-  if (isAggregateRelayProfile(profile)) {
+  if (profile.relayMode === "aggregate") {
     return t("聚合供应商只保存成员和策略配置，成员来自已有 API 供应商；切为当前后会通过本地协议代理轮转请求。");
   }
   if (profile.relayMode === "official") {
@@ -6011,9 +6014,11 @@ function relayProfileModeHelp(profile: RelayProfile): string {
 }
 
 function relayProfileReadinessText(profile: RelayProfile, relay: RelayResult | null): string {
-  if (isAggregateRelayProfile(profile)) {
-    const aggregate = normalizeRelayAggregateConfig(profile.aggregate, profile.id, []);
-    return tf("聚合供应商已配置为{0}，包含 {1} 个成员；真实对话会走本地代理轮转。", [aggregateStrategyLabel(aggregate.strategy), aggregate.members.length]);
+  if (profile.relayMode === "aggregate") {
+    return tf("聚合供应商已配置为{0}，包含 {1} 个成员；真实对话会走本地代理轮转。", [
+      aggregateStrategyLabel(profile.aggregate?.strategy ?? "failover"),
+      profile.aggregate?.members.length ?? 0,
+    ]);
   }
   if (profile.relayMode === "official") {
     if (profile.officialMixApiKey) {
@@ -6034,109 +6039,10 @@ function relayProfileReadinessText(profile: RelayProfile, relay: RelayResult | n
 }
 
 function relayProfileModeSwitchedText(profile: RelayProfile): string {
-  if (isAggregateRelayProfile(profile)) return t("已切换到聚合供应商；真实对话会按所选策略轮转成员。");
+  if (profile.relayMode === "aggregate") return t("已切换到聚合供应商；真实对话会按所选策略轮转成员。");
   if (profile.relayMode === "pureApi") return t("已按此供应商切换到纯 API；Codex增强已设为完整增强。");
   if (profile.officialMixApiKey) return t("已按此供应商使用官方登录，并混入 API Key；Codex增强已设为兼容增强。");
   return t("已按此供应商切回官方登录；Codex增强已设为兼容增强。");
-}
-
-function generatedProfileLocal(profile: RelayProfile): RelayProfile {
-  if (isAggregateRelayProfile(profile)) {
-    return { ...profile, configContents: "", authContents: "", aggregate: canonicalAggregateConfigLocal(profile.aggregate, []) };
-  }
-  if (profile.relayMode === "official") {
-    return {
-      ...profile,
-      configContents: profile.officialMixApiKey ? buildRelayConfigToml(profile, { includeBearerToken: true }) : "",
-      authContents: profile.authContents || "",
-    };
-  }
-  return {
-    ...profile,
-    configContents: buildRelayConfigToml(profile, { includeBearerToken: false }),
-    authContents: buildRelayAuthJson(profile),
-  };
-}
-
-function buildRelayConfigToml(
-  profile: Pick<RelayProfile, "model" | "baseUrl" | "upstreamBaseUrl" | "apiKey" | "protocol">,
-  options: { includeBearerToken: boolean },
-): string {
-  const baseUrl = profile.protocol === "chatCompletions" ? PROTOCOL_PROXY_BASE_URL : profile.baseUrl.trim();
-  const apiKey = profile.apiKey.trim();
-  const rootLines = [
-    profile.model.trim() ? `model = "${tomlString(profile.model.trim())}"` : null,
-    'model_provider = "custom"',
-    "",
-  ].filter((line): line is string => line !== null);
-  return [
-    ...rootLines,
-    "[model_providers.custom]",
-    'name = "custom"',
-    'wire_api = "responses"',
-    "requires_openai_auth = true",
-    `base_url = "${tomlString(baseUrl)}"`,
-    options.includeBearerToken && apiKey ? `experimental_bearer_token = "${tomlString(apiKey)}"` : null,
-    "",
-  ].filter((line): line is string => line !== null).join("\n");
-}
-
-function buildRelayAuthJson(profile: Pick<RelayProfile, "apiKey">): string {
-  return `${JSON.stringify({ OPENAI_API_KEY: profile.apiKey.trim() }, null, 2)}\n`;
-}
-
-function buildOfficialRelayAuthJson(contents: string): string {
-  const trimmed = contents.trim();
-  if (!trimmed) return "";
-  try {
-    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "";
-    delete parsed.OPENAI_API_KEY;
-    return `${JSON.stringify(parsed, null, 2)}\n`;
-  } catch {
-    return "";
-  }
-}
-
-function canonicalStoredProfileLocal(profile: RelayProfile): RelayProfile {
-  if (isAggregateRelayProfile(profile)) {
-    return canonicalAggregateProfileLocal(profile, null);
-  }
-  const configContents = profile.configContents || "";
-  const authContents = profile.relayMode === "official" ? buildOfficialRelayAuthJson(profile.authContents || "") : profile.authContents || "";
-  const configBaseUrl = codexBaseUrlFromConfig(configContents);
-  const chatUpstreamBaseUrl = rootTomlStringValue(configContents, CHAT_UPSTREAM_BASE_URL_KEY);
-  const isProxyConfig = configBaseUrl === PROTOCOL_PROXY_BASE_URL;
-  const upstreamBaseUrl = profile.upstreamBaseUrl || chatUpstreamBaseUrl || (configBaseUrl && !isProxyConfig ? configBaseUrl : profile.baseUrl || "");
-  const configApiKey = codexExperimentalBearerTokenFromConfig(configContents);
-  const configModel = codexModelFromConfig(configContents);
-  // 如果用户输入了带后缀的模型名，优先保留在界面的「配置模型」字段中；
-  // config.toml 里实际写的是剥离后缀的 slug（由 editor projection 处理）。
-  const model = /\[.+\]$/.test(profile.model.trim()) ? profile.model.trim() : configModel;
-  return {
-    ...profile,
-    model,
-    baseUrl: upstreamBaseUrl,
-    upstreamBaseUrl,
-    apiKey: profile.relayMode === "official"
-      ? configApiKey || profile.apiKey || ""
-      : codexApiKeyFromAuth(authContents) || configApiKey || "",
-    contextWindow: codexTopLevelIntFromConfig(configContents, "model_context_window"),
-    autoCompactLimit: codexTopLevelIntFromConfig(configContents, "model_auto_compact_token_limit"),
-    configContents,
-    authContents,
-  };
-}
-
-function codexModelFromConfig(contents: string): string {
-  for (const line of contents.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    if (trimmed.startsWith("[")) break;
-    const match = /^model\s*=\s*(["'])(.*)\1\s*$/.exec(trimmed);
-    if (match) return match[2].replace(/\\(["'\\])/g, "$1");
-  }
-  return "";
 }
 
 /// 解析模型后缀语法，如 deepseek-v4-flash[1M] -> { slug: "deepseek-v4-flash", window: 1000000 }
@@ -6153,36 +6059,6 @@ function parseModelSuffix(raw: string): { slug: string; window?: number } {
   const window = Number.parseInt(numPart, 10) * multiplier;
   if (!Number.isFinite(window) || window <= 0) return { slug: trimmed };
   return { slug: match[1].trim(), window };
-}
-
-function codexBaseUrlFromConfig(contents: string): string {
-  return codexProviderStringFromConfig(contents, "base_url");
-}
-
-function codexExperimentalBearerTokenFromConfig(contents: string): string {
-  return codexProviderStringFromConfig(contents, "experimental_bearer_token");
-}
-
-function codexProviderStringFromConfig(contents: string, key: string): string {
-  const provider = rootTomlStringValue(contents, "model_provider");
-  const targetSection = provider ? `model_providers.${provider}` : "";
-  const lines = contents.split(/\r?\n/);
-  let currentSection = "";
-  const matches: string[] = [];
-
-  for (const line of lines) {
-    const section = tomlSectionName(line);
-    if (section !== null) {
-      currentSection = section;
-      continue;
-    }
-    const value = tomlStringAssignmentValue(line, key);
-    if (value === null) continue;
-    if (targetSection && currentSection === targetSection) return value;
-    if (!currentSection || !currentSection.startsWith("model_providers.")) matches.push(value);
-  }
-
-  return matches.length === 1 ? matches[0] : "";
 }
 
 function codexApiKeyFromAuth(contents: string): string {
@@ -6352,69 +6228,8 @@ function removeTomlSectionKey(contents: string, sectionName: string, key: string
   return ensureTrailingNewline(next.join("\n").trimEnd());
 }
 
-function relayProfileSwitchValidation(profile: RelayProfile): string | null {
-  if (isAggregateRelayProfile(profile)) {
-    return aggregateRelayProfileValidation(profile);
-  }
-  if (profile.relayMode === "official" && !profile.officialMixApiKey) return null;
-  if (!profile.configContents.trim()) {
-    return tf("供应商「{0}」缺少独立 config.toml，已停止切换，避免继续显示上一套配置文件。请先在该供应商详情里保存 config.toml。", [profile.name || profile.id]);
-  }
-  if (profile.relayMode !== "official" || !authJsonHasOpenAiApiKey(profile.authContents)) return null;
-  return t("官方混合 API 不应在 auth.json 中保存 OPENAI_API_KEY。请清理此供应商的 auth.json 后再切换。");
-}
-
-function relayProfileUsesLiveFiles(profile: RelayProfile): boolean {
-  return profile.relayMode !== "official" || profile.officialMixApiKey;
-}
-
-function authJsonHasOpenAiApiKey(contents: string): boolean {
-  const trimmed = contents.trim();
-  if (!trimmed) return false;
-  try {
-    const value = JSON.parse(trimmed);
-    return !!value && typeof value === "object" && typeof value.OPENAI_API_KEY === "string" && value.OPENAI_API_KEY.trim().length > 0;
-  } catch {
-    return /"OPENAI_API_KEY"\s*:/.test(trimmed);
-  }
-}
-
 function tomlString(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function projectLegacySettingsLocal(settings: BackendSettings): BackendSettings {
-  const relayProfiles = settings.relayProfiles.map((profile) =>
-    isAggregateRelayProfile(profile) ? canonicalAggregateProfileLocal(profile, { ...settings, relayProfiles: settings.relayProfiles }) : canonicalStoredProfileLocal(profile),
-  );
-  const active = activeRelayProfile({ ...settings, relayProfiles });
-  const aggregateRelayProfiles = normalizeAggregateProfilesFromRelayProfiles(relayProfiles);
-  const activeAggregateRelayId = isAggregateRelayProfile(active) ? active.id : "";
-  return {
-    ...settings,
-    relayProfiles,
-    activeRelayId: active.id,
-    relayBaseUrl: isAggregateRelayProfile(active) ? PROTOCOL_PROXY_BASE_URL : active.baseUrl,
-    relayApiKey: active.apiKey,
-    aggregateRelayProfiles,
-    activeAggregateRelayId,
-  };
-}
-
-function normalizeAggregateProfilesFromRelayProfiles(profiles: RelayProfile[]): AggregateRelayProfile[] {
-  const candidates = profiles.filter((profile) => !isAggregateRelayProfile(profile));
-  return profiles.filter(isAggregateRelayProfile).map((profile) => {
-    const aggregate = canonicalAggregateConfigLocal(profile.aggregate, candidates);
-    return {
-      id: profile.id,
-      name: profile.name || t("聚合供应商"),
-      strategy: aggregate.strategy,
-      members: aggregate.members.map((member) => ({
-        relayId: member.profileId,
-        weight: clampAggregateWeight(member.weight),
-      })),
-    };
-  });
 }
 const aggregateStrategyOptions: Array<{ value: RelayAggregateStrategy; label: string; description: string }> = [
   {
@@ -6439,62 +6254,6 @@ const aggregateStrategyOptions: Array<{ value: RelayAggregateStrategy; label: st
   },
 ];
 
-function isAggregateRelayProfile(profile: Pick<RelayProfile, "relayMode" | "aggregate">): boolean {
-  return profile.relayMode === "aggregate" || !!profile.aggregate;
-}
-
-function canonicalAggregateProfileLocal(profile: RelayProfile, settings: BackendSettings | null): RelayProfile {
-  const candidates = settings ? aggregateMemberCandidates(settings, profile.id) : [];
-  const aggregate = canonicalAggregateConfigLocal(profile.aggregate, candidates);
-  return {
-    ...profile,
-    baseUrl: "",
-    upstreamBaseUrl: "",
-    apiKey: "",
-    protocol: "responses",
-    relayMode: "aggregate",
-    officialMixApiKey: false,
-    configContents: "",
-    authContents: "",
-    aggregate,
-  };
-}
-
-function canonicalAggregateConfigLocal(
-  aggregate: RelayAggregateConfig | null | undefined,
-  candidates: RelayProfile[],
-): RelayAggregateConfig {
-  const candidateIds = new Set(candidates.map((profile) => profile.id));
-  const seen = new Set<string>();
-  const strategy: RelayAggregateStrategy =
-    aggregate?.strategy && aggregateStrategyOptions.some((option) => option.value === aggregate.strategy)
-      ? aggregate.strategy
-      : "failover";
-  const members = (aggregate?.members ?? [])
-    .filter((member) => member.profileId && !seen.has(member.profileId))
-    .filter((member) => !candidateIds.size || candidateIds.has(member.profileId))
-    .map((member) => {
-      seen.add(member.profileId);
-      return { profileId: member.profileId, weight: clampAggregateWeight(member.weight) };
-    });
-  return { strategy, members };
-}
-
-function aggregateMemberCandidates(settings: BackendSettings, aggregateId: string): RelayProfile[] {
-  return settings.relayProfiles.filter(
-    (profile) => profile.id !== aggregateId && !isAggregateRelayProfile(profile) && isApiRelayProfile(profile),
-  );
-}
-
-function isApiRelayProfile(profile: RelayProfile): boolean {
-  return Boolean(profile.baseUrl.trim() && profile.apiKey.trim());
-}
-
-function clampAggregateWeight(value: number): number {
-  if (!Number.isFinite(value)) return 1;
-  return Math.max(1, Math.min(999, Math.round(value)));
-}
-
 function aggregateStrategyLabel(strategy: RelayAggregateStrategy): string {
   return aggregateStrategyOptions.find((option) => option.value === strategy)?.label ?? t("失败切换");
 }
@@ -6504,11 +6263,6 @@ function aggregateStrategyHelp(strategy: RelayAggregateStrategy): string {
   if (strategy === "conversationRoundRobin") return t("按对话轮转会让同一对话尽量保持固定成员，降低上下文漂移。");
   if (strategy === "requestRoundRobin") return t("按请求轮转会逐请求切换成员，适合供应商能力接近的场景。");
   return t("权重轮转会读取每个成员的权重值，权重越高的成员获得更多请求。");
-}
-
-function aggregateRelayProfileValidation(profile: RelayProfile): string | null {
-  const aggregate = normalizeRelayAggregateConfig(profile.aggregate, profile.id, []);
-  return aggregate.members.length >= 1 ? null : t("聚合供应商至少需要勾选 1 个已填写 Base URL / Key 的 API 供应商。");
 }
 
 function numberOrDefault(value: string, fallback: number) {

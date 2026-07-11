@@ -5,6 +5,7 @@ import type {
   RelayAggregateStrategy,
   RelayContextSelection,
   RelayProfile,
+  RelayProfileCandidate,
   RelayProfileCollectionEdit,
   RelayProfileCommitResult,
   RelayProfileDraft,
@@ -132,14 +133,6 @@ export function canonicalizeRelayProfile(profile: RelayProfile, profiles: RelayP
   return deriveProfileFromStoredFiles(profile);
 }
 
-export function normalizeRelayAggregateConfig(
-  aggregate: RelayAggregateConfig | null | undefined,
-  aggregateId: string,
-  profiles: RelayProfile[],
-): RelayAggregateConfig {
-  return normalizeAggregate(aggregate, aggregateId, profiles);
-}
-
 export function relayProfileFromDraft(draft: RelayProfileDraft): RelayProfile {
   const serialized = serializeRows(draft.models);
   const { models: _models, ...profile } = draft;
@@ -189,6 +182,49 @@ export function edit(
   state: RelayProfileEditorState,
   intent: RelayProfileEdit,
 ): RelayProfileEditorState {
+  if (intent.type === "setMode") {
+    const draft = projectDraft({
+      ...state.draft,
+      relayMode: intent.mode,
+      officialMixApiKey: intent.mode === "official" ? false : state.draft.officialMixApiKey,
+      aggregate: intent.mode === "aggregate"
+        ? normalizeAggregate(state.draft.aggregate, state.sourceId, state.context.profiles)
+        : null,
+    });
+    return withIssues({ ...state, draft });
+  }
+  if (intent.type === "setAggregateStrategy") {
+    if (state.draft.relayMode !== "aggregate") return state;
+    const aggregate = normalizeAggregate({
+      strategy: intent.strategy,
+      members: state.draft.aggregate?.members ?? [],
+    }, state.sourceId, state.context.profiles);
+    return withIssues({ ...state, draft: { ...state.draft, aggregate } });
+  }
+  if (intent.type === "toggleAggregateMember") {
+    if (state.draft.relayMode !== "aggregate") return state;
+    const current = state.draft.aggregate ?? { strategy: "failover", members: [] };
+    const members = intent.selected
+      ? [...current.members, { profileId: intent.profileId, weight: 1 }]
+      : current.members.filter((member) => member.profileId !== intent.profileId);
+    const aggregate = normalizeAggregate(
+      { strategy: current.strategy, members },
+      state.sourceId,
+      state.context.profiles,
+    );
+    return withIssues({ ...state, draft: { ...state.draft, aggregate } });
+  }
+  if (intent.type === "setAggregateMemberWeight") {
+    if (state.draft.relayMode !== "aggregate") return state;
+    const current = state.draft.aggregate ?? { strategy: "failover", members: [] };
+    const aggregate = normalizeAggregate({
+      strategy: current.strategy,
+      members: current.members.map((member) => member.profileId === intent.profileId
+        ? { ...member, weight: intent.weight }
+        : member),
+    }, state.sourceId, state.context.profiles);
+    return withIssues({ ...state, draft: { ...state.draft, aggregate } });
+  }
   if (intent.type === "applyPreset") {
     const draft = projectDraft({
       ...state.draft,
@@ -224,14 +260,6 @@ export function edit(
       draft: { ...state.draft, models: models.length ? models : [{ model: "", window: "" }] },
     });
   }
-  if (intent.type === "setAggregate") {
-    const draft = projectDraft({
-      ...state.draft,
-      relayMode: "aggregate",
-      aggregate: normalizeAggregate(intent.aggregate, state.sourceId, state.context.profiles),
-    });
-    return withIssues({ ...state, draft });
-  }
   if (intent.type === "replaceStoredFiles") {
     const serialized = serializeRows(state.draft.models);
     const { models, ...current } = state.draft;
@@ -255,24 +283,21 @@ export function edit(
     modelList: _modelList,
     modelWindows: _modelWindows,
     models: _models,
-    aggregate,
+    aggregate: _aggregate,
+    relayMode: _relayMode,
     ...profilePatch
   } = structuredClone(intent.patch) as RelayProfilePatch & {
     modelList?: unknown;
     modelWindows?: unknown;
     models?: unknown;
+    aggregate?: unknown;
+    relayMode?: unknown;
   };
   let patched: RelayProfileDraft = {
     ...state.draft,
     ...profilePatch,
     models: state.draft.models,
   };
-  if (aggregate !== undefined) {
-    patched = {
-      ...patched,
-      aggregate: normalizeAggregate(aggregate, state.sourceId, state.context.profiles),
-    };
-  }
   if (intent.patch.baseUrl !== undefined) patched.upstreamBaseUrl = intent.patch.baseUrl;
   if (intent.patch.upstreamBaseUrl !== undefined) patched.baseUrl = intent.patch.upstreamBaseUrl;
   const draft = projectDraft(patched);
@@ -313,6 +338,7 @@ export function commit(state: RelayProfileEditorState): RelayProfileCommitResult
   return {
     ok: true,
     profile,
+    switchIssue: switchIssueForDraft(state.draft),
     settings: {
       ...state.context.settings,
       relayProfiles,
@@ -496,8 +522,61 @@ function canonicalRows(rows: ModelWindowRow[]): ModelWindowRow[] {
   return canonical.length ? canonical : [{ model: "", window: "" }];
 }
 
-function withIssues(state: RelayProfileEditorState): RelayProfileEditorState {
-  return { ...state, issues: issuesForDraft(state.draft) };
+function withIssues(
+  state: Omit<RelayProfileEditorState, "issues" | "semantic"> &
+    Partial<Pick<RelayProfileEditorState, "issues" | "semantic">>,
+): RelayProfileEditorState {
+  const aggregateCandidates = aggregateCandidatesFor(
+    state.sourceId,
+    state.context.profiles,
+  );
+  return {
+    ...state,
+    issues: issuesForDraft(state.draft),
+    semantic: {
+      aggregateCandidates,
+      aggregateTotalWeight: (state.draft.aggregate?.members ?? []).reduce(
+        (total, member) => total + member.weight,
+        0,
+      ),
+      usesLiveFiles: state.draft.relayMode !== "official" || state.draft.officialMixApiKey,
+      switchIssue: switchIssueForDraft(state.draft),
+    },
+  };
+}
+
+function switchIssueForDraft(draft: RelayProfileDraft): RelayProfileIssue | null {
+  if (draft.relayMode === "aggregate") {
+    if (draft.aggregate?.members.length) return null;
+    return aggregateMembersRequiredIssue();
+  }
+  if (draft.relayMode === "official" && !draft.officialMixApiKey) return null;
+  if (!draft.configContents.trim()) {
+    return {
+      code: "storedConfigRequired",
+      field: "configContents",
+      message: `供应商「${draft.name || draft.id}」缺少独立 config.toml，已停止切换，避免继续显示上一套配置文件。请先在该供应商详情里保存 config.toml。`,
+      blocking: true,
+    };
+  }
+  if (draft.relayMode !== "official" || !authHasApiKey(draft.authContents)) return null;
+  return {
+    code: "officialMixedAuthApiKey",
+    field: "authContents",
+    message: "官方混合 API 不应在 auth.json 中保存 OPENAI_API_KEY。请清理此供应商的 auth.json 后再切换。",
+    blocking: true,
+  };
+}
+
+function authHasApiKey(contents: string): boolean {
+  const trimmed = contents.trim();
+  if (!trimmed) return false;
+  try {
+    const value = JSON.parse(trimmed) as { OPENAI_API_KEY?: unknown };
+    return typeof value?.OPENAI_API_KEY === "string" && value.OPENAI_API_KEY.trim().length > 0;
+  } catch {
+    return /"OPENAI_API_KEY"\s*:/.test(trimmed);
+  }
 }
 
 function issuesForDraft(draft: RelayProfileDraft): RelayProfileIssue[] {
@@ -513,14 +592,18 @@ function issuesForDraft(draft: RelayProfileDraft): RelayProfileIssue[] {
     });
   }
   if (draft.relayMode === "aggregate" && !(draft.aggregate?.members.length)) {
-    issues.push({
-      code: "aggregateMembersRequired",
-      field: "aggregate.members",
-      message: "聚合供应商至少需要一个成员。",
-      blocking: true,
-    });
+    issues.push(aggregateMembersRequiredIssue());
   }
   return issues;
+}
+
+function aggregateMembersRequiredIssue(): RelayProfileIssue {
+  return {
+    code: "aggregateMembersRequired",
+    field: "aggregate.members",
+    message: "聚合供应商至少需要勾选 1 个已填写 Base URL / Key 的 API 供应商。",
+    blocking: true,
+  };
 }
 
 function normalizeAggregate(
@@ -529,15 +612,7 @@ function normalizeAggregate(
   profiles: RelayProfile[],
 ): RelayAggregateConfig {
   const candidates = new Set(
-    profiles
-      .filter(
-        (profile) =>
-          profile.id !== sourceId &&
-          profile.relayMode !== "aggregate" &&
-          !profile.aggregate &&
-          Boolean(profile.baseUrl.trim() && profile.apiKey.trim()),
-      )
-      .map((profile) => profile.id),
+    aggregateCandidatesFor(sourceId, profiles).map((profile) => profile.id),
   );
   const seen = new Set<string>();
   const members: RelayAggregateMember[] = [];
@@ -559,6 +634,25 @@ function normalizeAggregate(
       : "failover",
     members,
   };
+}
+
+function aggregateCandidatesFor(sourceId: string, profiles: RelayProfile[]): RelayProfileCandidate[] {
+  return profiles
+    .filter(
+      (profile): profile is RelayProfile & { relayMode: RelayProfileCandidate["relayMode"] } =>
+        profile.id !== sourceId &&
+        profile.relayMode !== "aggregate" &&
+        !profile.aggregate &&
+        Boolean(profile.baseUrl.trim() && profile.apiKey.trim()),
+    )
+    .map((profile) => ({
+      id: profile.id,
+      name: profile.name,
+      relayMode: profile.relayMode,
+      protocol: profile.protocol,
+      baseUrl: profile.baseUrl,
+      officialMixApiKey: profile.officialMixApiKey,
+    }));
 }
 
 function cleanupAggregateReferences(profiles: RelayProfile[]): RelayProfile[] {
