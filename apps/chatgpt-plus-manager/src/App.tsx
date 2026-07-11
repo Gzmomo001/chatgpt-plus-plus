@@ -56,6 +56,7 @@ import { ProviderPresetSelector } from "@/features/relay-profiles/components/Pro
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import { Badge as UiBadge } from "@/components/ui/badge";
+import { ROUTE_IDS, type Route } from "@/app/routes";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -593,22 +594,23 @@ type StartupResult = CommandResult<{
   showUpdate: boolean;
 }>;
 
-type Route = "overview" | "relay" | "sessions" | "context" | "enhance" | "zedRemote" | "userScripts" | "recommendations" | "maintenance" | "about" | "settings";
 type Theme = "dark" | "light";
 
-const routes: Array<{ id: Route; label: string; icon: LucideIcon; badge?: string }> = [
-  { id: "overview", label: t("概览"), icon: LayoutDashboard },
-  { id: "relay", label: t("供应商配置"), icon: KeyRound },
-  { id: "sessions", label: t("会话管理"), icon: MessageCircle },
-  { id: "context", label: t("工具与插件"), icon: Network },
-  { id: "enhance", label: t("Codex增强"), icon: Hammer },
-  { id: "zedRemote", label: t("Zed 远程项目"), icon: ExternalLink },
-  { id: "userScripts", label: t("脚本市场"), icon: FileCode2 },
-  { id: "recommendations", label: t("推荐内容"), icon: ExternalLink },
-  { id: "maintenance", label: t("安装维护"), icon: Wrench },
-  { id: "about", label: t("关于"), icon: Info },
-  { id: "settings", label: t("设置"), icon: Settings },
-];
+const routePresentation: Record<Route, { label: string; icon: LucideIcon; badge?: string }> = {
+  overview: { label: t("概览"), icon: LayoutDashboard },
+  relay: { label: t("供应商配置"), icon: KeyRound },
+  sessions: { label: t("会话管理"), icon: MessageCircle },
+  context: { label: t("工具与插件"), icon: Network },
+  enhance: { label: t("Codex增强"), icon: Hammer },
+  zedRemote: { label: t("Zed 远程项目"), icon: ExternalLink },
+  userScripts: { label: t("脚本市场"), icon: FileCode2 },
+  recommendations: { label: t("推荐内容"), icon: ExternalLink },
+  maintenance: { label: t("安装维护"), icon: Wrench },
+  about: { label: t("关于"), icon: Info },
+  settings: { label: t("设置"), icon: Settings },
+};
+
+const routes = ROUTE_IDS.map((id) => ({ id, ...routePresentation[id] }));
 
 const defaultSettings: BackendSettings = {
   codexAppPath: "",
