@@ -1784,7 +1784,7 @@ pub fn relay_status() -> CommandResult<RelayPayload> {
 
 #[tauri::command]
 pub fn read_relay_files() -> CommandResult<RelayFilesPayload> {
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     match relay_files_payload_from_home(&home) {
         Ok(payload) => ok("配置文件内容已读取。", payload),
         Err(error) => failed(
@@ -1840,7 +1840,7 @@ pub fn remove_env_conflicts(
 
 #[tauri::command]
 pub fn save_relay_file(request: SaveRelayFileRequest) -> CommandResult<RelayFilesPayload> {
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     match save_relay_file_in_home(&home, &request.kind, &request.contents)
         .and_then(|_| relay_files_payload_from_home(&home))
     {
@@ -1879,7 +1879,7 @@ pub fn switch_relay_profile(
             ),
         );
     };
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let store = SettingsStore::default();
     let settings = normalize_settings_before_save(request.settings);
     let target_relay_id = request.target_relay_id;
@@ -1941,7 +1941,7 @@ pub fn write_diagnostic_event(event: String, detail: Value) -> CommandResult<Val
 pub fn backfill_relay_profile_from_live(
     request: BackfillRelayProfileRequest,
 ) -> CommandResult<SettingsBackfillPayload> {
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let mut settings = request.settings;
     let requested_profile_id = request.profile_id.clone();
     log_manager_event(
@@ -2027,7 +2027,7 @@ pub fn list_context_entries(
 
 #[tauri::command]
 pub fn read_live_context_entries() -> CommandResult<LiveContextEntriesPayload> {
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let config_path = home.join("config.toml");
     let config = read_optional_text_file(&config_path).unwrap_or_default();
     match chatgpt_plus_core::relay_config::list_context_entries_from_common_config(&config) {
@@ -2071,7 +2071,7 @@ pub fn upsert_context_entry(request: ContextEntryRequest) -> CommandResult<Conte
 pub fn sync_live_context_entries(
     request: ContextSettingsRequest,
 ) -> CommandResult<LiveContextEntriesPayload> {
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let config_path = home.join("config.toml");
     let current_config = match read_optional_text_file(&config_path) {
         Ok(config) => config,
@@ -2514,7 +2514,7 @@ fn provider_doctor_recommendation(checks: &[ProviderDoctorCheck]) -> String {
 
 #[tauri::command]
 pub fn apply_relay_injection() -> CommandResult<RelayPayload> {
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
     reconcile_relay_injection_in_home(
         "manager.apply_relay_injection",
@@ -2527,7 +2527,7 @@ pub fn apply_relay_injection() -> CommandResult<RelayPayload> {
 
 #[tauri::command]
 pub fn apply_pure_api_injection() -> CommandResult<RelayPayload> {
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
     reconcile_relay_injection_in_home(
         "manager.apply_pure_api_injection",
@@ -2580,7 +2580,7 @@ fn reconcile_relay_injection_in_home(
 
 #[tauri::command]
 pub fn clear_relay_injection() -> CommandResult<RelayPayload> {
-    let home = chatgpt_plus_core::relay_config::default_codex_home_dir();
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
     clear_relay_injection_in_home(&home, &settings)
 }

@@ -3,6 +3,9 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 
+#[path = "relay_config.rs"]
+pub mod relay_config;
+
 use crate::relay_config::{
     RelayStatus, backfill_relay_profile_from_home_with_common, relay_status_from_home,
 };

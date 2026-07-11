@@ -2,7 +2,7 @@ use anyhow::Context;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use toml_edit::{DocumentMut, Item, Table, TableLike};
 
@@ -53,10 +53,10 @@ pub struct RelayStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RelayApplyResult {
-    pub config_path: String,
-    pub backup_path: Option<String>,
-    pub configured: bool,
+pub(super) struct RelayApplyResult {
+    pub(super) config_path: String,
+    pub(super) backup_path: Option<String>,
+    pub(super) configured: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,12 +85,8 @@ pub struct CodexContextEntries {
     pub plugins: Vec<CodexContextEntry>,
 }
 
-pub fn default_codex_home_dir() -> PathBuf {
-    crate::codex_home::default_codex_home_dir()
-}
-
 pub fn default_relay_status() -> RelayStatus {
-    relay_status_from_home(&default_codex_home_dir())
+    relay_status_from_home(&crate::codex_home::default_codex_home_dir())
 }
 
 pub fn set_codex_goals_feature_in_home(home: &Path, enabled: bool) -> anyhow::Result<()> {
@@ -297,7 +293,7 @@ fn apply_relay_files_to_home(
     apply_relay_files_to_home_with_computer_use_guard(home, config_contents, auth_contents, false)
 }
 
-pub(crate) fn apply_relay_files_to_home_with_computer_use_guard(
+fn apply_relay_files_to_home_with_computer_use_guard(
     home: &Path,
     config_contents: &str,
     auth_contents: &str,
@@ -391,7 +387,7 @@ fn apply_relay_profile_to_home_with_switch_rules(
     )
 }
 
-pub(crate) fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
+pub(super) fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
     home: &Path,
     profile: &RelayProfile,
     common_config_contents: &str,
@@ -597,7 +593,7 @@ fn clear_relay_config_to_home_with_auth(
     clear_relay_config_to_home_with_auth_and_computer_use_guard(home, auth_contents, false)
 }
 
-pub(crate) fn clear_relay_config_to_home_with_auth_and_computer_use_guard(
+pub(super) fn clear_relay_config_to_home_with_auth_and_computer_use_guard(
     home: &Path,
     auth_contents: Option<&str>,
     preserve_computer_use_guard: bool,

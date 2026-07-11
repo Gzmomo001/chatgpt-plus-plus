@@ -7,17 +7,32 @@ use chatgpt_plus_core::settings::{
 #[test]
 fn relay_config_exposes_no_superseded_mutation_functions() {
     let source = include_str!("../src/relay_config.rs");
+    let crate_root = include_str!("../src/lib.rs");
+    let apply_module = include_str!("../src/codex_home_apply.rs");
 
     for prefix in [
         "pub fn apply_relay",
         "pub fn apply_pure_api",
         "pub fn clear_relay",
+        "pub(crate) fn apply_relay",
+        "pub(crate) fn clear_relay",
     ] {
         assert!(
             !source.contains(prefix),
             "legacy mutation seam remains: {prefix}"
         );
     }
+
+    assert!(!source.contains("pub struct RelayApplyResult"));
+    assert!(!source.contains("pub fn default_codex_home_dir"));
+    assert!(
+        !crate_root.contains("pub mod relay_config;"),
+        "relay_config must be owned beneath the codex_home_apply seam"
+    );
+    assert!(
+        apply_module.contains("pub mod relay_config;"),
+        "codex_home_apply must structurally own relay_config mutation access"
+    );
 }
 
 fn pure_api_settings() -> BackendSettings {
