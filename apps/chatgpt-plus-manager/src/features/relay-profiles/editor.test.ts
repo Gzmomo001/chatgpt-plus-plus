@@ -111,7 +111,10 @@ describe("Relay profile editor", () => {
     assert.equal(activated.ok, true);
 
     const app = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
-    const relayScreen = readFileSync(new URL("./RelayProfilesScreen.tsx", import.meta.url), "utf8");
+    const relayScreen = readFileSync(
+      new URL("../../screens/relay-profiles/RelayProfilesScreen.tsx", import.meta.url),
+      "utf8",
+    );
     const relayDetail = readFileSync(
       new URL("./components/RelayProfileDetail.tsx", import.meta.url),
       "utf8",

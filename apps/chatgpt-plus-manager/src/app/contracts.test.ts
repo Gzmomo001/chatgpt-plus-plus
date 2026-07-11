@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 
 import { TAURI_COMMAND_NAMES } from "./actions.ts";
@@ -89,10 +89,10 @@ test("publishes every frontend-known Tauri command name", () => {
   ]);
 });
 
-test("composes Relay profiles through its feature-owned screen", () => {
+test("composes Relay profiles through its screen-owned vertical slice", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const screen = readFileSync(
-    new URL("../features/relay-profiles/RelayProfilesScreen.tsx", import.meta.url),
+    new URL("../screens/relay-profiles/RelayProfilesScreen.tsx", import.meta.url),
     "utf8",
   );
   const relayContracts = readFileSync(
@@ -100,9 +100,25 @@ test("composes Relay profiles through its feature-owned screen", () => {
     "utf8",
   );
 
-  assert.match(app, /import \{ RelayProfilesScreen \} from ["']@\/features\/relay-profiles\/RelayProfilesScreen["']/);
+  assert.match(app, /import \{ RelayProfilesScreen \} from ["']@\/screens\/relay-profiles\/RelayProfilesScreen["']/);
   assert.match(app, /<RelayProfilesScreen\b/);
   assert.match(screen, /export function RelayProfilesScreen(?:<[^>]+>)?\(/);
+  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
+  assert.equal(
+    existsSync(new URL("../features/relay-profiles/RelayProfilesScreen.tsx", import.meta.url)),
+    false,
+  );
+
+  const relayFeatureRoot = new URL("../features/relay-profiles/", import.meta.url);
+  const relayFeatureEntries = readdirSync(relayFeatureRoot, {
+    recursive: true,
+    encoding: "utf8",
+  }) as string[];
+  for (const entry of relayFeatureEntries) {
+    if (!/\.[cm]?[jt]sx?$/.test(entry)) continue;
+    const source = readFileSync(new URL(entry, relayFeatureRoot), "utf8");
+    assert.doesNotMatch(source, /from ["']@\/screens(?:\/|["'])/, `${entry} must not import a screen`);
+  }
 
   for (const definition of [
     "RelayScreen",

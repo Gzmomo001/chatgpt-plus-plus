@@ -30,7 +30,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { RelayProfilesScreen } from "@/features/relay-profiles/RelayProfilesScreen";
+import { RelayProfilesScreen } from "@/screens/relay-profiles/RelayProfilesScreen";
 import { OverviewScreen } from "@/screens/overview/OverviewScreen";
 import type { OverviewActions } from "@/screens/overview/OverviewScreen";
 import { detectLaunchCrash } from "@/screens/overview/presentation";

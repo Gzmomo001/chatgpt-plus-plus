@@ -10,10 +10,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { ContextEntries } from "@/features/context/config";
-import { t, tf } from "@/i18n";
-import { EnvConflictNotice } from "./components/RelayFeedback";
-import { RelayProfileDetail } from "./components/RelayProfileDetail";
-import { RelayProfileList } from "./components/RelayProfileList";
+import { EnvConflictNotice } from "@/features/relay-profiles/components/RelayFeedback";
+import { RelayProfileDetail } from "@/features/relay-profiles/components/RelayProfileDetail";
+import { RelayProfileList } from "@/features/relay-profiles/components/RelayProfileList";
 import type {
   CcsProvidersResult,
   EnvConflictsResult,
@@ -21,15 +20,16 @@ import type {
   RelayProfileActions,
   RelaySettings,
   RelayProfileView,
-} from "./contracts";
-import { shouldRefreshRelayFiles } from "./controller";
-import { open as openProfileEditor } from "./editor";
-import { ccsProviderSummary } from "./presentation";
+} from "@/features/relay-profiles/contracts";
+import { shouldRefreshRelayFiles } from "@/features/relay-profiles/controller";
+import { open as openProfileEditor } from "@/features/relay-profiles/editor";
+import { ccsProviderSummary } from "@/features/relay-profiles/presentation";
 import type {
   RelayContextSelection,
   RelayProfileEditableMode,
   ReconciledRelayProfileSettings,
-} from "./types";
+} from "@/features/relay-profiles/types";
+import { t, tf } from "@/i18n";
 
 type RelayProfilesScreenProps<Settings extends RelaySettings> = {
   relayFiles: RelayFilesResult | null;
