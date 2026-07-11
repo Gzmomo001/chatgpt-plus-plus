@@ -232,3 +232,77 @@ test("composes Overview through its screen-owned vertical slice", () => {
     assert.doesNotMatch(source, /from ["']@\/app(?:\/|["'])/, `${entry} must not import from app`);
   }
 });
+
+test("composes Context through its screen-owned vertical slice", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/context/ContextScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  const field = readFileSync(new URL("../shared/ui/field.tsx", import.meta.url), "utf8");
+  const relayEditor = readFileSync(
+    new URL("../features/relay-profiles/components/RelayProfileEditor.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /import \{ ContextScreen \} from ["']@\/screens\/context\/ContextScreen["']/);
+  assert.match(app, /<ContextScreen\b/);
+  assert.match(screen, /export function ContextScreen(?:<[^>]+>)?\(/);
+  assert.match(screen, /export type ContextActions(?:<[^>]+>)?\s*=\s*\{/);
+  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app\/App/);
+  assert.doesNotMatch(screen, /@\/features\/relay-profiles/);
+  assert.match(screen, /applyContextChange/);
+  for (const lowLevelOperation of [
+    "upsertContextEntry",
+    "deleteContextEntry",
+    "syncLiveContextEntries",
+    "refreshRelayFiles",
+    "isSuccessfulContextSync",
+  ]) {
+    assert.doesNotMatch(screen, new RegExp(`\\b${lowLevelOperation}\\b`));
+  }
+  assert.match(screen, /import \{ Field \} from ["']@\/shared\/ui\/field["']/);
+  assert.match(relayEditor, /import \{ Field \} from ["']@\/shared\/ui\/field["']/);
+  assert.match(field, /export function Field\(/);
+  assert.doesNotMatch(app, /function Field\(/);
+  assert.doesNotMatch(relayEditor, /function Field\(/);
+
+  const contextPorts = app.slice(
+    app.indexOf("contextMutationPortsRef.current = {"),
+    app.indexOf("const contextMutationControllerRef"),
+  );
+  assert.match(contextPorts, /commitPersisted:/);
+  assert.match(contextPorts, /commitLive:/);
+  assert.match(contextPorts, /syncLive:\s*requestContextLiveSync/);
+  assert.doesNotMatch(contextPorts, /refreshRelayFiles\(true\)/);
+  const persistRequest = contextPorts.slice(
+    contextPorts.indexOf("persist:"),
+    contextPorts.indexOf("commitPersisted:"),
+  );
+  const liveRequest = contextPorts.slice(
+    contextPorts.indexOf("syncLive:"),
+    contextPorts.indexOf("commitLive:"),
+  );
+  assert.doesNotMatch(persistRequest, /setSettings\(/);
+  assert.doesNotMatch(liveRequest, /setLiveContextEntries\(/);
+
+  for (const definition of [
+    "ContextScreen",
+    "RelayContextManager",
+    "ContextEntryEditor",
+    "contextEntriesFromSettings",
+    "contextEntriesWithLiveEntries",
+    "mergeLiveContextEntries",
+    "withLiveEntryState",
+    "mergeContextEntries",
+    "mergeContextEntryList",
+    "dedupeContextEntryList",
+    "contextEntriesByKind",
+    "contextSelectionIds",
+    "setContextSelectionId",
+    "removeContextSelectionFromSettings",
+    "contextSelectionForAllEntries",
+  ]) {
+    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
+  }
+});

@@ -7,7 +7,6 @@ import {
   CircleArrowUp,
   Copy,
   Download,
-  Edit3,
   Info,
   ExternalLink,
   Hammer,
@@ -20,7 +19,6 @@ import {
   Network,
   Power,
   PowerOff,
-  Plus,
   RefreshCw,
   Rocket,
   Save,
@@ -36,6 +34,7 @@ import { RelayProfilesScreen } from "@/features/relay-profiles/RelayProfilesScre
 import { OverviewScreen } from "@/screens/overview/OverviewScreen";
 import type { OverviewActions } from "@/screens/overview/OverviewScreen";
 import { detectLaunchCrash } from "@/screens/overview/presentation";
+import { ContextScreen } from "@/screens/context/ContextScreen";
 import type { OverviewResult } from "@/shared/contracts/overview";
 import { formatTime } from "@/shared/lib/time";
 import { CardHead, Panel, Toolbar } from "@/shared/ui/layout";
@@ -44,9 +43,13 @@ import { StatusBadge as Badge } from "@/shared/ui/status-badge";
 import { TaskProgressBox, type TaskProgress } from "@/shared/ui/task-progress";
 import {
   normalizeContextSettings,
-  parseContextConfig,
-  setContextEntryEnabled,
+  readContextCatalog,
 } from "@/features/context/config";
+import {
+  createContextMutationController,
+  type ContextMutationController,
+  type ContextMutationPorts,
+} from "@/features/context/controller";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Badge as UiBadge } from "@/components/ui/badge";
@@ -54,7 +57,6 @@ import type {
   BackendSettings,
   CcsProvidersResult,
   CodexContextEntries,
-  CodexContextEntry,
   CommandResult,
   ContextKind,
   EnvConflict,
@@ -74,7 +76,6 @@ import { ROUTE_IDS, type Route } from "@/app/routes";
 import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { relayProfileSwitchMessage } from "@/features/relay-profiles/presentation";
 import { normalizeRelaySettings, relaySwitchIssue } from "@/features/relay-profiles/controller";
@@ -86,6 +87,7 @@ import type {
   RelayProtocol,
 } from "@/features/relay-profiles/types";
 import { getLanguage, t, tf, toggleLanguage } from "@/i18n";
+import { Field } from "@/shared/ui/field";
 
 type PluginMarketplaceRepairResult = CommandResult<{
   codexHome: string;
@@ -857,14 +859,8 @@ export function App() {
     return result;
   };
 
-  const syncLiveContextEntries = async (next: BackendSettings, silent = false) => {
-    const result = await run(() => call<LiveContextEntriesResult>("sync_live_context_entries", { request: { settings: next } }));
-    if (result) {
-      setLiveContextEntries(result.entries);
-      if (!silent || !isSuccessStatus(result.status)) showResultNotice(t("工具与插件"), result, { silentSuccess: true });
-    }
-    return result;
-  };
+  const requestContextLiveSync = async (next: BackendSettings) =>
+    run(() => call<LiveContextEntriesResult>("sync_live_context_entries", { request: { settings: next } }));
 
   const refreshLogs = async (silent = false) => {
     const result = await run(() => call<LogsResult>("read_latest_logs", { request: { lines: 240 } }));
@@ -1349,41 +1345,19 @@ export function App() {
     }
   };
 
-  const upsertContextEntry = async (next: BackendSettings, kind: ContextKind, id: string, tomlBody: string) => {
-    const result = await run(() =>
+  const requestContextUpsert = async (next: BackendSettings, kind: ContextKind, id: string, tomlBody: string) =>
+    run(() =>
       call<ContextEntriesResult>("upsert_context_entry", {
         request: { settings: next, kind, id, tomlBody },
       }),
     );
-    if (!result) return null;
-    let normalized = normalizeSettings(result.settings);
-    const saveResult = await run(() => call<SettingsResult>("save_settings", { settings: normalized }));
-    if (saveResult) {
-      setSettings(saveResult);
-      normalized = normalizeSettings(saveResult.settings);
-    }
-    setSettingsForm(normalized);
-    if (!isSuccessStatus(result.status)) showResultNotice(t("工具与插件"), result);
-    return normalized;
-  };
 
-  const deleteContextEntry = async (next: BackendSettings, kind: ContextKind, id: string) => {
-    const result = await run(() =>
+  const requestContextDelete = async (next: BackendSettings, kind: ContextKind, id: string) =>
+    run(() =>
       call<ContextEntriesResult>("delete_context_entry", {
         request: { settings: next, kind, id },
       }),
     );
-    if (!result) return null;
-    let normalized = normalizeSettings(result.settings);
-    const saveResult = await run(() => call<SettingsResult>("save_settings", { settings: normalized }));
-    if (saveResult) {
-      setSettings(saveResult);
-      normalized = normalizeSettings(saveResult.settings);
-    }
-    setSettingsForm(normalized);
-    if (!isSuccessStatus(result.status)) showResultNotice(t("工具与插件"), result);
-    return normalized;
-  };
 
   const extractRelayCommonConfig = async (configContents: string) => {
     const result = await run(() =>
@@ -1451,7 +1425,7 @@ export function App() {
     const selectedBeforeSave = activeRelayProfile(switchSettings);
     const validationError = relaySwitchIssue(
       switchSettings,
-      contextSelectionForAllEntries(switchSettings),
+      readContextCatalog(switchSettings).defaultSelection,
       selectedBeforeSave.id,
     );
     if (validationError) {
@@ -1610,6 +1584,48 @@ export function App() {
     return result;
   };
 
+  const contextMutationPortsRef = useRef<
+    ContextMutationPorts<BackendSettings, SettingsResult, LiveContextEntriesResult> | null
+  >(null);
+  contextMutationPortsRef.current = {
+    upsert: requestContextUpsert,
+    delete: requestContextDelete,
+    persist: async (next) => {
+      const normalized = normalizeSettings(next);
+      const result = await run(() => call<SettingsResult>("save_settings", { settings: normalized }));
+      if (!result) return null;
+      return { ...result, settings: normalizeSettings(result.settings) };
+    },
+    commitPersisted: (result) => setSettings(result),
+    syncLive: requestContextLiveSync,
+    commitLive: (result) => setLiveContextEntries(result.entries),
+    refreshRelayFiles: async () => {
+      await refreshRelayFiles();
+    },
+    reportFailure: (result) => {
+      if (result.message)
+        showNotice(t("工具与插件"), result.message, result.status as Status);
+    },
+  };
+  const contextMutationControllerRef = useRef<ContextMutationController<BackendSettings> | null>(null);
+  if (!contextMutationControllerRef.current) {
+    type Ports = ContextMutationPorts<BackendSettings, SettingsResult, LiveContextEntriesResult>;
+    const ports = <Key extends keyof Ports>(
+      key: Key,
+    ): Ports[Key] => contextMutationPortsRef.current![key];
+    contextMutationControllerRef.current = createContextMutationController({
+      upsert: (...args) => ports("upsert")(...args),
+      delete: (...args) => ports("delete")(...args),
+      persist: (...args) => ports("persist")(...args),
+      commitPersisted: (...args) => ports("commitPersisted")(...args),
+      syncLive: (...args) => ports("syncLive")(...args),
+      commitLive: (...args) => ports("commitLive")(...args),
+      refreshRelayFiles: (...args) => ports("refreshRelayFiles")(...args),
+      reportFailure: (...args) => ports("reportFailure")(...args),
+    });
+  }
+  const applyContextChange = contextMutationControllerRef.current.apply;
+
   const actions = useMemo(
     () => ({
       refreshCurrent: () => navigate(route),
@@ -1715,7 +1731,6 @@ export function App() {
       refreshCcsProviders,
       importCcsProviders,
       refreshLiveContextEntries,
-      syncLiveContextEntries,
       refreshAds,
       refreshScriptMarket,
       installMarketScript,
@@ -1732,8 +1747,7 @@ export function App() {
       applyPureApiInjection,
       clearRelayInjection,
       saveRelayFile,
-      upsertContextEntry,
-      deleteContextEntry,
+      applyContextChange,
       extractRelayCommonConfig,
       testRelayProfile,
       diagnoseRelayProfile,
@@ -1865,8 +1879,8 @@ export function App() {
               envConflicts={envConflicts}
               ccsProviders={ccsProviders}
               form={normalizeSettings(settingsForm)}
-              contextEntries={contextEntriesFromSettings(normalizeSettings(settingsForm))}
-              defaultContextSelection={contextSelectionForAllEntries(normalizeSettings(settingsForm))}
+              contextEntries={readContextCatalog(normalizeSettings(settingsForm)).entries}
+              defaultContextSelection={readContextCatalog(normalizeSettings(settingsForm)).defaultSelection}
               onFormChange={setSettingsForm}
               actions={actions}
             />
@@ -1885,9 +1899,8 @@ export function App() {
           ) : null}
           {route === "context" ? (
             <ContextScreen
-              form={settingsForm}
+              form={normalizeSettings(settingsForm)}
               liveEntries={liveContextEntries}
-              relayFiles={relayFiles}
               onFormChange={setSettingsForm}
               actions={actions}
             />
@@ -1997,7 +2010,6 @@ type Actions = {
   refreshCcsProviders: (silent?: boolean) => Promise<CcsProvidersResult | null>;
   importCcsProviders: () => Promise<void>;
   refreshLiveContextEntries: () => Promise<LiveContextEntriesResult | null>;
-  syncLiveContextEntries: (settings: BackendSettings, silent?: boolean) => Promise<LiveContextEntriesResult | null>;
   refreshAds: () => Promise<void>;
   refreshScriptMarket: () => Promise<void>;
   installMarketScript: (id: string) => Promise<void>;
@@ -2014,13 +2026,7 @@ type Actions = {
   applyPureApiInjection: () => Promise<boolean>;
   clearRelayInjection: () => Promise<boolean>;
   saveRelayFile: (kind: "config" | "auth", contents: string, silent?: boolean) => Promise<void>;
-  upsertContextEntry: (
-    settings: BackendSettings,
-    kind: ContextKind,
-    id: string,
-    tomlBody: string,
-  ) => Promise<BackendSettings | null>;
-  deleteContextEntry: (settings: BackendSettings, kind: ContextKind, id: string) => Promise<BackendSettings | null>;
+  applyContextChange: ContextMutationController<BackendSettings>["apply"];
   extractRelayCommonConfig: (configContents: string) => Promise<ExtractRelayCommonConfigResult | null>;
   testRelayProfile: (profile: RelayProfileView) => Promise<void>;
   diagnoseRelayProfile: (profile: RelayProfileView) => Promise<ProviderDoctorResult | null>;
@@ -3120,218 +3126,6 @@ function MarketScriptCard({ script, actions }: { script: ScriptMarketItem; actio
   );
 }
 
-function ContextScreen({
-  form,
-  liveEntries,
-  relayFiles,
-  onFormChange,
-  actions,
-}: {
-  form: BackendSettings;
-  liveEntries: CodexContextEntries | null;
-  relayFiles: RelayFilesResult | null;
-  onFormChange: (value: BackendSettings) => void;
-  actions: Actions;
-}) {
-  return (
-    <Panel fill>
-      <CardHead title={t("Codex 工具与插件")} detail={t("独立管理 Codex 的 MCP、Skills、Plugins；切换任意供应商都会带上。")} />
-      <CardContent>
-        <RelayContextManager
-          form={normalizeSettings(form)}
-          liveEntries={liveEntries}
-          relayFiles={relayFiles}
-          onFormChange={onFormChange}
-          actions={actions}
-        />
-      </CardContent>
-    </Panel>
-  );
-}
-
-function RelayContextManager({
-  form,
-  liveEntries,
-  relayFiles,
-  onFormChange,
-  actions,
-}: {
-  form: BackendSettings;
-  liveEntries: CodexContextEntries | null;
-  relayFiles: RelayFilesResult | null;
-  onFormChange: (value: BackendSettings) => void;
-  actions: Actions;
-}) {
-  const entries = contextEntriesWithLiveEntries(form, liveEntries);
-  const [activeKind, setActiveKind] = useState<ContextKind>("mcp");
-  const [editor, setEditor] = useState<{ kind: ContextKind; entry?: CodexContextEntry } | null>(null);
-  const visibleEntries = contextEntriesByKind(entries, activeKind);
-  const label = contextKindLabel(activeKind);
-
-  const saveEntry = async (kind: ContextKind, id: string, tomlBody: string) => {
-    const next = await actions.upsertContextEntry(form, kind, id, tomlBody);
-    if (!next) return;
-    onFormChange(next);
-    setEditor(null);
-  };
-
-  const toggleContextEntryEnabled = async (entry: CodexContextEntry) => {
-    const nextBody = setContextEntryEnabled(entry.tomlBody, !entry.enabled);
-    const next = await actions.upsertContextEntry(form, entry.kind, entry.id, nextBody);
-    if (!next) return;
-    onFormChange(next);
-    const syncResult = await actions.syncLiveContextEntries(next, true);
-    if (syncResult && isSuccessStatus(syncResult.status)) {
-      void actions.refreshRelayFiles();
-    }
-  };
-
-  const deleteEntry = async (entry: CodexContextEntry) => {
-    const next = await actions.deleteContextEntry(form, entry.kind, entry.id);
-    if (!next) return;
-    onFormChange(next);
-  };
-
-  return (
-    <div className="relay-context-panel">
-      <div className="relay-context-head">
-        <div>
-          <strong>{t("Codex 工具与插件")}</strong>
-          <span>{t("MCP、Skills、Plugins 作为全局配置独立管理，切换任意供应商都会合并。")}</span>
-        </div>
-        <div className="relay-context-head-actions">
-          <Button onClick={() => setEditor({ kind: activeKind })} size="sm" variant="secondary">
-            <Plus className="h-4 w-4" />
-            {t("新增")}{label}
-          </Button>
-        </div>
-      </div>
-      <div className="segmented">
-        {contextKindOptions.map((option) => (
-          <button
-            className={activeKind === option.kind ? "active" : ""}
-            key={option.kind}
-            onClick={() => setActiveKind(option.kind)}
-            type="button"
-          >
-            <span>{option.label}</span>
-            <small>{contextEntriesByKind(entries, option.kind).length}</small>
-          </button>
-        ))}
-      </div>
-      <div className="relay-context-summary">
-        {t("当前共有")} {visibleEntries.length} {t("个")}{label}{t("；这些条目独立于供应商保存，会写入所有供应商切换后的 config.toml。")}
-      </div>
-      <div className="relay-context-list">
-        {visibleEntries.length ? (
-          visibleEntries.map((entry) => (
-            <div className="relay-context-row" key={`${entry.kind}-${entry.id}`}>
-              <strong className="context-title">{entry.title || entry.id}</strong>
-              <div className="relay-context-actions">
-                <button
-                  aria-checked={entry.enabled}
-                  aria-label={`contextEnabledSwitch-${entry.kind}-${entry.id}`}
-                  className={`context-enabled-switch ${entry.enabled ? "active" : ""}`}
-                  onClick={() => void toggleContextEntryEnabled(entry)}
-                  role="switch"
-                  title={entry.enabled ? t("禁用此扩展项") : t("启用此扩展项")}
-                  type="button"
-                >
-                  <span className="context-switch-track" aria-hidden="true">
-                    <span className="context-switch-thumb" />
-                  </span>
-                </button>
-                <Button onClick={() => setEditor({ kind: entry.kind, entry })} size="icon" title={t("编辑扩展项")} variant="ghost">
-                  <Edit3 className="h-4 w-4" />
-                </Button>
-                <Button
-                  className="relay-context-delete"
-                  onClick={() => void deleteEntry(entry)}
-                  size="icon"
-                  title={t("删除扩展项")}
-                  variant="ghost"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="empty">{t("暂无")}{label}{t("，可以从通用配置文件或这里新增。")}</div>
-        )}
-      </div>
-      {editor ? (
-        <ContextEntryEditor
-          entry={editor.entry}
-          kind={editor.kind}
-          onCancel={() => setEditor(null)}
-          onSave={(kind, id, tomlBody) => void saveEntry(kind, id, tomlBody)}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function ContextEntryEditor({
-  kind,
-  entry,
-  onCancel,
-  onSave,
-}: {
-  kind: ContextKind;
-  entry?: CodexContextEntry;
-  onCancel: () => void;
-  onSave: (kind: ContextKind, id: string, tomlBody: string) => void;
-}) {
-  const [draftKind, setDraftKind] = useState<ContextKind>(entry?.kind ?? kind);
-  const [id, setId] = useState(entry?.id ?? "");
-  const [tomlBody, setTomlBody] = useState(entry?.tomlBody ?? "");
-  const canSave = id.trim().length > 0;
-
-  return (
-    <div className="context-editor">
-      <div className="context-editor-fields">
-        <Field label={t("类型")}>
-          <select
-            className="field-select"
-            disabled={!!entry}
-            value={draftKind}
-            onChange={(event) => setDraftKind(event.currentTarget.value as ContextKind)}
-          >
-            {contextKindOptions.map((option) => (
-              <option key={option.kind} value={option.kind}>{option.label}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="ID">
-          <Input
-            disabled={!!entry}
-            value={id}
-            onChange={(event) => setId(event.currentTarget.value.trim())}
-            placeholder={t("例如 context7")}
-          />
-        </Field>
-      </div>
-      <Field label={t("TOML 配置体")}>
-        <Textarea
-          className="context-editor-textarea"
-          value={tomlBody}
-          onChange={(event) => setTomlBody(event.currentTarget.value)}
-          placeholder={t("只填写表头下面的内容，例如：\ncommand = \"pnpm\"\nargs = [\"dlx\", \"@upstash/context7-mcp\"]")}
-          spellCheck={false}
-        />
-      </Field>
-      <Toolbar>
-        <Button disabled={!canSave} onClick={() => onSave(draftKind, id.trim(), tomlBody)} size="sm">
-          <Save className="h-4 w-4" />
-          {t("保存扩展项")}
-        </Button>
-        <Button onClick={onCancel} size="sm" variant="secondary">{t("取消")}</Button>
-      </Toolbar>
-    </div>
-  );
-}
-
 function ModeSelector({ launchMode, actions }: { launchMode: LaunchMode; actions: Actions }) {
   return (
     <div className="mode-grid">
@@ -3416,15 +3210,6 @@ function PendingProviderImportDialog({
         </Toolbar>
       </div>
     </div>
-  );
-}
-
-function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <Label className={`field ${className}`}>
-      <span>{label}</span>
-      {children}
-    </Label>
   );
 }
 
@@ -3518,117 +3303,6 @@ function routeSubtitle(route: Route) {
   return subtitles[route];
 }
 
-const contextKindOptions: Array<{ kind: ContextKind; label: string; tableName: string }> = [
-  { kind: "mcp", label: "MCP", tableName: "mcp_servers" },
-  { kind: "skill", label: "Skills", tableName: "skills" },
-  { kind: "plugin", label: t("插件"), tableName: "plugins" },
-];
-
-function contextKindLabel(kind: ContextKind) {
-  return contextKindOptions.find((option) => option.kind === kind)?.label ?? t("扩展项");
-}
-
-function contextEntriesFromSettings(settings: BackendSettings): CodexContextEntries {
-  return parseContextConfig(settings.relayContextConfigContents || "");
-}
-
-function contextEntriesWithLiveEntries(settings: BackendSettings, liveEntries: CodexContextEntries | null): CodexContextEntries {
-  const commonEntries = contextEntriesFromSettings(settings);
-  if (!liveEntries) return commonEntries;
-  const liveByKind: Record<ContextKind, Map<string, CodexContextEntry>> = {
-    mcp: new Map(liveEntries.mcpServers.map((entry) => [entry.id, entry])),
-    skill: new Map(liveEntries.skills.map((entry) => [entry.id, entry])),
-    plugin: new Map(liveEntries.plugins.map((entry) => [entry.id, entry])),
-  };
-  return {
-    mcpServers: mergeLiveContextEntries(commonEntries.mcpServers, liveByKind.mcp),
-    skills: mergeLiveContextEntries(commonEntries.skills, liveByKind.skill),
-    plugins: mergeLiveContextEntries(commonEntries.plugins, liveByKind.plugin),
-  };
-}
-
-function mergeLiveContextEntries(entries: CodexContextEntry[], liveEntries: Map<string, CodexContextEntry>): CodexContextEntry[] {
-  const uniqueEntries = dedupeContextEntryList(entries);
-  const merged = uniqueEntries.map((entry) => {
-    const live = liveEntries.get(entry.id);
-    return withLiveEntryState(entry, live);
-  });
-  const knownIds = new Set(uniqueEntries.map((entry) => entry.id));
-  for (const liveEntry of liveEntries.values()) {
-    if (!knownIds.has(liveEntry.id)) merged.push(liveEntry);
-  }
-  return merged;
-}
-
-function withLiveEntryState(entry: CodexContextEntry, live?: CodexContextEntry): CodexContextEntry {
-  return live ? { ...entry, enabled: live.enabled } : { ...entry, enabled: false };
-}
-
-function mergeContextEntries(primary: CodexContextEntries, secondary: CodexContextEntries): CodexContextEntries {
-  return {
-    mcpServers: mergeContextEntryList(primary.mcpServers, secondary.mcpServers),
-    skills: mergeContextEntryList(primary.skills, secondary.skills),
-    plugins: mergeContextEntryList(primary.plugins, secondary.plugins),
-  };
-}
-
-function mergeContextEntryList(primary: CodexContextEntry[], secondary: CodexContextEntry[]): CodexContextEntry[] {
-  return dedupeContextEntryList([...primary, ...secondary]);
-}
-
-function dedupeContextEntryList(entries: CodexContextEntry[]): CodexContextEntry[] {
-  const byId = new Map<string, CodexContextEntry>();
-  for (const entry of entries) {
-    byId.set(entry.id, entry);
-  }
-  return Array.from(byId.values());
-}
-
-function contextEntriesByKind(entries: CodexContextEntries, kind: ContextKind): CodexContextEntry[] {
-  if (kind === "mcp") return dedupeContextEntryList(entries.mcpServers);
-  if (kind === "skill") return dedupeContextEntryList(entries.skills);
-  return dedupeContextEntryList(entries.plugins);
-}
-
-function contextSelectionIds(selection: RelayContextSelection, kind: ContextKind): string[] {
-  if (kind === "mcp") return selection.mcpServers;
-  if (kind === "skill") return selection.skills;
-  return selection.plugins;
-}
-
-function setContextSelectionId(selection: RelayContextSelection, kind: ContextKind, id: string, checked: boolean): RelayContextSelection {
-  const next = {
-    mcpServers: [...selection.mcpServers],
-    skills: [...selection.skills],
-    plugins: [...selection.plugins],
-  };
-  const list = contextSelectionIds(next, kind);
-  const normalizedId = id.trim();
-  const exists = list.includes(normalizedId);
-  if (checked && normalizedId && !exists) list.push(normalizedId);
-  if (!checked && exists) list.splice(list.indexOf(normalizedId), 1);
-  return next;
-}
-
-function removeContextSelectionFromSettings(settings: BackendSettings, kind: ContextKind, id: string): BackendSettings {
-  return {
-    ...settings,
-    relayProfiles: settings.relayProfiles.map((profile) => ({
-      ...profile,
-      contextSelection: setContextSelectionId(profile.contextSelection, kind, id, false),
-    })),
-  };
-}
-
-function contextSelectionForAllEntries(settings: BackendSettings): RelayContextSelection {
-  const entries = contextEntriesFromSettings(settings);
-  return {
-    mcpServers: entries.mcpServers.map((entry) => entry.id),
-    skills: entries.skills.map((entry) => entry.id),
-    plugins: entries.plugins.map((entry) => entry.id),
-  };
-}
-
 function isSuccessStatus(status?: Status) {
   return status === "ok" || status === "accepted";
 }
@@ -3643,11 +3317,9 @@ function normalizeSettings(settings: BackendSettings): BackendSettings {
     settings.relayCommonConfigContents || "",
     settings.relayContextConfigContents || "",
   );
-  const defaultContextSelection = contextSelectionForAllEntries({
-    ...settings,
-    relayCommonConfigContents,
+  const defaultContextSelection = readContextCatalog({
     relayContextConfigContents,
-  });
+  }).defaultSelection;
   const profiles =
     settings.relayProfiles?.length
       ? settings.relayProfiles

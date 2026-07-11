@@ -17,6 +17,11 @@ export type ContextSelection = {
   skills: readonly string[];
   plugins: readonly string[];
 };
+export type MutableContextSelection = {
+  mcpServers: string[];
+  skills: string[];
+  plugins: string[];
+};
 export type RelayFileProfile = {
   configContents: string;
   authContents: string;
@@ -27,6 +32,17 @@ export type RelayFileProfile = {
 export type RelayContextSettings = {
   relayCommonConfigContents: string;
   relayContextConfigContents: string;
+};
+export type ContextCatalogSettings = {
+  relayContextConfigContents: string;
+};
+export type ContextProfileSelection = {
+  contextSelection: ContextSelection;
+};
+export type ContextCatalog = {
+  entries: ContextEntries;
+  entriesFor: (kind: ContextKind) => ContextEntry[];
+  defaultSelection: MutableContextSelection;
 };
 const contextKinds: Array<{
   kind: ContextKind;
@@ -58,6 +74,37 @@ export function setContextEntryEnabled(tomlBody: string, enabled: boolean): stri
   if (!replaced)
     next.unshift(nextValue);
   return ensureTrailingNewline(next.join("\n").trimEnd());
+}
+export function readContextCatalog(
+  settings: ContextCatalogSettings,
+  liveEntries: ContextEntries | null = null,
+): ContextCatalog {
+  const storedEntries = parseContextConfig(settings.relayContextConfigContents || "");
+  const entries = liveEntries
+    ? mergeStoredAndLiveContextEntries(storedEntries, liveEntries)
+    : dedupeContextEntries(storedEntries);
+  const stored = dedupeContextEntries(storedEntries);
+  return {
+    entries,
+    entriesFor: (kind) => contextEntriesForKind(entries, kind),
+    defaultSelection: {
+      mcpServers: stored.mcpServers.map((entry) => entry.id),
+      skills: stored.skills.map((entry) => entry.id),
+      plugins: stored.plugins.map((entry) => entry.id),
+    },
+  };
+}
+export function removeContextEntryFromSelections<
+  Settings extends { relayProfiles: Array<ContextProfileSelection> },
+>(settings: Settings, kind: ContextKind, id: string): Settings {
+  const normalizedId = id.trim();
+  return {
+    ...settings,
+    relayProfiles: settings.relayProfiles.map((profile) => ({
+      ...profile,
+      contextSelection: removeContextSelectionId(profile.contextSelection, kind, normalizedId),
+    })),
+  };
 }
 export function normalizeContextSettings(relayCommonConfigContents: string, relayContextConfigContents: string): {
   relayCommonConfigContents: string;
@@ -149,6 +196,52 @@ function parseContextEntries(contents: string, kind: ContextKind, tableName: str
   }
   flush();
   return Array.from(entries.values());
+}
+function mergeStoredAndLiveContextEntries(stored: ContextEntries, live: ContextEntries): ContextEntries {
+  return {
+    mcpServers: mergeStoredAndLiveContextEntryList(stored.mcpServers, live.mcpServers),
+    skills: mergeStoredAndLiveContextEntryList(stored.skills, live.skills),
+    plugins: mergeStoredAndLiveContextEntryList(stored.plugins, live.plugins),
+  };
+}
+function mergeStoredAndLiveContextEntryList(stored: ContextEntry[], live: ContextEntry[]): ContextEntry[] {
+  const liveById = new Map(dedupeContextEntryList(live).map((entry) => [entry.id, entry]));
+  const uniqueStored = dedupeContextEntryList(stored);
+  const merged = uniqueStored.map((entry) => ({
+    ...entry,
+    enabled: liveById.get(entry.id)?.enabled ?? false,
+  }));
+  const storedIds = new Set(uniqueStored.map((entry) => entry.id));
+  for (const liveEntry of liveById.values()) {
+    if (!storedIds.has(liveEntry.id))
+      merged.push(liveEntry);
+  }
+  return merged;
+}
+function dedupeContextEntries(entries: ContextEntries): ContextEntries {
+  return {
+    mcpServers: dedupeContextEntryList(entries.mcpServers),
+    skills: dedupeContextEntryList(entries.skills),
+    plugins: dedupeContextEntryList(entries.plugins),
+  };
+}
+function dedupeContextEntryList(entries: ContextEntry[]): ContextEntry[] {
+  return Array.from(new Map(entries.map((entry) => [entry.id, entry])).values());
+}
+function contextEntriesForKind(entries: ContextEntries, kind: ContextKind): ContextEntry[] {
+  if (kind === "mcp")
+    return entries.mcpServers;
+  if (kind === "skill")
+    return entries.skills;
+  return entries.plugins;
+}
+function removeContextSelectionId(selection: ContextSelection, kind: ContextKind, id: string): MutableContextSelection {
+  const remove = (ids: readonly string[]) => ids.filter((entryId) => entryId !== id);
+  return {
+    mcpServers: kind === "mcp" ? remove(selection.mcpServers) : [...selection.mcpServers],
+    skills: kind === "skill" ? remove(selection.skills) : [...selection.skills],
+    plugins: kind === "plugin" ? remove(selection.plugins) : [...selection.plugins],
+  };
 }
 function filterContextEntriesBySelection(entries: ContextEntries, selection: ContextSelection): ContextEntries {
   const selected = {

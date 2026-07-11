@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { t, tf } from "@/i18n";
+import { Field } from "@/shared/ui/field";
 import { Metric } from "@/shared/ui/metric";
 import { ProviderPresetSelector } from "./ProviderPresetSelector";
 import { ProviderDoctorModal } from "./RelayFeedback";
@@ -13,7 +13,6 @@ import { commit, edit } from "../editor";
 import { aggregateStrategyHelp, aggregateStrategyLabel, aggregateStrategyOptions, configHasCodexGoalsFeature, relayModeLabel, relayProfileConfigBrief, relayProfileEditorStatus, relayProfileModeHelp, relayProtocolLabel, setCodexGoalsFeatureInConfig } from "../presentation";
 import type { ProviderDoctorResult, RelayProfileActions, RelaySettings } from "../contracts";
 import type { ApplyRelayProfilePresetIntent, ModelWindowRow, RelayAggregateStrategy, RelayProfileEditableMode, RelayProfileEditorState, RelayProfilePatch } from "../types";
-function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) { return <Label className={"field " + className}><span>{label}</span>{children}</Label>; }
 
 export function RelayProfileEditor<Settings extends RelaySettings>({ state, form, isNew = false, onStateChange, onSwitch, actions }: {
   state: RelayProfileEditorState;

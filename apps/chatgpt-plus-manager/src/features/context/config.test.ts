@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  readContextCatalog,
   normalizeContextSettings,
   parseContextConfig,
   projectRelayFiles,
   promoteRelayCommonConfig,
+  removeContextEntryFromSelections,
   setContextEntryEnabled,
 } from "./config.ts";
 
@@ -77,4 +79,99 @@ test("projects editable relay files and promotes extracted common configuration"
       profile: { ...profile, configContents: 'model = "gpt"\n' },
     },
   );
+});
+
+test("reads a deduplicated stored and live catalog with live enabled state", () => {
+  const settings = {
+    relayContextConfigContents: [
+      "[mcp_servers.alpha]",
+      'command = "stored-first"',
+      "",
+      "[mcp_servers.alpha]",
+      'command = "stored-last"',
+      "",
+      "[skills.missing]",
+      'path = "/stored"',
+      "",
+    ].join("\n"),
+  };
+  const live = {
+    mcpServers: [
+      { id: "alpha", kind: "mcp" as const, title: "Live alpha", summary: "live", tomlBody: 'command = "live"\n', enabled: false },
+      { id: "live-only", kind: "mcp" as const, title: "Live only", summary: "unknown", tomlBody: 'command = "unknown"\n', enabled: true },
+    ],
+    skills: [],
+    plugins: [],
+  };
+
+  const catalog = readContextCatalog(settings, live);
+
+  assert.deepEqual(catalog.entries.mcpServers.map(({ id, enabled }) => ({ id, enabled })), [
+    { id: "alpha", enabled: false },
+    { id: "live-only", enabled: true },
+  ]);
+  assert.match(catalog.entries.mcpServers[0]!.tomlBody, /stored-first/);
+  assert.deepEqual(catalog.entries.skills.map(({ id, enabled }) => ({ id, enabled })), [
+    { id: "missing", enabled: false },
+  ]);
+  assert.deepEqual(catalog.entriesFor("mcp").map((entry) => entry.id), ["alpha", "live-only"]);
+});
+
+test("selects every stored context entry once by kind", () => {
+  const catalog = readContextCatalog({
+    relayContextConfigContents: [
+      "[mcp_servers.alpha]",
+      'command = "uv"',
+      "",
+      "[mcp_servers.alpha]",
+      'command = "uvx"',
+      "",
+      "[skills.review]",
+      'path = "/review"',
+      "",
+      "[plugins.demo]",
+      'path = "/demo"',
+      "",
+    ].join("\n"),
+  });
+
+  assert.deepEqual(catalog.defaultSelection, {
+    mcpServers: ["alpha"],
+    skills: ["review"],
+    plugins: ["demo"],
+  });
+});
+
+test("removes a deleted context id from every profile and preserves unrelated fields", () => {
+  const settings = {
+    relayContextConfigContents: "",
+    activeRelayId: "one",
+    concreteFlag: true,
+    relayProfiles: [
+      {
+        id: "one",
+        name: "First",
+        contextSelection: { mcpServers: ["keep", "deleted"], skills: ["deleted"], plugins: [] },
+        configContents: 'model = "gpt"\n',
+      },
+      {
+        id: "two",
+        name: "Second",
+        contextSelection: { mcpServers: ["deleted"], skills: [], plugins: ["plugin"] },
+        authContents: '{"token":"preserve"}\n',
+      },
+    ],
+  };
+
+  const next = removeContextEntryFromSelections(settings, "mcp", "deleted");
+
+  assert.deepEqual(next, {
+    ...settings,
+    relayProfiles: [
+      { ...settings.relayProfiles[0], contextSelection: { mcpServers: ["keep"], skills: ["deleted"], plugins: [] } },
+      { ...settings.relayProfiles[1], contextSelection: { mcpServers: [], skills: [], plugins: ["plugin"] } },
+    ],
+  });
+  assert.notEqual(next, settings);
+  assert.notEqual(next.relayProfiles, settings.relayProfiles);
 });
