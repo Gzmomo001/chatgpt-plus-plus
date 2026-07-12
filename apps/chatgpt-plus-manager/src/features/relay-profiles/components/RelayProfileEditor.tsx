@@ -153,6 +153,7 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
             <Download className="h-4 w-4" />{t("从上游获取")}</Button>
         </div>
         <p className="field-hint">{t("每行一个模型；上下文窗口可填")} <code>1M</code>{t("、")}<code>200K</code> {t("或")} <code>1000000</code>{t("，留空表示使用 Codex 默认长度。")}</p>
+        <p className="field-hint">{t("上游接口不可用时，仍可使用「添加模型」手动配置。")}</p>
       </Field> : null}
       {showApiFields ? <Field className="relay-field-user-agent" label="User-Agent">
         <Input value={profile.userAgent} onChange={(event) => updateDraft({ userAgent: event.currentTarget.value })} placeholder={t("留空使用默认值")} />

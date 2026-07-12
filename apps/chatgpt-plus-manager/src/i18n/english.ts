@@ -76,6 +76,8 @@ export const EN_PLAIN: Record<string, string> = {
   "从 Word 等富文本粘贴到 Codex composer 时只保留纯文本，避免被识别为图片/文件附件。需重启 Codex 才生效。":
     "Keeps only plain text when pasting rich text (e.g. from Word) into the Codex composer, avoiding it being treated as an image/file attachment. Requires restarting Codex.",
   "从上游获取": "Fetch from upstream",
+  "上游接口不可用时，仍可使用「添加模型」手动配置。":
+    "If the upstream endpoint is unavailable, use “Add model” to configure models manually.",
   "从最新 upstream 分支创建 Git worktree。": "Create a Git worktree from the latest upstream branch.",
   "从环境变量和 config.toml 的 /v1/models 拉取模型并补进模型列表。":
     "Pull models from environment variables and config.toml's /v1/models and add them to the model list.",

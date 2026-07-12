@@ -1216,7 +1216,8 @@ fn apply_model_catalog_to_config(
     );
     // 用户已手写 model_catalog_json 指针时保留，不覆盖（保 preserves_user_model_catalog_json 测试）
     // 仅当现有指针指向本 profile 自己生成的 catalog 时才重新生成。
-    if let Some(existing) = root_key_string(config_text, "model_catalog_json") {
+    let existing_catalog = root_key_string(config_text, "model_catalog_json");
+    if let Some(existing) = existing_catalog.as_deref() {
         if existing != catalog_relative {
             return Ok(config_text.to_string());
         }
@@ -1232,9 +1233,19 @@ fn apply_model_catalog_to_config(
         };
     let entries =
         crate::model_suffix::collect_catalog_entries(&model_list, &model_windows, &profile.model);
-    // 无后缀条目则 no-op，保持现有 per-profile 单值行为（保 does_not_write 测试）
-    if !entries.iter().any(|entry| entry.suffix_window.is_some()) {
-        return Ok(config_text.to_string());
+    // 手动模型列表是 /v1/models 不可用时的可靠后备。只要列表非空就生成 catalog；
+    // 仅有默认 model 时保持 no-op，避免 catalog 退化为单模型并隐藏其他可用模型。
+    if model_list.trim().is_empty() {
+        if existing_catalog.as_deref() != Some(catalog_relative.as_str()) {
+            return Ok(config_text.to_string());
+        }
+        let catalog_path = home.join(&catalog_relative);
+        match std::fs::remove_file(&catalog_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        return Ok(remove_root_key(config_text, "model_catalog_json"));
     }
     let fallback = parse_optional_positive_u64(&profile.context_window, "上下文大小")?;
     let catalog_path = home.join(&catalog_relative);

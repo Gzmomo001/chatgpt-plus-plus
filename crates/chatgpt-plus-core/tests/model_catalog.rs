@@ -113,7 +113,7 @@ experimental_bearer_token = "ark-key"
 }
 
 #[tokio::test]
-async fn model_catalog_uses_active_relay_profile_model_list_for_display() {
+async fn model_catalog_uses_manual_profile_models_without_upstream_fetch() {
     let temp = tempfile::tempdir().unwrap();
     let codex_home = temp.path().join("codex-home");
     std::fs::create_dir_all(&codex_home).unwrap();

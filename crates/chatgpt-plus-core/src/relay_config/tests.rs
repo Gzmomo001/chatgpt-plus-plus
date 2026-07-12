@@ -877,7 +877,7 @@ enabled = true
 }
 
 #[test]
-fn reconcile_profile_does_not_write_model_catalog_json_for_selected_models() {
+fn reconcile_profile_generates_catalog_for_manually_configured_models() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -906,10 +906,21 @@ experimental_bearer_token = "sk-new"
     reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(!config.contains("model_catalog_json"));
+    assert!(config.contains(r#"model_catalog_json = "model-catalogs/relay-a.json""#));
     assert!(config.contains("model_context_window = 200000"));
     assert!(config.contains("model_auto_compact_token_limit = 160000"));
-    assert!(!temp.path().join("model-catalogs").exists());
+    let catalog =
+        std::fs::read_to_string(temp.path().join("model-catalogs").join("relay-a.json")).unwrap();
+    assert!(catalog.contains(r#""slug": "qwen3-coder""#));
+    assert!(catalog.contains(r#""slug": "deepseek-coder""#));
+    let catalog: serde_json::Value = serde_json::from_str(&catalog).unwrap();
+    let windows = catalog["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|model| model["context_window"].as_u64())
+        .collect::<Vec<_>>();
+    assert_eq!(windows, vec![Some(200_000), Some(200_000)]);
 }
 
 #[test]
@@ -2473,41 +2484,6 @@ experimental_bearer_token = "sk-new"
 }
 
 #[test]
-fn reconcile_profile_no_catalog_when_model_list_has_no_suffix() {
-    let temp = tempfile::tempdir().unwrap();
-    let profile = RelayProfile {
-        id: "relay-a".to_string(),
-        name: "Relay A".to_string(),
-        model: "qwen3-coder".to_string(),
-        relay_mode: RelayMode::PureApi,
-        config_contents: r#"model = "qwen3-coder"
-model_provider = "custom"
-
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "https://relay.example/v1"
-experimental_bearer_token = "sk-new"
-"#
-        .to_string(),
-        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
-        model_insert_mode: Default::default(),
-        model_list: "deepseek-coder\nqwen3-coder".to_string(),
-        context_window: "200000".to_string(),
-        auto_compact_limit: "160000".to_string(),
-        ..RelayProfile::default()
-    };
-
-    reconcile_profile(temp.path(), &profile, "").unwrap();
-
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(!config.contains("model_catalog_json"));
-    assert!(config.contains("model_context_window = 200000"));
-    assert!(!temp.path().join("model-catalogs").exists());
-}
-
-#[test]
 fn reconcile_profile_does_not_overwrite_user_model_catalog_json() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
@@ -2671,6 +2647,40 @@ experimental_bearer_token = "sk-new"
         std::fs::read_to_string(temp.path().join("model-catalogs").join("relay-a.json")).unwrap();
     assert!(catalog.contains(r#""context_window": 1000000"#));
     assert!(!catalog.contains(r#""context_window": 200000"#));
+}
+
+#[test]
+fn reconcile_profile_removes_stale_self_generated_catalog_when_manual_models_are_cleared() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = RelayProfile {
+        id: "relay-a".to_string(),
+        model: "qwen3-coder".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model = "qwen3-coder"
+model_provider = "custom"
+model_catalog_json = "model-catalogs/relay-a.json"
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "https://relay.example/v1"
+experimental_bearer_token = "sk-new"
+"#
+        .to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
+        model_list: String::new(),
+        ..RelayProfile::default()
+    };
+    let catalog_path = temp.path().join("model-catalogs").join("relay-a.json");
+    std::fs::create_dir_all(catalog_path.parent().unwrap()).unwrap();
+    std::fs::write(&catalog_path, r#"{"models":[{"slug":"stale"}]}"#).unwrap();
+
+    reconcile_profile_with_guard(temp.path(), &profile, "", false).unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(!config.contains("model_catalog_json"));
+    assert!(!catalog_path.exists());
 }
 
 #[test]

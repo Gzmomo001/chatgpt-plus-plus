@@ -132,11 +132,11 @@ pub fn collect_catalog_entries(
     entries
 }
 
-/// 内置 codex bundled catalog 模板（assets/codex-models.json），用于 clone entry
-/// 保证字段齐全，避免 codex 因缺字段忽略条目。
-const BUNDLED_TEMPLATE_JSON: &str = include_str!(concat!(
+/// 内置 Codex 单模型模板，用于 clone entry。
+/// 模板与生成逻辑同属当前 crate，避免维护多个完整 bundled catalog 快照。
+const MODEL_CATALOG_TEMPLATE_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../assets/codex-models.json"
+    "/assets/model-catalog-template.json"
 ));
 
 /// 构建 codex model_catalog_json 内容。
@@ -153,8 +153,8 @@ pub fn build_model_catalog_json(
     build_model_catalog_json_with_template(entries, fallback_window, None)
 }
 
-/// 使用指定模板（或内置 bundled 模板）构建 catalog。
-/// `template` 为单个 model entry 的 JSON Value；为 None 时使用内置模板的第一条。
+/// 使用指定模板（或内置模板）构建 catalog。
+/// `template` 为单个 model entry 的 JSON Value；为 None 时使用内置单模型模板。
 pub fn build_model_catalog_json_with_template(
     entries: &[ModelCatalogEntry],
     fallback_window: Option<u64>,
@@ -162,7 +162,7 @@ pub fn build_model_catalog_json_with_template(
 ) -> String {
     let template = template
         .cloned()
-        .or_else(|| load_bundled_template_entry())
+        .or_else(load_model_catalog_template)
         .unwrap_or_else(|| json!({}));
 
     let models: Vec<Value> = entries
@@ -192,8 +192,7 @@ pub fn build_model_catalog_json_with_template(
     serde_json::to_string_pretty(&json!({ "models": models })).unwrap_or_default()
 }
 
-/// 加载内置 bundled catalog 模板的第一条 model entry。
-fn load_bundled_template_entry() -> Option<Value> {
-    let catalog: Value = serde_json::from_str(BUNDLED_TEMPLATE_JSON).ok()?;
-    catalog.get("models")?.as_array()?.first().cloned()
+/// 加载内置的单模型模板。
+fn load_model_catalog_template() -> Option<Value> {
+    serde_json::from_str(MODEL_CATALOG_TEMPLATE_JSON).ok()
 }
