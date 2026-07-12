@@ -415,6 +415,7 @@ export const EN_PLAIN: Record<string, string> = {
   "检查更新": "Check for updates",
   "检查问题、启动与快速修复": "Check issues, launch and quick fixes",
   "诊断供应商": "Diagnose provider",
+  "图像生成能力": "Image generation capability",
   "检测": "Detect",
   "检测到 OPENAI 环境变量": "OPENAI environment variables detected",
   "检测到来自网页的供应商配置导入请求，确认后会写入本机 ChatGPT++。":
@@ -533,6 +534,9 @@ export const EN_PLAIN: Record<string, string> = {
   "诊断报告已复制。": "Diagnostic report copied.",
   "点击后会打开诊断弹框，按步骤检查供应商。": "Click to open the diagnostic dialog and check the provider step by step.",
   "正在诊断供应商，请稍候。": "Diagnosing provider, please wait.",
+  "等待检查上游图像模型与 Codex 工具注册能力。": "Waiting to check upstream image models and Codex tool registration capability.",
+  "上游列出图像模型不代表 Codex 已注册原生 image_gen；Provider Doctor 会明确报告这项能力边界。":
+    "Listing image models upstream does not mean Codex registered the native image_gen tool; Provider Doctor reports this capability boundary explicitly.",
   "诊断已完成。": "Diagnosis complete.",
   "诊断中": "Diagnosing",
   "异常": "Error",

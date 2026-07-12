@@ -128,6 +128,7 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
             <Stethoscope className="h-4 w-4" />{t("诊断供应商")}</Button>
         </div>
         <span>{doctorResult?.summary ?? t("点击后会打开诊断弹框，按步骤检查供应商。")}</span>
+        <span>{t("上游列出图像模型不代表 Codex 已注册原生 image_gen；Provider Doctor 会明确报告这项能力边界。")}</span>
       </div> : null}
       {showApiFields ? <Field className="relay-field-model-list" label={t("模型列表")}>
         <div className="relay-model-row-editor">

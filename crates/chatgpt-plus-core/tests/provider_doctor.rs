@@ -177,7 +177,45 @@ async fn configured_profile_reports_missing_model_as_warning() {
     assert_eq!(outcome.status, "ok");
     assert_eq!(outcome.payload.summary, "基础连接可用，但有 1 项需要确认。");
     assert_eq!(outcome.payload.checks[1].status, "warning");
+    let image_generation = outcome
+        .payload
+        .checks
+        .iter()
+        .find(|check| check.id == "image_generation")
+        .expect("image generation capability check");
+    assert_eq!(image_generation.status, "ok");
+    assert!(image_generation.detail.contains("不会注册"));
     assert!(outcome.payload.recommendation.contains("测试模型"));
+}
+
+#[tokio::test]
+async fn pure_api_profile_reports_image_models_without_claiming_hosted_tool_support() {
+    let outcome = diagnose_with_probe(
+        &configured_profile(),
+        "fallback-model",
+        &FakeProbe {
+            models: Ok((
+                vec![
+                    "expected-model".to_string(),
+                    "openai/gpt-image-2".to_string(),
+                ],
+                "https://provider.example/v1/models".to_string(),
+            )),
+            request: Ok(request(200)),
+        },
+    )
+    .await;
+
+    let image_generation = outcome
+        .payload
+        .checks
+        .iter()
+        .find(|check| check.id == "image_generation")
+        .expect("image generation capability check");
+    assert_eq!(image_generation.status, "warning");
+    assert!(image_generation.detail.contains("gpt-image-2"));
+    assert!(image_generation.detail.contains("无法注册"));
+    assert!(outcome.payload.recommendation.contains("原生 image_gen"));
 }
 
 #[tokio::test]

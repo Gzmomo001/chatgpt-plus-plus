@@ -144,6 +144,7 @@ function providerDoctorSteps(
   const base = [
     { id: "config", title: t("配置完整性"), pending: t("等待检查 Base URL / API Key。") },
     { id: "models", title: t("模型列表"), pending: t("等待检查 /v1/models。") },
+    { id: "image_generation", title: t("图像生成能力"), pending: t("等待检查上游图像模型与 Codex 工具注册能力。") },
     { id: "request", title: t("真实请求"), pending: t("等待发送一次测试请求。") },
     { id: "recommendation", title: t("处理建议"), pending: t("等待生成建议。") },
   ];
@@ -170,7 +171,7 @@ function providerDoctorSteps(
       return {
         id: step.id,
         title: step.title,
-        detail: step.id === "models" || step.id === "request"
+        detail: step.id === "models" || step.id === "image_generation" || step.id === "request"
           ? t("该步骤未执行。")
           : step.pending,
         state: "pending",
