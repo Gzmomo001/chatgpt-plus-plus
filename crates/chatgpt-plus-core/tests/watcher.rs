@@ -1,37 +1,11 @@
 use chatgpt_plus_core::watcher::{
-    build_spawn_launcher_command, build_watcher_install_plan, cdp_listening, codex_process_ids,
+    build_spawn_launcher_command, build_watcher_install_plan, codex_process_ids,
     disable_watcher_at, enable_watcher_at, filter_killable_launcher_processes,
-    process_ids_still_running, should_recover_stale_launcher, watcher_disabled_flag,
+    process_ids_still_running, watcher_disabled_flag,
 };
 
 #[cfg(windows)]
 use chatgpt_plus_core::watcher::{WindowsProcessInfo, find_codex_processes_from_snapshot};
-
-#[test]
-fn cdp_listening_returns_true_for_bound_loopback_port() {
-    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
-    let port = listener.local_addr().unwrap().port();
-
-    assert!(cdp_listening(port));
-}
-
-#[test]
-fn cdp_listening_returns_true_for_bound_ipv6_loopback_port() {
-    let listener = std::net::TcpListener::bind("[::1]:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
-
-    assert!(cdp_listening(port));
-}
-
-#[test]
-fn cdp_listening_returns_false_for_closed_port() {
-    let port = {
-        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
-        listener.local_addr().unwrap().port()
-    };
-
-    assert!(!cdp_listening(port));
-}
 
 #[test]
 fn watcher_enable_and_disable_toggle_flag() {
@@ -47,25 +21,21 @@ fn watcher_enable_and_disable_toggle_flag() {
 
 #[test]
 fn watcher_install_plan_registers_rust_launcher_at_logon() {
-    let plan = build_watcher_install_plan("C:/Tools/chatgpt-plus-plus.exe".into(), 9333);
+    let plan = build_watcher_install_plan("C:/Tools/chatgpt-plus-plus.exe".into());
 
     assert_eq!(plan.run_value_name, "ChatGPTPlusPlusWatcher");
-    assert_eq!(
-        plan.run_value,
-        "\"C:/Tools/chatgpt-plus-plus.exe\" --debug-port 9333"
-    );
+    assert_eq!(plan.run_value, "\"C:/Tools/chatgpt-plus-plus.exe\"");
     assert_eq!(plan.shortcut_name, "ChatGPTPlusPlusWatcher.lnk");
     assert_eq!(plan.shortcut_target, "C:/Tools/chatgpt-plus-plus.exe");
-    assert_eq!(plan.shortcut_arguments, "--debug-port 9333");
+    assert_eq!(plan.shortcut_arguments, "");
 }
 
 #[test]
 fn spawn_launcher_command_points_to_silent_binary_only() {
-    let command = build_spawn_launcher_command("C:/Tools/chatgpt-plus-plus.exe", 9444);
+    let command = build_spawn_launcher_command("C:/Tools/chatgpt-plus-plus.exe");
 
     assert_eq!(command[0], "C:/Tools/chatgpt-plus-plus.exe");
-    assert!(command.contains(&"--debug-port".to_string()));
-    assert!(command.contains(&"9444".to_string()));
+    assert_eq!(command.len(), 1);
     assert!(!command.iter().any(|part| part.contains("manager")));
 }
 
@@ -125,14 +95,6 @@ fn launcher_process_filter_protects_current_process_ancestry() {
         filter_killable_launcher_processes(processes, 30),
         vec![40, 60]
     );
-}
-
-#[test]
-fn stale_launcher_recovery_only_runs_when_codex_and_cdp_are_absent() {
-    assert!(should_recover_stale_launcher(false, false));
-    assert!(!should_recover_stale_launcher(true, false));
-    assert!(!should_recover_stale_launcher(false, true));
-    assert!(!should_recover_stale_launcher(true, true));
 }
 
 #[test]

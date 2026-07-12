@@ -29,8 +29,6 @@ pub struct PendingProviderImportPayload {
 pub struct LaunchRequest {
     #[serde(default)]
     pub app_path: String,
-    #[serde(default = "default_debug_port")]
-    pub debug_port: u16,
     #[serde(default = "default_helper_port")]
     pub helper_port: u16,
 }
@@ -114,12 +112,10 @@ fn request_enhanced_launch(
     action: EnhancedLaunchAction,
     accepted_message: &str,
 ) -> CommandResult<Value> {
-    let debug_port = request.debug_port;
     let helper_port = request.helper_port;
     let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
         "manager.launch_requested",
         json!({
-            "debug_port": debug_port,
             "helper_port": helper_port,
             "app_path": request.app_path.trim()
         }),
@@ -127,7 +123,6 @@ fn request_enhanced_launch(
     let launch_request = EnhancedLaunchRequest {
         app_path: (!request.app_path.trim().is_empty())
             .then(|| std::path::PathBuf::from(request.app_path.trim())),
-        debug_port,
         helper_port,
     };
     match start_enhanced_codex(action, launch_request) {
@@ -135,14 +130,12 @@ fn request_enhanced_launch(
             status: "accepted".to_string(),
             message: accepted_message.to_string(),
             payload: json!({
-                "debugPort": debug_port,
                 "helperPort": helper_port
             }),
         },
         Err(error) => failed(
             &format!("启动增强 Codex 失败：{error}"),
             json!({
-                "debugPort": debug_port,
                 "helperPort": helper_port
             }),
         ),
@@ -166,7 +159,6 @@ pub fn save_settings(settings: BackendSettings) -> CommandResult<SettingsPayload
                 settings_path: chatgpt_plus_core::paths::default_settings_path()
                     .to_string_lossy()
                     .to_string(),
-                user_scripts: user_script_inventory(),
             },
         ),
     }
@@ -308,32 +300,6 @@ pub fn reset_settings() -> CommandResult<SettingsPayload> {
                 settings_path: chatgpt_plus_core::paths::default_settings_path()
                     .to_string_lossy()
                     .to_string(),
-                user_scripts: user_script_inventory(),
-            },
-        ),
-    }
-}
-
-#[tauri::command]
-pub fn reset_image_overlay_settings() -> CommandResult<SettingsPayload> {
-    let store = SettingsStore::default();
-    let mut settings = store.load().unwrap_or_default();
-    let defaults = BackendSettings::default();
-    settings.codex_app_image_overlay_enabled = defaults.codex_app_image_overlay_enabled;
-    settings.codex_app_image_overlay_path = defaults.codex_app_image_overlay_path;
-    settings.codex_app_image_overlay_opacity = defaults.codex_app_image_overlay_opacity;
-    settings.codex_app_image_overlay_fit_mode = defaults.codex_app_image_overlay_fit_mode;
-    let settings = normalize_settings_before_save(settings);
-    match store.save(&settings) {
-        Ok(()) => settings_payload("图片覆盖层设置已重置。", "图片覆盖层重置后重新读取失败"),
-        Err(error) => failed(
-            &format!("重置图片覆盖层失败：{error}"),
-            SettingsPayload {
-                settings,
-                settings_path: chatgpt_plus_core::paths::default_settings_path()
-                    .to_string_lossy()
-                    .to_string(),
-                user_scripts: user_script_inventory(),
             },
         ),
     }
@@ -354,25 +320,15 @@ fn settings_payload_value() -> Result<SettingsPayload, (anyhow::Error, SettingsP
         Ok(settings) => Ok(SettingsPayload {
             settings,
             settings_path,
-            user_scripts: user_script_inventory(),
         }),
         Err(error) => Err((
             error,
             SettingsPayload {
                 settings: BackendSettings::default(),
                 settings_path,
-                user_scripts: user_script_inventory(),
             },
         )),
     }
-}
-
-fn user_script_inventory() -> Value {
-    chatgpt_plus_core::user_scripts::default_user_script_inventory()
-}
-
-fn default_debug_port() -> u16 {
-    9229
 }
 
 fn default_helper_port() -> u16 {

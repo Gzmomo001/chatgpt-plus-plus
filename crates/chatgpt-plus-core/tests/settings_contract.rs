@@ -108,14 +108,8 @@ base_url = "http://127.0.0.1:57321/v1"
 }
 
 #[test]
-fn migration_preserves_official_auth_and_clamps_image_and_stepwise_values() {
+fn migration_preserves_official_auth_after_removed_renderer_fields() {
     let settings = BackendSettings {
-        codex_app_image_overlay_opacity: u8::MAX,
-        codex_app_image_overlay_fit_mode: "diagonal".to_string(),
-        codex_app_stepwise_max_items: u8::MAX,
-        codex_app_stepwise_max_input_chars: u32::MAX,
-        codex_app_stepwise_max_output_tokens: 1,
-        codex_app_stepwise_timeout_ms: u64::MAX,
         relay_profiles: vec![RelayProfile {
             relay_mode: RelayMode::Official,
             official_mix_api_key: false,
@@ -128,12 +122,6 @@ fn migration_preserves_official_auth_and_clamps_image_and_stepwise_values() {
     };
 
     let normalized = normalize_settings_before_save(settings);
-    assert_eq!(normalized.codex_app_image_overlay_opacity, 100);
-    assert_eq!(normalized.codex_app_image_overlay_fit_mode, "fit");
-    assert_eq!(normalized.codex_app_stepwise_max_items, 6);
-    assert_eq!(normalized.codex_app_stepwise_max_input_chars, 24_000);
-    assert_eq!(normalized.codex_app_stepwise_max_output_tokens, 100);
-    assert_eq!(normalized.codex_app_stepwise_timeout_ms, 60_000);
     assert_eq!(
         serde_json::from_str::<Value>(&normalized.relay_profiles[0].auth_contents).unwrap(),
         json!({"auth_mode":"chatgpt","tokens":{"access_token":"edited"}})
@@ -168,6 +156,7 @@ fn settings_save_atomically_replaces_existing_file_without_leaving_temp_file() {
     store.save(&BackendSettings::default()).unwrap();
 
     let saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    assert_eq!(saved["launchMode"], "patch");
+    assert!(saved.is_object());
+    assert!(saved.get("launchMode").is_none());
     assert!(!path.with_extension("json.tmp").exists());
 }

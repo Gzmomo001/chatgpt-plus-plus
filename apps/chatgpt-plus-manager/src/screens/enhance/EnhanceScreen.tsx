@@ -1,4 +1,4 @@
-import { Download, Info, RefreshCw, ShieldCheck, Trash2, Wrench } from "lucide-react";
+import { Download, Info, RefreshCw, Trash2, Wrench } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Button } from "@/shared/ui/button";
@@ -12,41 +12,12 @@ import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugin
 import { projectPluginInventoryState } from "./presentation";
 
 export type EnhanceFlag =
-  | "enhancementsEnabled"
   | "computerUseGuardEnabled"
-  | "codexAppSessionDelete"
-  | "codexAppMarkdownExport"
-  | "codexAppPasteFix"
-  | "codexAppProjectMove"
-  | "codexAppThreadIdBadge"
-  | "codexAppConversationView"
-  | "codexAppThreadScrollRestore"
-  | "codexAppStepwiseEnabled"
-  | "codexAppStepwiseDirectSend"
-  | "codexAppForceChineseLocale"
-  | "codexAppFastStartup"
-  | "codexAppNativeMenuPlacement"
-  | "codexAppNativeMenuLocalization"
-  | "codexAppUpstreamWorktreeCreate";
+  | "codexAppFastStartup";
 
 export type EnhanceSettingsView = {
-  enhancementsEnabled: boolean;
   computerUseGuardEnabled: boolean;
-  codexAppSessionDelete: boolean;
-  codexAppMarkdownExport: boolean;
-  codexAppPasteFix: boolean;
-  codexAppProjectMove: boolean;
-  codexAppThreadIdBadge: boolean;
-  codexAppConversationView: boolean;
-  codexAppThreadScrollRestore: boolean;
-  codexAppStepwiseEnabled: boolean;
-  codexAppStepwiseDirectSend: boolean;
-  codexAppForceChineseLocale: boolean;
   codexAppFastStartup: boolean;
-  codexAppNativeMenuPlacement: boolean;
-  codexAppNativeMenuLocalization: boolean;
-  codexAppUpstreamWorktreeCreate: boolean;
-  launchMode: "patch" | "relay";
 };
 
 export type RemotePluginMarketplaceView = {
@@ -67,7 +38,6 @@ export type EnhanceView = {
 
 export type EnhanceActions = {
   updateFlag: (key: EnhanceFlag, value: boolean) => void;
-  setLaunchMode: (launchMode: "patch" | "relay") => Promise<void>;
   repairPluginMarketplace: () => Promise<void>;
   refreshRemotePluginMarketplaceStatus: () => Promise<void>;
   repairRemotePluginMarketplace: () => Promise<void>;
@@ -90,7 +60,6 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
   } = view;
   const [marketplaceName, setMarketplaceName] = useState("");
   const pluginInventoryState = projectPluginInventoryState(pluginInventory, pluginInventoryPending);
-  const masterEnabled = settings.enhancementsEnabled;
   const remoteMarketplaceStatus = remotePluginMarketplace?.marketplaceRoot
     ? remotePluginMarketplace.configRegistered
       ? t("已注册")
@@ -105,19 +74,8 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
 
   return (
     <Panel>
-      <CardHead title={t("Codex增强")} detail={t("会话删除、导出、项目移动和用户脚本等界面能力")} />
+      <CardHead title={t("Codex增强")} detail={t("管理不依赖 Codex Renderer 的启动维护与插件能力")} />
       <CardContent>
-        <label className="switch-row">
-          <input
-            checked={settings.enhancementsEnabled}
-            onChange={(event) => actions.updateFlag("enhancementsEnabled", event.currentTarget.checked)}
-            type="checkbox"
-          />
-          <span>
-            <strong>{t("启用 Codex增强")}</strong>
-            <small>{t("关闭后会停用删除、导出、项目移动、插件相关和菜单位置增强。")}</small>
-          </span>
-        </label>
         <label className="switch-row">
           <input
             checked={settings.computerUseGuardEnabled}
@@ -129,13 +87,6 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
             <small>{t("默认关闭；开启后启动 Codex 时会自动保留官方 Computer Use 插件所需的 config.toml、bundled 插件和 notify 配置。")}</small>
           </span>
         </label>
-        <ModeSelector launchMode={settings.launchMode} onChange={actions.setLaunchMode} />
-        {settings.launchMode === "relay" ? (
-          <div className="hint-line">
-            <ShieldCheck className="h-4 w-4" />
-            <span>{t("当前为兼容增强模式，插件市场解锁不会启用；其他页面功能仍可用。")}</span>
-          </div>
-        ) : null}
         <div className="enhance-feature-groups">
           <FeatureGroup title={t("插件市场")} detail={t("使用 Codex 官方配置管理市场来源和插件，不修改页面请求或 DOM。")}>
             <div className="feature-action-row">
@@ -154,27 +105,8 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
               <span className="feature-action-status">{remoteMarketplaceStatus}</span>
             </div>
           </FeatureGroup>
-          <FeatureGroup title={t("对话与输入")} detail={t("调整会话管理、输入行为和对话阅读体验。")}>
-            <FeatureToggle title={t("会话删除")} detail={t("在会话列表悬停显示删除按钮，并支持撤销。")} checked={settings.codexAppSessionDelete} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppSessionDelete", value)} />
-            <FeatureToggle title={t("Markdown 导出")} detail={t("在会话列表显示导出按钮，导出带时间戳的 Markdown。")} checked={settings.codexAppMarkdownExport} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppMarkdownExport", value)} />
-            <FeatureToggle title={t("粘贴修复")} detail={t("从 Word 等富文本粘贴到 Codex composer 时只保留纯文本，避免被识别为图片/文件附件。需重启 Codex 才生效。")} checked={settings.codexAppPasteFix} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppPasteFix", value)} />
-            <FeatureToggle title={t("会话项目移动")} detail={t("把会话移动到普通对话或其他本地项目。")} checked={settings.codexAppProjectMove} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppProjectMove", value)} />
-            <FeatureToggle title={t("会话 ID 标识")} detail={t("在侧边栏会话标题前显示短 ID 和 UUIDv7 创建时间，方便定位历史会话。")} checked={settings.codexAppThreadIdBadge} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppThreadIdBadge", value)} />
-            <FeatureToggle title={t("对话居中宽度")} detail={t("把主对话和输入框限制到固定最大宽度，适合大屏阅读。")} checked={settings.codexAppConversationView} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppConversationView", value)} />
-            <FeatureToggle title={t("切换对话保留位置")} detail={t("切换 thread 时恢复上一次浏览位置。")} checked={settings.codexAppThreadScrollRestore} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppThreadScrollRestore", value)} />
-          </FeatureGroup>
-          <FeatureGroup title="Stepwise" detail={t("基于当前对话生成下一步建议，使用独立 API 配置。")}>
-            <FeatureToggle title="Stepwise" detail={t("在 Codex 页面显示可拖动的后续建议浮层；建议由单独配置的 Stepwise API 生成。")} checked={settings.codexAppStepwiseEnabled} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppStepwiseEnabled", value)} />
-            <FeatureToggle title={t("Stepwise 直接发送")} detail={t("点击建议后自动发送；关闭时只填入输入框。")} checked={settings.codexAppStepwiseDirectSend} disabled={!masterEnabled || !settings.codexAppStepwiseEnabled} onChange={(value) => actions.updateFlag("codexAppStepwiseDirectSend", value)} />
-          </FeatureGroup>
-          <FeatureGroup title={t("界面与启动")} detail={t("控制语言、启动速度和 Codex 原生界面调整。")}>
-            <FeatureToggle title={t("强制中文界面")} detail={t("强制启用 Codex App 内置 zh-CN 语言包，避免 Statsig/VPN 不通时回退英文。需重启 Codex 才能完整生效。")} checked={settings.codexAppForceChineseLocale} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppForceChineseLocale", value)} />
-            <FeatureToggle title={t("快速启动")} detail={t("默认关闭；无 VPN 时可开启，让 Statsig 初始化快速失败，减少启动时长。需重启 Codex 才生效。")} checked={settings.codexAppFastStartup} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppFastStartup", value)} />
-            <FeatureToggle title={t("原生菜单栏位置")} detail={t("把 ChatGPT++ 菜单插入 Codex 顶部原生菜单栏。")} checked={settings.codexAppNativeMenuPlacement} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppNativeMenuPlacement", value)} />
-            <FeatureToggle title={t("原生菜单汉化")} detail={t("启动时通过本地主进程调试端口汉化 Codex 原生菜单；不修改安装包。需重启 Codex 才生效。")} checked={settings.codexAppNativeMenuLocalization} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppNativeMenuLocalization", value)} />
-          </FeatureGroup>
-          <FeatureGroup title={t("远程项目")} detail={t("管理 upstream worktree 辅助能力。")}>
-            <FeatureToggle title="Upstream worktree" detail={t("从最新 upstream 分支创建 Git worktree。")} checked={settings.codexAppUpstreamWorktreeCreate} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppUpstreamWorktreeCreate", value)} />
+          <FeatureGroup title={t("启动维护")} detail={t("这些能力不读取或修改 Codex Renderer。")}>
+            <FeatureToggle title={t("快速启动")} detail={t("默认关闭；无 VPN 时可开启，让 Statsig 初始化快速失败，减少启动时长。需重启 Codex 才生效。")} checked={settings.codexAppFastStartup} onChange={(value) => actions.updateFlag("codexAppFastStartup", value)} />
           </FeatureGroup>
         </div>
         <div className="hint-line">
@@ -258,21 +190,6 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
         </Toolbar>
       </CardContent>
     </Panel>
-  );
-}
-
-function ModeSelector({ launchMode, onChange }: { launchMode: "patch" | "relay"; onChange: (mode: "patch" | "relay") => Promise<void> }) {
-  return (
-    <div className="mode-grid">
-      <button className={`mode-option ${launchMode === "relay" ? "active" : ""}`} onClick={() => void onChange("relay")} type="button">
-        <strong>{t("兼容增强")}</strong>
-        <span>{t("适合官方登录或官方混入 API Key；保留会话删除、导出、项目移动和用户脚本，关闭插件市场相关增强。")}</span>
-      </button>
-      <button className={`mode-option ${launchMode === "patch" ? "active" : ""}`} onClick={() => void onChange("patch")} type="button">
-        <strong>{t("完整增强")}</strong>
-        <span>{t("适合纯 API；启用插件市场、会话删除导出、项目移动等全部页面能力。")}</span>
-      </button>
-    </div>
   );
 }
 

@@ -1,6 +1,5 @@
 use chatgpt_plus_core::settings::BackendSettings;
 use serde::Serialize;
-use serde_json::Value;
 
 pub use crate::overview::OverviewPayload;
 
@@ -19,7 +18,6 @@ where
 pub struct SettingsPayload {
     pub settings: BackendSettings,
     pub settings_path: String,
-    pub user_scripts: Value,
 }
 
 pub(super) fn ok<T: Serialize>(message: &str, payload: T) -> CommandResult<T> {

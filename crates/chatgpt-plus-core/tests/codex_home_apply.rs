@@ -3,7 +3,7 @@ use chatgpt_plus_core::codex_home_apply::{
 };
 use chatgpt_plus_core::settings::{
     AggregateRelayMember, AggregateRelayProfile, AggregateRelayStrategy, BackendSettings,
-    LaunchMode, RelayMode, RelayProfile, SettingsStore,
+    RelayMode, RelayProfile, SettingsStore,
 };
 
 #[test]
@@ -473,7 +473,6 @@ fn activation_backfills_the_stored_previous_profile_before_selecting_the_target(
     assert_eq!(previous.context_window, "1000000");
     assert_eq!(previous.auto_compact_limit, "900000");
     assert_eq!(store.load().unwrap(), activation.settings);
-    assert_eq!(activation.settings.launch_mode, LaunchMode::Patch);
     assert_eq!(activation.home.disposition, CodexHomeDisposition::Applied);
 }
 

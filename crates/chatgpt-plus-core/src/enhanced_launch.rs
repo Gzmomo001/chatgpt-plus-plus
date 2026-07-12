@@ -9,7 +9,6 @@ pub enum EnhancedLaunchAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnhancedLaunchRequest {
     pub app_path: Option<PathBuf>,
-    pub debug_port: u16,
     pub helper_port: u16,
 }
 
@@ -144,7 +143,6 @@ fn start_enhanced_codex_with<R: EnhancedLaunchRuntime>(
         "app.enhanced_launch_requested",
         serde_json::json!({
             "action": if action == EnhancedLaunchAction::Restart { "restart" } else { "launch" },
-            "debug_port": request.debug_port,
             "helper_port": request.helper_port,
             "app_path": request.app_path.as_ref().map(|path| path.to_string_lossy())
         }),
@@ -162,12 +160,7 @@ fn helper_arguments(request: &EnhancedLaunchRequest) -> Vec<String> {
         arguments.push("--app-path".to_string());
         arguments.push(app_path.to_string_lossy().to_string());
     }
-    arguments.extend([
-        "--debug-port".to_string(),
-        request.debug_port.to_string(),
-        "--helper-port".to_string(),
-        request.helper_port.to_string(),
-    ]);
+    arguments.extend(["--helper-port".to_string(), request.helper_port.to_string()]);
     arguments
 }
 
@@ -214,7 +207,6 @@ mod tests {
     fn request() -> EnhancedLaunchRequest {
         EnhancedLaunchRequest {
             app_path: Some(PathBuf::from("/Applications/Codex.app")),
-            debug_port: 9333,
             helper_port: 57322,
         }
     }
@@ -232,7 +224,7 @@ mod tests {
         assert_eq!(
             runtime.events.lock().unwrap().as_slice(),
             [
-                "spawn:/opt/ChatGPT++/chatgpt-plus-plus:--app-path|/Applications/Codex.app|--debug-port|9333|--helper-port|57322"
+                "spawn:/opt/ChatGPT++/chatgpt-plus-plus:--app-path|/Applications/Codex.app|--helper-port|57322"
             ]
         );
     }
@@ -252,7 +244,7 @@ mod tests {
             [
                 "stop-launcher",
                 "stop-codex",
-                "spawn:/opt/ChatGPT++/chatgpt-plus-plus:--app-path|/Applications/Codex.app|--debug-port|9333|--helper-port|57322",
+                "spawn:/opt/ChatGPT++/chatgpt-plus-plus:--app-path|/Applications/Codex.app|--helper-port|57322",
             ]
         );
     }

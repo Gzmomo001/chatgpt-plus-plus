@@ -22,12 +22,6 @@ test("normalizes legacy settings through the application settings interface", ()
       "",
     ].join("\n"),
     relayContextConfigContents: '[plugins.demo]\nenabled = true\n',
-    codexAppImageOverlayOpacity: 500,
-    codexAppImageOverlayFitMode: "unsupported" as never,
-    codexAppStepwiseMaxItems: -4,
-    codexAppStepwiseMaxInputChars: 100,
-    codexAppStepwiseMaxOutputTokens: 9000,
-    codexAppStepwiseTimeoutMs: 500,
   });
 
   assert.equal(normalized.relayProfiles[0]?.id, "legacy");
@@ -40,12 +34,6 @@ test("normalizes legacy settings through the application settings interface", ()
   });
   assert.equal(normalized.relayCommonConfigContents, 'model = "gpt"\n');
   assert.match(normalized.relayContextConfigContents, /\[mcp_servers\.alpha\]/);
-  assert.equal(normalized.codexAppImageOverlayOpacity, 100);
-  assert.equal(normalized.codexAppImageOverlayFitMode, "fit");
-  assert.equal(normalized.codexAppStepwiseMaxItems, 0);
-  assert.equal(normalized.codexAppStepwiseMaxInputChars, 1000);
-  assert.equal(normalized.codexAppStepwiseMaxOutputTokens, 4000);
-  assert.equal(normalized.codexAppStepwiseTimeoutMs, 1000);
 });
 
 test("selects the active profile and preserves deterministic fallbacks", () => {

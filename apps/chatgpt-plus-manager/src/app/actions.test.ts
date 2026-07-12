@@ -36,7 +36,6 @@ test("publishes domain adapters instead of one flat command bag", () => {
     "relay",
     "sessions",
     "settings",
-    "userScripts",
   ]);
   assert.equal("invoke" in actions, false);
   assert.equal("call" in actions, false);
@@ -44,10 +43,10 @@ test("publishes domain adapters instead of one flat command bag", () => {
 
 test("adapters own wire command names and nested payload shapes", async () => {
   const { actions, invocations } = recordingActions();
-  const settings = { launchMode: "patch" } as never;
+  const settings = {} as never;
   const profile = { id: "relay-a" } as never;
 
-  await actions.overview.launch({ appPath: "/Applications/Codex.app", debugPort: 9229, helperPort: 57321 });
+  await actions.overview.launch({ appPath: "/Applications/Codex.app", helperPort: 57321 });
   await actions.context.upsert({ settings, kind: "skill", id: "skill-a", tomlBody: "enabled = true" });
   await actions.relay.switchProfile({ settings, targetRelayId: "relay-a" });
   await actions.relay.saveFile("config", "model = \"gpt-5\"\n");
@@ -63,7 +62,7 @@ test("adapters own wire command names and nested payload shapes", async () => {
   assert.deepEqual(invocations, [
     {
       command: "launch_chatgpt_plus",
-      args: { request: { appPath: "/Applications/Codex.app", debugPort: 9229, helperPort: 57321 } },
+      args: { request: { appPath: "/Applications/Codex.app", helperPort: 57321 } },
     },
     {
       command: "upsert_context_entry",
@@ -137,7 +136,6 @@ test("adapters honor each command's Rust wire casing before callers observe it",
           status: "running",
           message: "ok",
           started_at_ms: 10,
-          debug_port: 9229,
           helper_port: 57321,
           codex_app: "/Applications/Codex.app",
         },
@@ -149,9 +147,8 @@ test("adapters honor each command's Rust wire casing before callers observe it",
       load_settings: {
         status: "ok",
         message: "ok",
-        settings: { launchMode: "patch" },
+        settings: {},
         settings_path: "/tmp/settings.json",
-        user_scripts: { enabled: true, scripts: [] },
       },
       load_watcher_state: {
         status: "ok",
@@ -182,9 +179,8 @@ test("adapters honor each command's Rust wire casing before callers observe it",
       switch_relay_profile: {
         status: "ok",
         message: "ok",
-        settings: { launchMode: "patch" },
+        settings: {},
         settingsPath: "/tmp/settings.json",
-        userScripts: { enabled: true, scripts: [] },
         relay: { configured: true },
       },
     };
@@ -198,7 +194,7 @@ test("adapters honor each command's Rust wire casing before callers observe it",
   const deleted = await actions.sessions.delete({ id: "session-a", title: "A", dbPath: "/tmp/db" });
   const sessions = await actions.sessions.list();
   const switched = await actions.relay.switchProfile({
-    settings: { launchMode: "patch" } as never,
+    settings: {} as never,
     targetRelayId: "relay-a",
   });
 
@@ -206,7 +202,6 @@ test("adapters honor each command's Rust wire casing before callers observe it",
     status: "running",
     message: "ok",
     startedAtMs: 10,
-    debugPort: 9229,
     helperPort: 57321,
     codexApp: "/Applications/Codex.app",
   });
@@ -217,7 +212,6 @@ test("adapters honor each command's Rust wire casing before callers observe it",
   });
   assert.equal("legacy_management_shortcut" in overview, false);
   assert.equal("latest_launch" in overview, false);
-  assert.deepEqual(settings.userScripts, { enabled: true, scripts: [] });
   assert.equal(settings.settingsPath, "/tmp/settings.json");
   assert.equal("user_scripts" in settings, false);
   assert.equal(watcher.disabledFlag, "/tmp/disabled");
@@ -235,7 +229,7 @@ test("adapters honor each command's Rust wire casing before callers observe it",
   });
   assert.equal(sessions.dbPath, "/tmp/state.sqlite");
   assert.deepEqual(sessions.dbPaths, ["/tmp/state.sqlite"]);
-  assert.deepEqual(switched.userScripts, { enabled: true, scripts: [] });
+  assert.deepEqual(switched.relay, { configured: true });
 });
 
 test("root App depends only on typed manager actions", () => {

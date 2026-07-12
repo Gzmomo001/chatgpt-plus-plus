@@ -5,11 +5,7 @@ use anyhow::Context;
 use serde_json::{Value, json};
 use toml_edit::{DocumentMut, Item, Table};
 
-use super::types::{
-    BackendSettings, RelayMode, RelayProfile, RelayProtocol, clamp_image_overlay_opacity,
-    clamp_stepwise_max_input_chars, clamp_stepwise_max_items, clamp_stepwise_max_output_tokens,
-    clamp_stepwise_timeout_ms, default_stepwise_api_key_env, normalize_image_overlay_fit_mode,
-};
+use super::types::{BackendSettings, RelayMode, RelayProfile, RelayProtocol};
 
 const RELAY_PROVIDER: &str = "custom";
 const LEGACY_RELAY_PROVIDERS: &[&str] = &["ChatGPTPlusPlus", "CodexPlusPlus", "CodexPP"];
@@ -26,13 +22,6 @@ const RESERVED_MODEL_PROVIDER_IDS: &[&str] = &[
 const PROTOCOL_PROXY_PORT: u16 = 57321;
 
 pub(super) fn normalize_settings_config_sections(mut settings: BackendSettings) -> BackendSettings {
-    // These capabilities now live in the manager or the official Codex UI.
-    // Keep accepting legacy fields until the renderer bridge is removed, but
-    // never reactivate request/DOM/service-tier patches from old settings.
-    settings.codex_app_plugin_marketplace_unlock = false;
-    settings.codex_app_plugin_auto_expand = false;
-    settings.codex_app_model_whitelist_unlock = false;
-    settings.codex_app_service_tier_controls = false;
     let (common, extracted_context) =
         split_context_config_sections(&settings.relay_common_config_contents);
     let context = join_config_sections(&[
@@ -44,31 +33,6 @@ pub(super) fn normalize_settings_config_sections(mut settings: BackendSettings) 
     for profile in &mut settings.relay_profiles {
         let _ = normalize_relay_profile_for_storage(profile);
     }
-    settings.codex_app_image_overlay_opacity =
-        clamp_image_overlay_opacity(settings.codex_app_image_overlay_opacity);
-    settings.codex_app_image_overlay_fit_mode =
-        normalize_image_overlay_fit_mode(&settings.codex_app_image_overlay_fit_mode);
-    settings.codex_app_stepwise_base_url = settings
-        .codex_app_stepwise_base_url
-        .trim()
-        .trim_end_matches('/')
-        .to_string();
-    settings.codex_app_stepwise_api_key = settings.codex_app_stepwise_api_key.trim().to_string();
-    settings.codex_app_stepwise_api_key_env =
-        if settings.codex_app_stepwise_api_key_env.trim().is_empty() {
-            default_stepwise_api_key_env()
-        } else {
-            settings.codex_app_stepwise_api_key_env.trim().to_string()
-        };
-    settings.codex_app_stepwise_model = settings.codex_app_stepwise_model.trim().to_string();
-    settings.codex_app_stepwise_max_items =
-        clamp_stepwise_max_items(settings.codex_app_stepwise_max_items);
-    settings.codex_app_stepwise_max_input_chars =
-        clamp_stepwise_max_input_chars(settings.codex_app_stepwise_max_input_chars);
-    settings.codex_app_stepwise_max_output_tokens =
-        clamp_stepwise_max_output_tokens(settings.codex_app_stepwise_max_output_tokens);
-    settings.codex_app_stepwise_timeout_ms =
-        clamp_stepwise_timeout_ms(settings.codex_app_stepwise_timeout_ms);
     settings
 }
 

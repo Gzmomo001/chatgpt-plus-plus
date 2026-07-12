@@ -11,7 +11,7 @@
 
 - Keep `chatgpt-plus-launcher` as an internal helper process so Codex/helper/watchdog lifetime is independent of the Tauri window.
 - The manager calls a single deep launch interface that owns helper discovery, arguments, hidden process creation, restart cleanup, and diagnostic errors.
-- The helper retains CDP flags, single-instance recovery, injection watchdog, provider sync, protocol proxy, and Codex activation behavior.
+- The helper retains single-instance recovery, provider sync, protocol proxy, and official Codex activation behavior; Renderer injection and CDP flags have been removed.
 - Closing the main window hides it to the tray/menu bar. Quitting the UI releases UI resources; a running helper remains responsible for its own Codex/helper lifecycle until Codex exits.
 
 ## macOS bundle layout

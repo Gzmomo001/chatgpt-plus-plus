@@ -1,15 +1,14 @@
 use std::collections::{HashMap, HashSet};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 #[cfg(windows)]
 use std::process::{Command, Stdio};
+#[cfg(windows)]
 use std::time::Duration;
 
 #[cfg(windows)]
 pub use crate::windows_integration::WindowsProcessInfo;
 
 pub const WATCHER_INTERVAL_SECONDS: f64 = 3.0;
-pub const CDP_PROBE_TIMEOUT_SECONDS: f64 = 0.5;
 pub const TAKEOVER_FAILURE_BACKOFF_SECONDS: f64 = 30.0;
 pub const RESTART_STOP_WAIT_TIMEOUT_MS: u64 = 5_000;
 const RESTART_STOP_WAIT_INTERVAL_MS: u64 = 100;
@@ -58,32 +57,18 @@ pub fn disable_watcher() -> std::io::Result<()> {
     disable_watcher_at(&crate::paths::default_app_state_dir())
 }
 
-pub fn cdp_listening(port: u16) -> bool {
-    [
-        SocketAddr::from((Ipv4Addr::LOCALHOST, port)),
-        SocketAddr::from((Ipv6Addr::LOCALHOST, port)),
-    ]
-    .into_iter()
-    .any(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_ok())
+pub fn build_spawn_launcher_command(launcher_path: &str) -> Vec<String> {
+    vec![launcher_path.to_string()]
 }
 
-pub fn build_spawn_launcher_command(launcher_path: &str, debug_port: u16) -> Vec<String> {
-    vec![
-        launcher_path.to_string(),
-        "--debug-port".to_string(),
-        debug_port.to_string(),
-    ]
-}
-
-pub fn build_watcher_install_plan(launcher_path: PathBuf, debug_port: u16) -> WatcherInstallPlan {
+pub fn build_watcher_install_plan(launcher_path: PathBuf) -> WatcherInstallPlan {
     let launcher = launcher_path.to_string_lossy().to_string();
-    let arguments = format!("--debug-port {debug_port}");
     WatcherInstallPlan {
         run_value_name: WATCHER_RUN_NAME.to_string(),
-        run_value: format!("\"{launcher}\" {arguments}"),
+        run_value: format!("\"{launcher}\""),
         shortcut_name: WATCHER_STARTUP_SHORTCUT_NAME.to_string(),
         shortcut_target: launcher,
-        shortcut_arguments: arguments,
+        shortcut_arguments: String::new(),
     }
 }
 
@@ -139,10 +124,6 @@ pub fn filter_killable_launcher_processes<'a>(
         .collect()
 }
 
-pub fn should_recover_stale_launcher(has_codex_process: bool, cdp_listening: bool) -> bool {
-    !has_codex_process && !cdp_listening
-}
-
 pub fn process_ids_still_running(
     expected: &[u32],
     running: impl IntoIterator<Item = u32>,
@@ -155,20 +136,20 @@ pub fn process_ids_still_running(
 }
 
 #[cfg(windows)]
-pub fn install_watcher(launcher_path: &Path, debug_port: u16) -> anyhow::Result<()> {
-    let plan = build_watcher_install_plan(launcher_path.to_path_buf(), debug_port);
+pub fn install_watcher(launcher_path: &Path) -> anyhow::Result<()> {
+    let plan = build_watcher_install_plan(launcher_path.to_path_buf());
     crate::windows_integration::set_current_user_string_value(
         WATCHER_RUN_KEY,
         &plan.run_value_name,
         &plan.run_value,
     )?;
     create_startup_shortcut(launcher_path, &plan.shortcut_arguments)?;
-    spawn_launcher(launcher_path, debug_port);
+    spawn_launcher(launcher_path);
     Ok(())
 }
 
 #[cfg(not(windows))]
-pub fn install_watcher(_launcher_path: &Path, _debug_port: u16) -> anyhow::Result<()> {
+pub fn install_watcher(_launcher_path: &Path) -> anyhow::Result<()> {
     anyhow::bail!("watcher install is only supported on Windows")
 }
 
@@ -350,8 +331,8 @@ fn create_startup_shortcut(launcher_path: &Path, arguments: &str) -> anyhow::Res
 }
 
 #[cfg(windows)]
-fn spawn_launcher(launcher_path: &Path, debug_port: u16) {
-    let command = build_spawn_launcher_command(&launcher_path.to_string_lossy(), debug_port);
+fn spawn_launcher(launcher_path: &Path) {
+    let command = build_spawn_launcher_command(&launcher_path.to_string_lossy());
     if let Some((exe, args)) = command.split_first() {
         let mut command = Command::new(exe);
         command

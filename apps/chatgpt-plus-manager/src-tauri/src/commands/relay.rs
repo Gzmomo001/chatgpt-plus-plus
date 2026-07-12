@@ -38,7 +38,6 @@ pub struct RelaySwitchPayload {
     pub settings: BackendSettings,
     pub relay: RelayPayload,
     pub settings_path: String,
-    pub user_scripts: Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,13 +51,6 @@ pub struct RelayProfileTestPayload {
     pub http_status: u16,
     pub endpoint: String,
     pub response_preview: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StepwiseTestPayload {
-    pub item_count: usize,
-    pub error: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -323,44 +315,6 @@ pub async fn test_relay_profile(profile: RelayProfile) -> CommandResult<RelayPro
 }
 
 #[tauri::command]
-pub async fn test_stepwise_settings(
-    settings: BackendSettings,
-) -> CommandResult<StepwiseTestPayload> {
-    match chatgpt_plus_core::stepwise::test_connection(&settings).await {
-        Ok(result) => {
-            let error = result
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            let item_count = result
-                .get("items")
-                .and_then(Value::as_array)
-                .map(Vec::len)
-                .unwrap_or_default();
-            if error.is_empty() {
-                ok(
-                    &format!("Stepwise 连接正常，测试返回 {item_count} 条建议。"),
-                    StepwiseTestPayload { item_count, error },
-                )
-            } else {
-                failed(
-                    &format!("Stepwise 测试失败：{error}"),
-                    StepwiseTestPayload { item_count, error },
-                )
-            }
-        }
-        Err(error) => failed(
-            &format!("Stepwise 测试失败：{error}"),
-            StepwiseTestPayload {
-                item_count: 0,
-                error: error.to_string(),
-            },
-        ),
-    }
-}
-
-#[tauri::command]
 pub async fn fetch_relay_profile_models(
     profile: RelayProfile,
 ) -> CommandResult<RelayProfileModelsPayload> {
@@ -589,7 +543,6 @@ fn relay_switch_payload(
         settings_path: chatgpt_plus_core::paths::default_settings_path()
             .to_string_lossy()
             .to_string(),
-        user_scripts: chatgpt_plus_core::user_scripts::default_user_script_inventory(),
     }
 }
 

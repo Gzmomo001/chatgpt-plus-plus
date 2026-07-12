@@ -1,6 +1,5 @@
 import {
   ExternalLink,
-  FileCode2,
   Hammer,
   Info,
   KeyRound,
@@ -44,11 +43,6 @@ const routePresentation: Record<
     label: t("Codex增强"),
     subtitle: t("会话删除、导出、项目移动和脚本能力"),
     icon: Hammer,
-  },
-  userScripts: {
-    label: t("脚本市场"),
-    subtitle: t("内置和用户自定义脚本清单"),
-    icon: FileCode2,
   },
   recommendations: {
     label: t("推荐内容"),

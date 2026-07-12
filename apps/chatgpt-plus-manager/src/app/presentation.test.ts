@@ -11,7 +11,7 @@ import {
 } from "./presentation.ts";
 
 test("projects every application route and its shell copy through one interface", () => {
-  assert.equal(navigationRoutes.length, 10);
+  assert.equal(navigationRoutes.length, 9);
   assert.deepEqual(
     navigationRoutes.map(({ id }) => id),
     [
@@ -20,7 +20,6 @@ test("projects every application route and its shell copy through one interface"
       "sessions",
       "context",
       "enhance",
-      "userScripts",
       "recommendations",
       "maintenance",
       "about",

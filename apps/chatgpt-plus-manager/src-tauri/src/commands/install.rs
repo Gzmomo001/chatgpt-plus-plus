@@ -1,15 +1,10 @@
-use std::collections::BTreeMap;
 use std::path::Path;
 
-use chatgpt_plus_core::script_market::{self, MarketScript, ScriptMarketManifest};
-use chatgpt_plus_core::settings::{BackendSettings, SettingsStore};
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use super::shared::{CommandResult, failed, ok};
 use crate::install::{self, InstallActionResult, InstallOptions};
-use chatgpt_plus_core::user_scripts::default_user_script_manager;
-
-use super::shared::{CommandResult, SettingsPayload, failed, ok};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,12 +61,6 @@ pub struct AdsPayload {
     pub ads: Vec<Value>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct ScriptMarketPayload {
-    pub market: Value,
-    pub user_scripts: Value,
-}
-
 #[tauri::command]
 pub async fn load_ads() -> CommandResult<AdsPayload> {
     match chatgpt_plus_core::ads::fetch_ad_list().await {
@@ -82,101 +71,6 @@ pub async fn load_ads() -> CommandResult<AdsPayload> {
                 version: 1,
                 ads: Vec::new(),
             },
-        ),
-    }
-}
-
-#[tauri::command]
-pub async fn refresh_script_market() -> CommandResult<ScriptMarketPayload> {
-    match script_market::fetch_market_manifest(script_market::DEFAULT_MARKET_INDEX_URL).await {
-        Ok(manifest) => ok(
-            "脚本市场已刷新。",
-            script_market_payload_from_manifest(&manifest, "ok", "脚本市场已刷新。"),
-        ),
-        Err(error) => failed(
-            &format!("脚本市场加载失败：{error}"),
-            failed_script_market_payload(&format!("脚本市场加载失败：{error}")),
-        ),
-    }
-}
-
-#[tauri::command]
-pub async fn install_market_script(id: String) -> CommandResult<ScriptMarketPayload> {
-    let trimmed = id.trim();
-    if trimmed.is_empty() {
-        return failed(
-            "脚本 id 不能为空。",
-            failed_script_market_payload("脚本 id 不能为空。"),
-        );
-    }
-    let manifest =
-        match script_market::fetch_market_manifest(script_market::DEFAULT_MARKET_INDEX_URL).await {
-            Ok(manifest) => manifest,
-            Err(error) => {
-                return failed(
-                    &format!("脚本市场加载失败：{error}"),
-                    failed_script_market_payload(&format!("脚本市场加载失败：{error}")),
-                );
-            }
-        };
-    let Some(script) = manifest.scripts.iter().find(|script| script.id == trimmed) else {
-        return failed(
-            "市场清单中未找到该脚本。",
-            script_market_payload_from_manifest(&manifest, "failed", "市场清单中未找到该脚本。"),
-        );
-    };
-    let manager = default_user_script_manager();
-    match script_market::install_market_script(&manager, script).await {
-        Ok(()) => ok(
-            "脚本已安装。",
-            script_market_payload_from_manifest(&manifest, "ok", "脚本已安装。"),
-        ),
-        Err(error) => failed(
-            &format!("安装脚本失败：{error}"),
-            script_market_payload_from_manifest(
-                &manifest,
-                "failed",
-                &format!("安装脚本失败：{error}"),
-            ),
-        ),
-    }
-}
-
-#[tauri::command]
-pub fn set_user_script_enabled(key: String, enabled: bool) -> CommandResult<SettingsPayload> {
-    let trimmed = key.trim();
-    if trimmed.is_empty() {
-        return failed("脚本 key 不能为空。", fallback_settings_payload());
-    }
-    let manager = default_user_script_manager();
-    match manager.set_script_enabled(trimmed, enabled) {
-        Ok(_) => settings_payload(
-            if enabled {
-                "脚本已启用。"
-            } else {
-                "脚本已禁用。"
-            },
-            "脚本启停失败",
-        ),
-        Err(error) => failed(
-            &format!("脚本启停失败：{error}"),
-            fallback_settings_payload(),
-        ),
-    }
-}
-
-#[tauri::command]
-pub fn delete_user_script(key: String) -> CommandResult<SettingsPayload> {
-    let trimmed = key.trim();
-    if trimmed.is_empty() {
-        return failed("脚本 key 不能为空。", fallback_settings_payload());
-    }
-    let manager = default_user_script_manager();
-    match manager.delete_user_script(trimmed) {
-        Ok(_) => settings_payload("脚本已删除。", "脚本删除失败"),
-        Err(error) => failed(
-            &format!("脚本删除失败：{error}"),
-            fallback_settings_payload(),
         ),
     }
 }
@@ -647,7 +541,7 @@ pub fn install_watcher() -> CommandResult<WatcherPayload> {
     let launcher_path = chatgpt_plus_core::install::companion_binary_path(
         chatgpt_plus_core::install::SILENT_BINARY,
     );
-    match chatgpt_plus_core::watcher::install_watcher(&launcher_path, default_debug_port()) {
+    match chatgpt_plus_core::watcher::install_watcher(&launcher_path) {
         Ok(()) => ok("watcher 已安装。", watcher_payload()),
         Err(error) => failed(&format!("安装 watcher 失败：{error}"), watcher_payload()),
     }
@@ -703,132 +597,6 @@ pub(super) fn open_url(url: &str) -> anyhow::Result<()> {
     }
 }
 
-fn settings_payload(message: &str, failure_context: &str) -> CommandResult<SettingsPayload> {
-    match settings_payload_value() {
-        Ok(payload) => ok(message, payload),
-        Err((error, payload)) => failed(&format!("{failure_context}：{error}"), payload),
-    }
-}
-
-fn settings_payload_value() -> Result<SettingsPayload, (anyhow::Error, SettingsPayload)> {
-    let store = SettingsStore::default();
-    let settings_path = chatgpt_plus_core::paths::default_settings_path()
-        .to_string_lossy()
-        .to_string();
-    match store.load() {
-        Ok(settings) => Ok(SettingsPayload {
-            settings,
-            settings_path,
-            user_scripts: user_script_inventory(),
-        }),
-        Err(error) => Err((
-            error,
-            SettingsPayload {
-                settings: BackendSettings::default(),
-                settings_path,
-                user_scripts: user_script_inventory(),
-            },
-        )),
-    }
-}
-
-fn fallback_settings_payload() -> SettingsPayload {
-    SettingsPayload {
-        settings: SettingsStore::default().load().unwrap_or_default(),
-        settings_path: chatgpt_plus_core::paths::default_settings_path()
-            .to_string_lossy()
-            .to_string(),
-        user_scripts: user_script_inventory(),
-    }
-}
-
-fn user_script_inventory() -> Value {
-    chatgpt_plus_core::user_scripts::default_user_script_inventory()
-}
-
-pub(super) fn failed_script_market_payload(message: &str) -> ScriptMarketPayload {
-    ScriptMarketPayload {
-        market: json!({
-            "status": "failed",
-            "message": message,
-            "indexUrl": script_market::DEFAULT_MARKET_INDEX_URL,
-            "updatedAt": "",
-            "scripts": []
-        }),
-        user_scripts: user_script_inventory(),
-    }
-}
-
-pub(super) fn script_market_payload_from_manifest(
-    manifest: &ScriptMarketManifest,
-    status: &str,
-    message: &str,
-) -> ScriptMarketPayload {
-    let user_scripts = user_script_inventory();
-    let installed = installed_market_versions(&user_scripts);
-    let scripts = manifest
-        .scripts
-        .iter()
-        .map(|script| market_script_payload(script, &installed))
-        .collect::<Vec<_>>();
-    ScriptMarketPayload {
-        market: json!({
-            "status": status,
-            "message": message,
-            "indexUrl": script_market::DEFAULT_MARKET_INDEX_URL,
-            "updatedAt": manifest.updated_at.clone().unwrap_or_default(),
-            "scripts": scripts
-        }),
-        user_scripts,
-    }
-}
-
-pub(super) fn installed_market_versions(user_scripts: &Value) -> BTreeMap<String, String> {
-    user_scripts
-        .get("scripts")
-        .and_then(Value::as_array)
-        .map(|scripts| {
-            scripts
-                .iter()
-                .filter_map(|script| {
-                    let id = script.get("market_id").and_then(Value::as_str)?;
-                    if id.is_empty() {
-                        return None;
-                    }
-                    let version = script
-                        .get("version")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string();
-                    Some((id.to_string(), version))
-                })
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-pub(super) fn market_script_payload(
-    script: &MarketScript,
-    installed: &BTreeMap<String, String>,
-) -> Value {
-    let installed_version = installed.get(&script.id).cloned().unwrap_or_default();
-    let is_installed = !installed_version.is_empty();
-    json!({
-        "id": script.id,
-        "name": script.name,
-        "description": script.description,
-        "version": script.version,
-        "author": script.author,
-        "tags": script.tags,
-        "homepage": script.homepage,
-        "script_url": script.script_url,
-        "sha256": script.sha256,
-        "installed": is_installed,
-        "installedVersion": installed_version,
-        "updateAvailable": is_installed && installed.get(&script.id).map(|version| version != &script.version).unwrap_or(false)
-    })
-}
-
 pub(super) fn install_background_failure(
     action: &str,
     error: impl std::fmt::Display,
@@ -848,7 +616,4 @@ pub(super) fn watcher_payload() -> WatcherPayload {
         enabled: !flag.exists(),
         disabled_flag: flag.to_string_lossy().to_string(),
     }
-}
-pub(super) fn default_debug_port() -> u16 {
-    9229
 }

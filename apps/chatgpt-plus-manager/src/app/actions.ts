@@ -25,7 +25,6 @@ import type {
   LocalSessionsResult,
   ProviderSyncTargetsResult,
 } from "@/shared/contracts/sessions";
-import type { ScriptMarketResult, UserScriptInventory } from "@/shared/contracts/user-scripts";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 
 export const TAURI_COMMAND_NAMES = [
@@ -38,7 +37,6 @@ export const TAURI_COMMAND_NAMES = [
   "copy_diagnostics",
   "delete_context_entry",
   "delete_local_session",
-  "delete_user_script",
   "diagnose_relay_profile",
   "disable_watcher",
   "dismiss_pending_provider_import",
@@ -48,7 +46,6 @@ export const TAURI_COMMAND_NAMES = [
   "fetch_relay_profile_models",
   "import_ccs_providers",
   "install_entrypoints",
-  "install_market_script",
   "install_watcher",
   "launch_chatgpt_plus",
   "list_local_sessions",
@@ -69,7 +66,6 @@ export const TAURI_COMMAND_NAMES = [
   "read_latest_logs",
   "read_live_context_entries",
   "read_relay_files",
-  "refresh_script_market",
   "refresh_plugin_marketplace",
   "refresh_remote_plugin_marketplace",
   "register_plugin_marketplace",
@@ -79,18 +75,15 @@ export const TAURI_COMMAND_NAMES = [
   "repair_plugin_marketplace",
   "repair_remote_plugin_marketplace",
   "repair_shortcuts",
-  "reset_image_overlay_settings",
   "reset_settings",
   "restart_chatgpt_plus",
   "save_relay_file",
   "save_settings",
-  "set_user_script_enabled",
   "startup_options",
   "switch_relay_profile",
   "sync_live_context_entries",
   "sync_providers_now",
   "test_relay_profile",
-  "test_stepwise_settings",
   "uninstall_entrypoints",
   "uninstall_watcher",
   "update_tray_labels",
@@ -129,7 +122,6 @@ export type LiveContextEntriesResult = CommandResult<{
 export type RelaySwitchResult = CommandResult<{
   settings: BackendSettings;
   settingsPath: string;
-  userScripts: UserScriptInventory;
   relay: RelayPayload;
 }>;
 
@@ -139,7 +131,6 @@ export type RelayProfileTestResult = CommandResult<{
   responsePreview: string;
 }>;
 
-export type StepwiseTestResult = CommandResult<{ itemCount: number; error: string }>;
 export type RelayProfileModelsResult = CommandResult<{ models: string[]; endpoint: string }>;
 
 export type ProviderImportRequest = {
@@ -198,7 +189,7 @@ export type RemotePluginMarketplaceResult = CommandResult<{
   skillCount: number;
 }>;
 
-export type LaunchRequest = { appPath: string; debugPort: number; helperPort: number };
+export type LaunchRequest = { appPath: string; helperPort: number };
 export type UpdateRelease = {
   version: string;
   url: string;
@@ -216,12 +207,8 @@ const watcherCommands: Record<WatcherAction, TauriCommandName> = {
   disable: "disable_watcher",
 };
 
-type WireSettingsResult = Omit<SettingsResult, "settingsPath" | "userScripts"> & {
+type WireSettingsResult = Omit<SettingsResult, "settingsPath"> & {
   settings_path: string;
-  user_scripts: UserScriptInventory;
-};
-type WireScriptMarketResult = Omit<ScriptMarketResult, "userScripts"> & {
-  user_scripts: UserScriptInventory;
 };
 type WireOverviewResult = CommandResult<{
   codex_app: OverviewResult["codexApp"];
@@ -232,7 +219,6 @@ type WireOverviewResult = CommandResult<{
     status: string;
     message: string;
     started_at_ms: number;
-    debug_port: number | null;
     helper_port: number | null;
     codex_app: string | null;
   };
@@ -255,14 +241,9 @@ type WireDeleteLocalSessionResult = Omit<
   backup_path: string | null;
 };
 
-const mapSettingsResult = ({ settings_path, user_scripts, ...result }: WireSettingsResult): SettingsResult => ({
+const mapSettingsResult = ({ settings_path, ...result }: WireSettingsResult): SettingsResult => ({
   ...result,
   settingsPath: settings_path,
-  userScripts: user_scripts,
-});
-const mapScriptMarketResult = ({ user_scripts, ...result }: WireScriptMarketResult): ScriptMarketResult => ({
-  ...result,
-  userScripts: user_scripts,
 });
 const mapOverviewResult = ({
   codex_app,
@@ -285,7 +266,6 @@ const mapOverviewResult = ({
         status: latest_launch.status,
         message: latest_launch.message,
         startedAtMs: latest_launch.started_at_ms,
-        debugPort: latest_launch.debug_port,
         helperPort: latest_launch.helper_port,
         codexApp: latest_launch.codex_app,
       }
@@ -343,20 +323,6 @@ export function createManagerActions(call: InvokeManagerCommand) {
       save: (settings: BackendSettings) =>
         call<WireSettingsResult>("save_settings", { settings }).then(mapSettingsResult),
       reset: () => call<WireSettingsResult>("reset_settings").then(mapSettingsResult),
-      resetImageOverlay: () =>
-        call<WireSettingsResult>("reset_image_overlay_settings").then(mapSettingsResult),
-      testStepwise: (settings: BackendSettings) =>
-        call<StepwiseTestResult>("test_stepwise_settings", { settings }),
-    },
-    userScripts: {
-      refreshMarket: () =>
-        call<WireScriptMarketResult>("refresh_script_market").then(mapScriptMarketResult),
-      install: (id: string) =>
-        call<WireScriptMarketResult>("install_market_script", { id }).then(mapScriptMarketResult),
-      setEnabled: (key: string, enabled: boolean) =>
-        call<WireSettingsResult>("set_user_script_enabled", { key, enabled }).then(mapSettingsResult),
-      delete: (key: string) =>
-        call<WireSettingsResult>("delete_user_script", { key }).then(mapSettingsResult),
     },
     relay: {
       status: () => call<RelayResult>("relay_status"),

@@ -5,8 +5,6 @@ import type {
 } from "@/features/relay-profiles/types";
 import type { EnvConflictsResult } from "@/features/relay-profiles/contracts";
 import type { CommandResult } from "@/shared/contracts/command";
-import type { ImageOverlayFitMode } from "@/shared/contracts/settings";
-import type { UserScriptInventory } from "@/shared/contracts/user-scripts";
 
 export type {
   CcsProvidersResult,
@@ -23,9 +21,6 @@ export type {
   ContextKind,
 };
 
-export type LaunchMode = "patch" | "relay";
-export type { ImageOverlayFitMode } from "@/shared/contracts/settings";
-export type { UserScriptInventory } from "@/shared/contracts/user-scripts";
 export type BackendSettings = {
   codexAppPath: string;
   codexExtraArgs: string[];
@@ -34,40 +29,8 @@ export type BackendSettings = {
   providerSyncManualProviders: string[];
   providerSyncLastSelectedProvider: string;
   relayProfilesEnabled: boolean;
-  enhancementsEnabled: boolean;
   computerUseGuardEnabled: boolean;
-  codexAppPluginMarketplaceUnlock: boolean;
-  codexAppPluginAutoExpand: boolean;
-  codexAppModelWhitelistUnlock: boolean;
-  codexAppSessionDelete: boolean;
-  codexAppMarkdownExport: boolean;
-  codexAppPasteFix: boolean;
-  codexAppForceChineseLocale: boolean;
   codexAppFastStartup: boolean;
-  codexAppProjectMove: boolean;
-  codexAppThreadIdBadge: boolean;
-  codexAppConversationView: boolean;
-  codexAppThreadScrollRestore: boolean;
-  codexAppUpstreamWorktreeCreate: boolean;
-  codexAppNativeMenuPlacement: boolean;
-  codexAppNativeMenuLocalization: boolean;
-  codexAppServiceTierControls: boolean;
-  codexAppStepwiseEnabled: boolean;
-  codexAppStepwiseDirectSend: boolean;
-  codexAppStepwiseBaseUrl: string;
-  codexAppStepwiseApiKey: string;
-  codexAppStepwiseApiKeyEnv: string;
-  codexAppStepwiseModel: string;
-  codexAppStepwiseMaxItems: number;
-  codexAppStepwiseMaxInputChars: number;
-  codexAppStepwiseMaxOutputTokens: number;
-  codexAppStepwiseTimeoutMs: number;
-  codexAppImageOverlayEnabled: boolean;
-  codexAppImageOverlayPath: string;
-  codexAppImageOverlayOpacity: number;
-  codexAppImageOverlayFitMode: ImageOverlayFitMode;
-  codexGoalsEnabled: boolean;
-  launchMode: LaunchMode;
   relayBaseUrl: string;
   relayApiKey: string;
   relayProfiles: RelayProfile[];
@@ -81,7 +44,6 @@ export type BackendSettings = {
 export type SettingsResult = CommandResult<{
   settings: BackendSettings;
   settingsPath: string;
-  userScripts: UserScriptInventory;
 }>;
 
 export type EnvConflict = EnvConflictsResult["conflicts"][number];

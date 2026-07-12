@@ -5,9 +5,7 @@ mod types;
 pub use store::SettingsStore;
 pub use types::{
     AggregateRelayMember, AggregateRelayProfile, AggregateRelayStrategy, BackendSettings,
-    LaunchMode, RelayContextSelection, RelayMode, RelayModelInsertMode, RelayProfile,
-    RelayProtocol, clamp_stepwise_max_input_chars, clamp_stepwise_max_items,
-    clamp_stepwise_max_output_tokens, clamp_stepwise_timeout_ms, default_stepwise_api_key_env,
+    RelayContextSelection, RelayMode, RelayModelInsertMode, RelayProfile, RelayProtocol,
     normalize_codex_extra_args,
 };
 
@@ -25,7 +23,6 @@ use types::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zed_remote::ZedOpenStrategy;
     use serde_json::{Value, json};
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -46,41 +43,15 @@ mod tests {
         let settings = BackendSettings::default();
         assert!(!settings.provider_sync_enabled);
         assert!(settings.relay_profiles_enabled);
-        assert!(settings.enhancements_enabled);
         assert!(!settings.computer_use_guard_enabled);
-        assert!(!settings.codex_app_plugin_marketplace_unlock);
-        assert!(!settings.codex_app_plugin_auto_expand);
-        assert!(!settings.codex_app_thread_id_badge);
-        assert!(settings.codex_app_force_chinese_locale);
-        assert!(!settings.codex_goals_enabled);
+        assert!(!settings.codex_app_fast_startup);
         assert!(settings.codex_app_path.is_empty());
         assert!(settings.codex_extra_args.is_empty());
-        assert_eq!(
-            settings.zed_remote_open_strategy,
-            ZedOpenStrategy::AddToFocusedWorkspace
-        );
-        assert!(settings.zed_remote_project_registry_enabled);
-        assert!(!settings.zed_remote_sync_to_zed_settings);
-        assert!(settings.codex_app_native_menu_localization);
-        assert_eq!(settings.launch_mode, LaunchMode::Patch);
         assert_eq!(settings.relay_base_url, default_relay_base_url());
         assert!(settings.relay_api_key.is_empty());
         assert_eq!(settings.relay_profiles[0].relay_mode, RelayMode::Official);
         assert!(settings.relay_common_config_contents.is_empty());
         assert_eq!(settings.relay_test_model, default_relay_test_model());
-        assert!(!settings.codex_app_stepwise_enabled);
-        assert!(!settings.codex_app_stepwise_direct_send);
-        assert!(settings.codex_app_stepwise_base_url.is_empty());
-        assert!(settings.codex_app_stepwise_api_key.is_empty());
-        assert_eq!(
-            settings.codex_app_stepwise_api_key_env,
-            "CODEX_STEPWISE_API_KEY"
-        );
-        assert!(settings.codex_app_stepwise_model.is_empty());
-        assert_eq!(settings.codex_app_stepwise_max_items, 6);
-        assert_eq!(settings.codex_app_stepwise_max_input_chars, 6000);
-        assert_eq!(settings.codex_app_stepwise_max_output_tokens, 500);
-        assert_eq!(settings.codex_app_stepwise_timeout_ms, 8000);
     }
 
     #[test]
@@ -91,7 +62,6 @@ mod tests {
         .unwrap();
         assert_eq!(settings.codex_app_path, r"C:\Portable\Codex\app");
         assert!(settings.provider_sync_enabled);
-        assert!(settings.codex_goals_enabled);
         assert_eq!(settings.relay_base_url, default_relay_base_url());
         assert!(settings.codex_extra_args.is_empty());
         let saved = serde_json::to_value(&settings).unwrap();
@@ -102,27 +72,32 @@ mod tests {
     }
 
     #[test]
-    fn settings_deserialize_keeps_plugin_marketplace_unlock_switch() {
+    fn settings_deserialize_ignores_removed_renderer_fields() {
         let settings: BackendSettings = serde_json::from_str(
             r#"{
                 "codexAppPluginMarketplaceUnlock": true,
-                "codexAppPluginAutoExpand": false
+                "codexAppPluginAutoExpand": true,
+                "codexAppStepwiseEnabled": true,
+                "codexAppImageOverlayEnabled": true,
+                "codexAppNativeMenuLocalization": true,
+                "launchMode": "patch"
             }"#,
         )
         .unwrap();
-
-        assert!(settings.codex_app_plugin_marketplace_unlock);
-        assert!(!settings.codex_app_plugin_auto_expand);
-
-        let legacy_settings: BackendSettings = serde_json::from_str(
-            r#"{
-                "codexAppForcePluginInstall": false
-            }"#,
-        )
-        .unwrap();
-
-        assert!(!legacy_settings.codex_app_plugin_marketplace_unlock);
-        assert!(!legacy_settings.codex_app_plugin_auto_expand);
+        let saved = serde_json::to_value(settings).unwrap();
+        for key in [
+            "codexAppPluginMarketplaceUnlock",
+            "codexAppPluginAutoExpand",
+            "codexAppStepwiseEnabled",
+            "codexAppImageOverlayEnabled",
+            "codexAppNativeMenuLocalization",
+            "launchMode",
+        ] {
+            assert!(
+                saved.get(key).is_none(),
+                "removed field {key} must stay ignored"
+            );
+        }
     }
 
     #[test]
@@ -624,13 +599,8 @@ experimental_bearer_token = "sk-existing""#
             .update(json!({
             "providerSyncEnabled": true,
             "codexAppPath": "C:\\Portable\\Codex\\Codex.exe",
-            "enhancementsEnabled": false,
-            "codexAppSessionDelete": false,
-            "codexAppConversationView": true,
-            "codexAppThreadIdBadge": true,
-            "codexAppNativeMenuLocalization": false,
-            "codexAppServiceTierControls": true,
-            "codexGoalsEnabled": true,
+            "computerUseGuardEnabled": true,
+            "codexAppFastStartup": true,
             "relayBaseUrl": "https://relay.example.test/v1",
             "relayApiKey": "sk-relay",
             "codexExtraArgs": ["--force_high_performance_gpu", "", "  ", " --enable-gpu "],
@@ -640,13 +610,8 @@ experimental_bearer_token = "sk-existing""#
 
         assert!(updated.provider_sync_enabled);
         assert_eq!(updated.codex_app_path, r"C:\Portable\Codex\Codex.exe");
-        assert!(!updated.enhancements_enabled);
-        assert!(!updated.codex_app_session_delete);
-        assert!(updated.codex_app_conversation_view);
-        assert!(updated.codex_app_thread_id_badge);
-        assert!(!updated.codex_app_native_menu_localization);
-        assert!(!updated.codex_app_service_tier_controls);
-        assert!(updated.codex_goals_enabled);
+        assert!(updated.computer_use_guard_enabled);
+        assert!(updated.codex_app_fast_startup);
         assert_eq!(updated.relay_base_url, "https://relay.example.test/v1");
         assert_eq!(updated.relay_api_key, "sk-relay");
         assert_eq!(
@@ -657,97 +622,6 @@ experimental_bearer_token = "sk-existing""#
             ]
         );
         assert_eq!(store.load().unwrap(), updated);
-    }
-
-    #[test]
-    fn settings_store_update_persists_image_overlay_settings() {
-        let dir = temp_dir();
-        let store = SettingsStore::new(dir.join("settings.json"));
-
-        let updated = store
-            .update(json!({
-                "codexAppImageOverlayEnabled": true,
-                "codexAppImageOverlayPath": "C:\\Users\\me\\Pictures\\overlay.png",
-                "codexAppImageOverlayOpacity": 42,
-                "codexAppImageOverlayFitMode": "fill"
-            }))
-            .unwrap();
-
-        assert!(updated.codex_app_image_overlay_enabled);
-        assert_eq!(
-            updated.codex_app_image_overlay_path,
-            r"C:\Users\me\Pictures\overlay.png"
-        );
-        assert_eq!(updated.codex_app_image_overlay_opacity, 42);
-        assert_eq!(updated.codex_app_image_overlay_fit_mode, "fill");
-        assert_eq!(store.load().unwrap(), updated);
-    }
-
-    #[test]
-    fn settings_store_defaults_invalid_image_overlay_fit_mode_to_fit() {
-        let dir = temp_dir();
-        let store = SettingsStore::new(dir.join("settings.json"));
-
-        let updated = store
-            .update(json!({
-                "codexAppImageOverlayFitMode": "unknown"
-            }))
-            .unwrap();
-
-        assert_eq!(updated.codex_app_image_overlay_fit_mode, "fit");
-    }
-
-    #[test]
-    fn settings_store_update_persists_stepwise_settings() {
-        let dir = temp_dir();
-        let store = SettingsStore::new(dir.join("settings.json"));
-
-        let updated = store
-            .update(json!({
-                "codexAppStepwiseEnabled": true,
-                "codexAppStepwiseDirectSend": true,
-                "codexAppStepwiseBaseUrl": "https://api.example.test/v1/",
-                "codexAppStepwiseApiKey": " sk-stepwise ",
-                "codexAppStepwiseApiKeyEnv": "",
-                "codexAppStepwiseModel": " stepwise-mini ",
-                "codexAppStepwiseMaxItems": 12,
-                "codexAppStepwiseMaxInputChars": 25000,
-                "codexAppStepwiseMaxOutputTokens": 50,
-                "codexAppStepwiseTimeoutMs": 70000
-            }))
-            .unwrap();
-
-        assert!(updated.codex_app_stepwise_enabled);
-        assert!(updated.codex_app_stepwise_direct_send);
-        assert_eq!(
-            updated.codex_app_stepwise_base_url,
-            "https://api.example.test/v1"
-        );
-        assert_eq!(updated.codex_app_stepwise_api_key, "sk-stepwise");
-        assert_eq!(
-            updated.codex_app_stepwise_api_key_env,
-            default_stepwise_api_key_env()
-        );
-        assert_eq!(updated.codex_app_stepwise_model, "stepwise-mini");
-        assert_eq!(updated.codex_app_stepwise_max_items, 6);
-        assert_eq!(updated.codex_app_stepwise_max_input_chars, 24000);
-        assert_eq!(updated.codex_app_stepwise_max_output_tokens, 100);
-        assert_eq!(updated.codex_app_stepwise_timeout_ms, 60000);
-        assert_eq!(store.load().unwrap(), updated);
-    }
-
-    #[test]
-    fn settings_store_update_persists_launch_mode() {
-        let dir = temp_dir();
-        let store = SettingsStore::new(dir.join("settings.json"));
-
-        let updated = store.update(json!({"launchMode": "relay"})).unwrap();
-        let saved: Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("settings.json")).unwrap())
-                .unwrap();
-
-        assert_eq!(updated.launch_mode, LaunchMode::Relay);
-        assert_eq!(saved["launchMode"], json!("relay"));
     }
 
     #[test]

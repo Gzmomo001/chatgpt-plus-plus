@@ -16,7 +16,7 @@
   <img alt="Tauri" src="https://img.shields.io/badge/tauri-2.x-24C8DB">
 </p>
 
-ChatGPT++ 是面向 Codex App 的一体化增强应用。它不修改 Codex App 原始安装文件，而是从主界面通过内部 launcher helper 启动 Codex，并使用 Chromium DevTools Protocol 注入增强脚本。
+ChatGPT++ 是面向 Codex App 的一体化管理应用。它通过内部 launcher helper 按官方方式启动 Codex，并在独立管理界面中提供 Provider、会话、插件与维护能力，不修改 Codex Renderer、DOM 或页面请求。
 
 ## 快速使用
 
@@ -30,9 +30,9 @@ ChatGPT++ 是面向 Codex App 的一体化增强应用。它不修改 Codex App 
 
 1. 安装 `ChatGPT++`。
 2. 打开 `ChatGPT++`，进入统一的管理主界面。
-3. 从应用中启动 Codex，或先配置中转、增强功能和用户脚本后再启动。
+3. 从应用中启动 Codex，或先配置 Provider、插件与启动维护选项后再启动。
 
-Windows 桌面和开始菜单只创建一个 `ChatGPT++` 快捷方式；macOS 只安装 `/Applications/ChatGPT++.app`。完整的增强启动流程仍由应用包或安装目录中的内部 launcher helper 执行，它不是独立的用户应用，也不会创建快捷方式。
+Windows 桌面和开始菜单只创建一个 `ChatGPT++` 快捷方式；macOS 只安装 `/Applications/ChatGPT++.app`。启动流程由应用包或安装目录中的内部 launcher helper 执行；它不是独立的用户应用，也不会创建快捷方式。
 
 ## 赞助商
 
@@ -134,39 +134,15 @@ Telegram 频道：<https://t.me/CodexPlusPlus>
 
 - Rust 后端和内部 launcher helper，启动时不依赖额外运行时。
 - Tauri + React 主界面，支持深色/浅色切换。
-- 外部 CDP 注入，不改 `app.asar`，不向 Codex 安装目录写入 DLL。
-- 中转注入模式：支持多个中转配置，写入 `ChatGPTPlusPlus` provider，并可切回官方 ChatGPT 登录态。
-- 传统增强模式：插件市场解锁、会话删除、Markdown 导出、项目移动等。
-- 粘贴修复：从 Word 等富文本来源粘贴到 Codex composer 时只保留纯文本，避免被识别为图片/文件附件。默认关闭，启用后需重启 Codex 才生效。
-  - **使用提示**：在 ChatGPT++ 中勾选后需点「保存增强设置」按钮才会写盘，然后重启 Codex 才会生效。
-- Stepwise 下一步建议：在 Codex 对话页显示可拖动的 Stepwise 浮层，基于当前用户意图和最新助手回复生成后续操作建议；可配置独立 Base URL、API Key、模型、建议数量和是否点击后直接发送。
-- 用户脚本独立管理，可在启动时注入自定义脚本。
+- 按官方方式启动 Codex/ChatGPT，不修改 Renderer、DOM 或页面请求。
+- 多 Provider 配置：写入受管理的 `ChatGPTPlusPlus` provider，并可切回官方 ChatGPT 登录态。
+- 管理器会话页支持删除、Markdown 导出和 Token 使用历史。
+- 管理器直接维护插件 marketplace、插件与技能库存，不依赖 Codex 页面注入。
 - Provider 同步：启动前同步本地会话 metadata，切换供应商后旧会话仍可见。
-- Zed 打开入口：识别远程 SSH 上下文后，可从 Codex 直接打开对应文件到 Zed Remote Development。
 - 按模型粒度配置上下文窗口：「模型列表」分为左右两列，左侧填模型名，右侧填上下文窗口（如 `1M`、`200K` 或 `1000000`）；ChatGPT++ 自动生成 `model_catalog_json` 并注入 `config.toml`，切换模型即生效。右侧留空则使用 Codex 默认长度。
-- Upstream worktree 创建：可从 `upstream/<base-branch>` 创建新 worktree，创建前自动 fetch 远端分支，降低从陈旧本地 HEAD 派生导致的冲突风险。
 - GitHub Release 自动更新，统一从 ChatGPT++ 主界面检查和安装；内部 helper 可提示主应用显示更新页。
 - Windows 单实例、无黑框启动、管理员权限清单、系统桌面路径识别。
 - macOS x64/arm64 分架构 DMG，内部 launcher 位于 `ChatGPT++.app/Contents/Helpers/`，不会成为独立 Dock 应用。
-
-## 痛点与解决
-
-API Key 登录模式下，Codex 原生插件市场会提示需要登录 ChatGPT，导致插件功能无法正常使用：
-
-![API Key 模式下插件市场不可用](docs/images/pain-plugin-disabled.png)
-
-Codex 原生会话列表只有归档入口，没有真正的删除按钮：
-
-![原生会话列表缺少删除能力](docs/images/pain-no-delete-button.png)
-
-ChatGPT++ 启动后会解锁插件市场能力，并在会话列表悬停时显示删除按钮：
-
-![ChatGPT++ 解锁插件市场并添加删除按钮](docs/images/solution-plugin-and-delete.png)
-
-顶部菜单栏会出现 `ChatGPT++`，可以查看后端状态并打开设置面板：
-
-![ChatGPT++ 后端状态指示灯](docs/images/backend-status-indicator.png)
-![ChatGPT++ 设置面板](docs/images/settings-panel.png)
 
 ## 中转注入
 
@@ -209,11 +185,9 @@ experimental_bearer_token = "sk-..."
 
 如果需要回到官方登录态，在“中转注入”页面点击清除 API 模式即可移除 `OPENAI_API_KEY` 相关配置并切回官方 ChatGPT 登录模式。
 
-## 增强功能
+## 启动维护与插件能力
 
-增强功能在 ChatGPT++ 中统一开关。默认开启增强注入；关闭后不会注入 ChatGPT++ 菜单和脚本。
-
-如果启用中转注入模式，插件市场解锁不再需要，界面会提示“中转注入模式下无需开启”。会话删除、导出、移动、粘贴修复、推荐内容和用户脚本等增强仍可继续使用。
+ChatGPT++ 可独立启用 Computer Use Guard 与快速启动，并直接读取 Codex 官方 marketplace 和 `config.toml` 来管理插件与技能。会话删除、Markdown 导出和 Token 使用历史也都在管理器内完成，不依赖 Codex 页面注入。
 
 ## 推荐内容
 
@@ -241,30 +215,6 @@ ChatGPT++ 的“关于”页可以检查并启动更新。内部 launcher helper
 - Provider 同步备份：`~/.codex/backups_state/provider-sync`
 
 ## 常见问题
-
-### ChatGPT++ 菜单没出现
-
-确认是从 ChatGPT++ 主界面启动 Codex，而不是直接打开原版 Codex。也可以在“诊断”和“日志”页面查看注入状态。
-
-### 插件内显示后端连不上
-
-先在浏览器或 PowerShell 里测试：
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:57321/backend/status -Body "{}" -ContentType "application/json"
-```
-
-如果接口正常，但插件仍显示超时，通常是 Codex 页面里的 CDP bridge 或脚本缓存问题。从 ChatGPT++ 重启 Codex，或查看日志中的 `renderer.script_loaded`、`bridge.request`、`bridge.response`。
-
-### Upstream worktree 和 Codex 原生创建有什么区别
-
-ChatGPT++ 的 Upstream worktree 功能等价于先更新远端分支，再执行：
-
-```bash
-git worktree add -b <new-branch> <worktree-path> upstream/<base-branch>
-```
-
-这样新 worktree 从最新的远端跟踪分支开始，而不是从当前会话所在的本地 HEAD 开始。如果 ChatGPT++ 无法安全识别当前 Codex 版本的原生 worktree 创建表单，请从 ChatGPT++ 菜单中手动填写仓库路径、分支名、worktree 路径、remote 和 base branch。
 
 ### macOS 提示无法打开或已损坏
 
@@ -307,10 +257,8 @@ cargo build --release
 apps/
   chatgpt-plus-launcher/          内部 launcher helper
   chatgpt-plus-manager/           ChatGPT++ Tauri 主应用
-assets/inject/
-  renderer-inject.js            注入到 Codex 渲染端的增强脚本
 crates/
-  chatgpt-plus-core/              启动、注入、配置、更新、安装、桥接等核心逻辑
+  chatgpt-plus-core/              启动、配置、更新、安装和协议代理等核心逻辑
   chatgpt-plus-data/              会话数据、导出、Provider 同步
 scripts/installer/
   windows/ChatGPTPlusPlus.nsi     Windows NSIS 安装包
@@ -331,4 +279,4 @@ ChatGPTPlusPlus 自本次许可证变更后的版本起，采用 [GNU Affero Gen
 
 ## 说明
 
-ChatGPT++ 是外部增强工具，不修改 Codex App 原始文件。Codex App 更新后，如果页面结构变化，可能需要更新注入脚本。
+ChatGPT++ 是独立管理工具，不修改 Codex App 原始文件，也不依赖其 Renderer、DOM 或页面结构。

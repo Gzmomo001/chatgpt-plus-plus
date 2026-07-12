@@ -38,7 +38,6 @@ test("publishes the manager routes in navigation order", () => {
     "sessions",
     "context",
     "enhance",
-    "userScripts",
     "recommendations",
     "maintenance",
     "about",
@@ -57,7 +56,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "copy_diagnostics",
     "delete_context_entry",
     "delete_local_session",
-    "delete_user_script",
     "diagnose_relay_profile",
     "disable_watcher",
     "dismiss_pending_provider_import",
@@ -67,7 +65,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "fetch_relay_profile_models",
     "import_ccs_providers",
     "install_entrypoints",
-    "install_market_script",
     "install_watcher",
     "launch_chatgpt_plus",
     "list_local_sessions",
@@ -88,7 +85,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "read_latest_logs",
     "read_live_context_entries",
     "read_relay_files",
-    "refresh_script_market",
     "refresh_plugin_marketplace",
     "refresh_remote_plugin_marketplace",
     "register_plugin_marketplace",
@@ -98,18 +94,15 @@ test("publishes every frontend-known Tauri command name", () => {
     "repair_plugin_marketplace",
     "repair_remote_plugin_marketplace",
     "repair_shortcuts",
-    "reset_image_overlay_settings",
     "reset_settings",
     "restart_chatgpt_plus",
     "save_relay_file",
     "save_settings",
-    "set_user_script_enabled",
     "startup_options",
     "switch_relay_profile",
     "sync_live_context_entries",
     "sync_providers_now",
     "test_relay_profile",
-    "test_stepwise_settings",
     "uninstall_entrypoints",
     "uninstall_watcher",
     "update_tray_labels",
@@ -295,7 +288,7 @@ test("composes Relay profiles through its screen-owned vertical slice", () => {
   );
 });
 
-test("keeps app-wide settings ownership outside the Relay feature", () => {
+test("keeps retained app-wide settings outside the Relay feature", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const appContracts = readFileSync(new URL("./contracts.ts", import.meta.url), "utf8");
   const relayContracts = readFileSync(
@@ -308,13 +301,12 @@ test("keeps app-wide settings ownership outside the Relay feature", () => {
   );
 
   assert.match(appContracts, /export type BackendSettings\s*=\s*\{/);
-  for (const unrelated of [
-    "codexAppStepwiseEnabled",
-    "codexAppImageOverlayEnabled",
-    "enhancementsEnabled",
-  ]) {
+  for (const unrelated of ["computerUseGuardEnabled", "codexAppFastStartup"]) {
     assert.match(appContracts, new RegExp(`\\b${unrelated}\\b`));
     assert.doesNotMatch(relayContracts, new RegExp(`\\b${unrelated}\\b`));
+  }
+  for (const removed of ["codexAppStepwiseEnabled", "codexAppImageOverlayEnabled", "enhancementsEnabled"]) {
+    assert.doesNotMatch(appContracts, new RegExp(`\\b${removed}\\b`));
   }
   assert.doesNotMatch(relayController, /\bas Settings\b/);
   assert.doesNotMatch(app, /relaySettings\s+as\s+BackendSettings/);
@@ -523,7 +515,7 @@ test("composes Enhance through a minimal screen-owned view and action seam", () 
   assert.doesNotMatch(screen, /\bBackendSettings\b|\bActions\b(?!\s*=)|@tauri-apps\/api|\binvoke\s*\(/);
   assert.doesNotMatch(screen, /from ["']@\/app(?:\/|["'])/);
 
-  for (const definition of ["EnhanceScreen", "ModeSelector", "FeatureGroup", "FeatureToggle"]) {
+  for (const definition of ["EnhanceScreen", "FeatureGroup", "FeatureToggle"]) {
     assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
   }
 
@@ -532,23 +524,8 @@ test("composes Enhance through a minimal screen-owned view and action seam", () 
     return [...body.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):/gm)].map((match) => match[1]);
   };
   assert.deepEqual(typeKeys("EnhanceSettingsView"), [
-    "enhancementsEnabled",
     "computerUseGuardEnabled",
-    "codexAppSessionDelete",
-    "codexAppMarkdownExport",
-    "codexAppPasteFix",
-    "codexAppProjectMove",
-    "codexAppThreadIdBadge",
-    "codexAppConversationView",
-    "codexAppThreadScrollRestore",
-    "codexAppStepwiseEnabled",
-    "codexAppStepwiseDirectSend",
-    "codexAppForceChineseLocale",
     "codexAppFastStartup",
-    "codexAppNativeMenuPlacement",
-    "codexAppNativeMenuLocalization",
-    "codexAppUpstreamWorktreeCreate",
-    "launchMode",
   ]);
   assert.deepEqual(typeKeys("RemotePluginMarketplaceView"), [
     "marketplaceRoot",
@@ -566,7 +543,6 @@ test("composes Enhance through a minimal screen-owned view and action seam", () 
   ]);
   assert.deepEqual(typeKeys("EnhanceActions"), [
     "updateFlag",
-    "setLaunchMode",
     "repairPluginMarketplace",
     "refreshRemotePluginMarketplaceStatus",
     "repairRemotePluginMarketplace",
@@ -627,55 +603,11 @@ test("composes Recommendations through its screen-owned vertical slice", () => {
   );
 });
 
-test("composes User Scripts through a screen-owned neutral inventory seam", () => {
+test("removes the Renderer user-script surface end to end", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  const screen = readFileSync(
-    new URL("../screens/user-scripts/UserScriptsScreen.tsx", import.meta.url),
-    "utf8",
-  );
-  const presentation = readFileSync(
-    new URL("../features/user-scripts/presentation.ts", import.meta.url),
-    "utf8",
-  );
   const appContracts = readFileSync(new URL("./contracts.ts", import.meta.url), "utf8");
-  const userScriptContracts = readFileSync(
-    new URL("../shared/contracts/user-scripts.ts", import.meta.url),
-    "utf8",
-  );
-
-  assert.match(app, /import \{ UserScriptsScreen \} from ["']@\/screens\/user-scripts\/UserScriptsScreen["']/);
-  assert.match(
-    app,
-    /projectUserScriptsView\(\s*settings\?\.userScripts,\s*scriptMarket,?\s*\)/,
-  );
-  assert.match(app, /<UserScriptsScreen\b[^>]*\bview=\{userScriptsView\}/s);
-  assert.match(screen, /export function UserScriptsScreen\(/);
-  const actionContract = screen.match(
-    /export type UserScriptsActions\s*=\s*\{([\s\S]*?)\n\};/,
-  );
-  assert.ok(actionContract);
-  assert.deepEqual(
-    [...actionContract[1].matchAll(/^\s*(\w+):/gm)].map((match) => match[1]),
-    [
-      "executeUserScriptsAction",
-      "openExternalUrl",
-    ],
-  );
-  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
-  assert.doesNotMatch(presentation, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
-  assert.doesNotMatch(screen, /\b(?:market_id|script_url|user_scripts|CommandResult)\b/);
-
-  for (const definition of ["UserScriptsScreen", "MarketScriptCard", "ScriptRow"])
-    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
-  assert.doesNotMatch(app, /function syncMarketInstalledState\(/);
-  assert.doesNotMatch(app, /const SCRIPT_MARKET_REPOSITORY_URL\b/);
-
-  assert.match(userScriptContracts, /export type UserScriptInventory\s*=\s*\{/);
-  assert.match(userScriptContracts, /export type ScriptMarketItem\s*=\s*\{/);
-  assert.match(userScriptContracts, /export type ScriptMarketResult\s*=/);
-  assert.doesNotMatch(appContracts, /(?:export\s+)?type UserScriptInventory\s*=\s*\{/);
-  assert.doesNotMatch(app, /(?:export\s+)?type ScriptMarket(?:Item|Result)\s*=/);
-  assert.match(appContracts, /export type BackendSettings\s*=\s*\{/);
+  assert.doesNotMatch(app, /UserScripts|userScripts|user-scripts/);
+  assert.doesNotMatch(appContracts, /UserScript|userScripts|user-scripts/);
 });
 
 test("composes Maintenance through a minimal screen-owned view and action seam", () => {

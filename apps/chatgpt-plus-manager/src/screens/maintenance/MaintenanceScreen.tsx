@@ -13,7 +13,6 @@ type MaintenanceStatusView = {
 
 export type MaintenanceLaunchForm = {
   appPath: string;
-  debugPort: string;
   helperPort: string;
 };
 
@@ -123,12 +122,6 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
             />
           </Field>
           <div className="form-row">
-            <Field label={t("Debug 端口")}>
-              <Input
-                value={launchForm.debugPort}
-                onChange={(event) => actions.updateLaunchForm({ ...launchForm, debugPort: event.currentTarget.value })}
-              />
-            </Field>
             <Field label={t("Helper 端口")}>
               <Input
                 value={launchForm.helperPort}

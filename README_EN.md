@@ -16,7 +16,7 @@
   <img alt="Tauri" src="https://img.shields.io/badge/tauri-2.x-24C8DB">
 </p>
 
-ChatGPT++ is a unified enhancement app for the Codex App. It does not modify the original Codex installation. Its main UI starts Codex through an internal launcher helper and injects enhancements through the Chromium DevTools Protocol.
+ChatGPT++ is a unified management app for the Codex App. Its internal launcher helper starts Codex through the official launch path, while the separate manager provides Provider, session, plugin, and maintenance capabilities without modifying the Codex Renderer, DOM, or page requests.
 
 ## Quick Start
 
@@ -30,9 +30,9 @@ Quick use:
 
 1. Install `ChatGPT++`.
 2. Open `ChatGPT++` to enter the unified main interface.
-3. Start Codex from the app, or configure relay injection, enhancements, and user scripts first.
+3. Start Codex from the app, or configure Providers, plugins, and launch maintenance first.
 
-Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. macOS installs only `/Applications/ChatGPT++.app`. The complete enhanced launch flow still runs through an internal launcher helper inside the app bundle or install directory; it is not a separate user application and has no shortcut.
+Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. macOS installs only `/Applications/ChatGPT++.app`. The launch flow runs through an internal launcher helper inside the app bundle or install directory; it is not a separate user application and has no shortcut.
 
 ## Sponsors
 
@@ -117,16 +117,12 @@ Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. mac
 
 - Rust backend and internal launcher helper with no extra runtime requirement.
 - Tauri + React main interface with dark/light theme support.
-- External CDP injection. No `app.asar` patching and no DLL writes into the Codex installation.
-- Relay injection mode with multiple relay profiles, `ChatGPTPlusPlus` provider configuration, and a one-click switch back to official ChatGPT login mode.
-- Traditional enhancement mode with plugin marketplace unlock, session delete, Markdown export, project move, and more.
-- Paste fix: when pasting from Word or other rich-text sources into the Codex composer, only keep the plain text so Codex does not treat the clipboard content as an image or file attachment. Off by default; requires a Codex relaunch to take effect.
-  - **Usage note**: after toggling in ChatGPT++, click the "保存增强设置" / "Save enhancement settings" button to persist, then restart Codex for the change to take effect.
-- Independent user script management with startup injection.
+- Launches the official Codex/ChatGPT app without modifying its Renderer, DOM, or page requests.
+- Multiple Provider profiles with managed `ChatGPTPlusPlus` configuration and a one-click return to official ChatGPT login mode.
+- Manager-native session deletion, Markdown export, and Token usage history.
+- Manager-native marketplace, plugin, and skill inventory without Codex page injection.
 - Provider Sync to keep historical sessions visible after switching providers.
-- Zed open entry detects remote SSH context and opens the matching remote file in Zed Remote Development from Codex.
 - Per-model context window configuration: the "Model list" is split into two columns, model name on the left and context window (e.g. `1M`, `200K`, or `1000000`) on the right. ChatGPT++ auto-generates `model_catalog_json` and injects it into `config.toml`; the matching window is applied when you switch models. Leave the window empty to use Codex's default length.
-- Upstream worktree creation: create new worktrees from `upstream/<base-branch>` after fetching the remote branch, reducing conflicts caused by stale local HEAD state.
 - GitHub Release updates from the unified ChatGPT++ UI; the internal helper can ask the main app to show the update page.
 - Windows single instance, no console window, administrator manifest, and system Desktop path detection.
 - Separate macOS x64 and arm64 DMGs. The internal launcher lives under `ChatGPT++.app/Contents/Helpers/` and is not a separate Dock app.
@@ -172,11 +168,9 @@ experimental_bearer_token = "sk-..."
 
 To return to the official login mode, use the clear API mode button in the Relay Injection page. This removes `OPENAI_API_KEY` related configuration and switches Codex back to official ChatGPT authentication.
 
-## Enhancements
+## Launch Maintenance and Plugins
 
-Enhancements are controlled in ChatGPT++. Enhancement injection is enabled by default. When disabled, ChatGPT++ will not inject its menu or scripts.
-
-When relay injection mode is active, plugin marketplace unlock is unnecessary, and the UI will say so. Other enhancements, including session delete, export, move, paste fix, recommendations, and user scripts, can still be used.
+ChatGPT++ can independently enable Computer Use Guard and fast startup, and it manages plugins and skills through Codex's official marketplace and `config.toml`. Session deletion, Markdown export, and Token usage history are also manager-native and do not rely on Codex page injection.
 
 ## Recommendations
 
@@ -204,30 +198,6 @@ ChatGPT++'s About page can check and start updates. When the internal launcher h
 - Provider Sync backups: `~/.codex/backups_state/provider-sync`
 
 ## FAQ
-
-### The ChatGPT++ menu does not appear
-
-Make sure Codex was launched from the `ChatGPT++` entry instead of the original Codex entry. You can also inspect the Diagnostics and Logs pages in the manager.
-
-### The plugin says the backend is disconnected
-
-First test the helper endpoint:
-
-```powershell
-Invoke-RestMethod -Method Post -Uri http://127.0.0.1:57321/backend/status -Body "{}" -ContentType "application/json"
-```
-
-If the endpoint works but the plugin still times out, it is usually a Codex page CDP bridge or script cache issue. Restart ChatGPT++, or check manager logs for `renderer.script_loaded`, `bridge.request`, and `bridge.response`.
-
-### How is Upstream worktree different from Codex native creation?
-
-ChatGPT++ updates the remote branch first, then creates the worktree as if you ran:
-
-```bash
-git worktree add -b <new-branch> <worktree-path> upstream/<base-branch>
-```
-
-The new worktree starts from the fresh remote tracking branch instead of the local HEAD used by the current session. If ChatGPT++ cannot safely recognize the current Codex version's native worktree form, use the ChatGPT++ menu entry and enter the repository path, branch name, worktree path, remote, and base branch manually.
 
 ### macOS says the app cannot be opened or is damaged
 
@@ -259,10 +229,8 @@ Project structure:
 apps/
   chatgpt-plus-launcher/          Internal launcher helper
   chatgpt-plus-manager/           ChatGPT++ Tauri main app
-assets/inject/
-  renderer-inject.js            Enhancement script injected into Codex
 crates/
-  chatgpt-plus-core/              Launch, injection, config, update, install, bridge
+  chatgpt-plus-core/              Launch, config, update, install, and protocol proxy
   chatgpt-plus-data/              Session data, export, Provider Sync
 scripts/installer/
   windows/ChatGPTPlusPlus.nsi     Windows NSIS installer
@@ -289,4 +257,4 @@ If you modify and distribute this project, or make a modified version available 
 
 ## Notes
 
-ChatGPT++ is an external enhancement tool and does not modify original Codex App files. If a future Codex App update changes page structure, the injection script may need updates.
+ChatGPT++ is a separate management tool. It does not modify original Codex App files or depend on its Renderer, DOM, or page structure.

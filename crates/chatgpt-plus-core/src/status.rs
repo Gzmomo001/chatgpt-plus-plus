@@ -8,7 +8,6 @@ pub struct LaunchStatus {
     pub status: String,
     pub message: String,
     pub started_at_ms: u64,
-    pub debug_port: Option<u16>,
     pub helper_port: Option<u16>,
     pub codex_app: Option<String>,
 }
@@ -74,7 +73,6 @@ mod tests {
             status: "running".to_string(),
             message: "ready".to_string(),
             started_at_ms: 12345,
-            debug_port: Some(9222),
             helper_port: Some(4545),
             codex_app: Some("Codex".to_string()),
         };

@@ -6,16 +6,11 @@ use anyhow::Context;
 use serde_json::{Map, Value};
 use toml_edit::{DocumentMut, Item};
 
-use crate::atomic_file;
-use crate::zed_remote::ZedOpenStrategy;
-
 use super::migration::normalize_settings_config_sections;
 use super::types::{
-    BackendSettings, RelayMode, RelayProfile, clamp_image_overlay_opacity,
-    clamp_stepwise_max_input_chars, clamp_stepwise_max_items, clamp_stepwise_max_output_tokens,
-    clamp_stepwise_timeout_ms, default_relay_test_model, default_stepwise_api_key_env,
-    normalize_codex_extra_args, normalize_image_overlay_fit_mode,
+    BackendSettings, RelayMode, RelayProfile, default_relay_test_model, normalize_codex_extra_args,
 };
+use crate::atomic_file;
 
 #[derive(Debug, Clone)]
 pub struct SettingsStore {
@@ -157,155 +152,13 @@ fn merge_known_setting_fields(target: &mut Map<String, Value>, source: &Map<Stri
     if let Some(value) = source.get("relayProfilesEnabled").and_then(Value::as_bool) {
         target.insert("relayProfilesEnabled".to_string(), Value::Bool(value));
     }
-    if let Some(value) = source.get("enhancementsEnabled").and_then(Value::as_bool) {
-        target.insert("enhancementsEnabled".to_string(), Value::Bool(value));
-    }
     if let Some(value) = source
         .get("computerUseGuardEnabled")
         .and_then(Value::as_bool)
     {
         target.insert("computerUseGuardEnabled".to_string(), Value::Bool(value));
     }
-    merge_bool_setting(target, source, "codexAppPluginMarketplaceUnlock");
-    merge_bool_setting(target, source, "codexAppPluginAutoExpand");
-    merge_bool_setting(target, source, "codexAppModelWhitelistUnlock");
-    merge_bool_setting(target, source, "codexAppSessionDelete");
-    merge_bool_setting(target, source, "codexAppMarkdownExport");
-    merge_bool_setting(target, source, "codexAppPasteFix");
-    merge_bool_setting(target, source, "codexAppForceChineseLocale");
     merge_bool_setting(target, source, "codexAppFastStartup");
-    merge_bool_setting(target, source, "codexAppProjectMove");
-    merge_bool_setting(target, source, "codexAppThreadIdBadge");
-    merge_bool_setting(target, source, "codexAppConversationView");
-    merge_bool_setting(target, source, "codexAppThreadScrollRestore");
-    merge_bool_setting(target, source, "codexAppZedRemoteOpen");
-    if let Some(value) = source.get("zedRemoteOpenStrategy") {
-        if serde_json::from_value::<ZedOpenStrategy>(value.clone()).is_ok() {
-            target.insert("zedRemoteOpenStrategy".to_string(), value.clone());
-        }
-    }
-    merge_bool_setting(target, source, "zedRemoteProjectRegistryEnabled");
-    merge_bool_setting(target, source, "zedRemoteSyncToZedSettings");
-    merge_bool_setting(target, source, "codexAppUpstreamWorktreeCreate");
-    merge_bool_setting(target, source, "codexAppNativeMenuPlacement");
-    merge_bool_setting(target, source, "codexAppNativeMenuLocalization");
-    merge_bool_setting(target, source, "codexAppServiceTierControls");
-    merge_bool_setting(target, source, "codexAppStepwiseEnabled");
-    merge_bool_setting(target, source, "codexAppStepwiseDirectSend");
-    if let Some(value) = source
-        .get("codexAppStepwiseBaseUrl")
-        .and_then(Value::as_str)
-    {
-        target.insert(
-            "codexAppStepwiseBaseUrl".to_string(),
-            Value::String(value.trim().trim_end_matches('/').to_string()),
-        );
-    }
-    if let Some(value) = source.get("codexAppStepwiseApiKey").and_then(Value::as_str) {
-        target.insert(
-            "codexAppStepwiseApiKey".to_string(),
-            Value::String(value.trim().to_string()),
-        );
-    }
-    if let Some(value) = source
-        .get("codexAppStepwiseApiKeyEnv")
-        .and_then(Value::as_str)
-    {
-        target.insert(
-            "codexAppStepwiseApiKeyEnv".to_string(),
-            Value::String(if value.trim().is_empty() {
-                default_stepwise_api_key_env()
-            } else {
-                value.trim().to_string()
-            }),
-        );
-    }
-    if let Some(value) = source.get("codexAppStepwiseModel").and_then(Value::as_str) {
-        target.insert(
-            "codexAppStepwiseModel".to_string(),
-            Value::String(value.trim().to_string()),
-        );
-    }
-    if let Some(value) = source
-        .get("codexAppStepwiseMaxItems")
-        .and_then(Value::as_u64)
-        .and_then(|value| u8::try_from(value).ok())
-    {
-        target.insert(
-            "codexAppStepwiseMaxItems".to_string(),
-            Value::Number(serde_json::Number::from(clamp_stepwise_max_items(value))),
-        );
-    }
-    if let Some(value) = source
-        .get("codexAppStepwiseMaxInputChars")
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-    {
-        target.insert(
-            "codexAppStepwiseMaxInputChars".to_string(),
-            Value::Number(serde_json::Number::from(clamp_stepwise_max_input_chars(
-                value,
-            ))),
-        );
-    }
-    if let Some(value) = source
-        .get("codexAppStepwiseMaxOutputTokens")
-        .and_then(Value::as_u64)
-        .and_then(|value| u32::try_from(value).ok())
-    {
-        target.insert(
-            "codexAppStepwiseMaxOutputTokens".to_string(),
-            Value::Number(serde_json::Number::from(clamp_stepwise_max_output_tokens(
-                value,
-            ))),
-        );
-    }
-    if let Some(value) = source
-        .get("codexAppStepwiseTimeoutMs")
-        .and_then(Value::as_u64)
-    {
-        target.insert(
-            "codexAppStepwiseTimeoutMs".to_string(),
-            Value::Number(serde_json::Number::from(clamp_stepwise_timeout_ms(value))),
-        );
-    }
-    merge_bool_setting(target, source, "codexAppImageOverlayEnabled");
-    if let Some(value) = source
-        .get("codexAppImageOverlayPath")
-        .and_then(Value::as_str)
-    {
-        target.insert(
-            "codexAppImageOverlayPath".to_string(),
-            Value::String(value.to_string()),
-        );
-    }
-    if let Some(value) = source
-        .get("codexAppImageOverlayOpacity")
-        .and_then(Value::as_u64)
-        .and_then(|value| u8::try_from(value).ok())
-    {
-        target.insert(
-            "codexAppImageOverlayOpacity".to_string(),
-            Value::Number(serde_json::Number::from(clamp_image_overlay_opacity(value))),
-        );
-    }
-    if let Some(value) = source
-        .get("codexAppImageOverlayFitMode")
-        .and_then(Value::as_str)
-    {
-        target.insert(
-            "codexAppImageOverlayFitMode".to_string(),
-            Value::String(normalize_image_overlay_fit_mode(value)),
-        );
-    }
-    if let Some(value) = source.get("codexGoalsEnabled").and_then(Value::as_bool) {
-        target.insert("codexGoalsEnabled".to_string(), Value::Bool(value));
-    }
-    if let Some(value) = source.get("launchMode").and_then(Value::as_str) {
-        if matches!(value, "patch" | "relay") {
-            target.insert("launchMode".to_string(), Value::String(value.to_string()));
-        }
-    }
     if let Some(value) = source.get("relayBaseUrl").and_then(Value::as_str) {
         target.insert("relayBaseUrl".to_string(), Value::String(value.to_string()));
     }

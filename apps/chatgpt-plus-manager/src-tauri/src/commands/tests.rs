@@ -1,9 +1,7 @@
 use std::path::Path;
 
 use chatgpt_plus_core::codex_home_apply::CodexHomeReconcileIntent;
-use chatgpt_plus_core::settings::{
-    BackendSettings, RelayProfile, SettingsStore, normalize_settings_before_save,
-};
+use chatgpt_plus_core::settings::{BackendSettings, RelayProfile, normalize_settings_before_save};
 use serde_json::json;
 
 use super::context::{self, delete_context_entry, list_context_entries, upsert_context_entry};
@@ -11,10 +9,7 @@ use super::diagnostics::{self, check_env_conflicts, read_latest_logs};
 use super::install::{self, ads_payload, load_watcher_state, open_external_url, perform_update};
 use super::relay::*;
 use super::sessions::{self, delete_local_session, list_local_sessions};
-use super::settings::{
-    backend_version, load_overview, reset_image_overlay_settings, should_show_update,
-    startup_options,
-};
+use super::settings::{backend_version, load_overview, should_show_update, startup_options};
 
 #[test]
 fn local_sessions_payload_serializes_with_camel_case_paths() {
@@ -672,67 +667,6 @@ fn normalize_settings_before_save_preserves_profile_context_until_manual_extract
             .relay_common_config_contents
             .contains("[mcp_servers")
     );
-}
-
-#[test]
-fn normalize_settings_before_save_preserves_manual_relay_mode_for_pure_api_profile() {
-    let settings = BackendSettings {
-        active_relay_id: "api".to_string(),
-        launch_mode: chatgpt_plus_core::settings::LaunchMode::Relay,
-        relay_profiles: vec![RelayProfile {
-            id: "api".to_string(),
-            relay_mode: chatgpt_plus_core::settings::RelayMode::PureApi,
-            ..RelayProfile::default()
-        }],
-        ..BackendSettings::default()
-    };
-
-    let normalized = normalize_settings_before_save(settings);
-
-    assert_eq!(
-        normalized.launch_mode,
-        chatgpt_plus_core::settings::LaunchMode::Relay
-    );
-}
-
-#[test]
-fn reset_image_overlay_settings_preserves_supplier_settings() {
-    let temp = tempfile::tempdir().unwrap();
-    let settings_path = temp.path().join("settings.json");
-    let previous = chatgpt_plus_core::paths::set_settings_path_for_tests(Some(settings_path));
-
-    let settings = BackendSettings {
-        codex_app_image_overlay_enabled: true,
-        codex_app_image_overlay_path: "C:\\Users\\me\\Pictures\\overlay.png".to_string(),
-        codex_app_image_overlay_opacity: 42,
-        codex_app_image_overlay_fit_mode: "fill".to_string(),
-        active_relay_id: "supplier-a".to_string(),
-        relay_profiles: vec![RelayProfile {
-            id: "supplier-a".to_string(),
-            name: "供应商 A".to_string(),
-            relay_mode: chatgpt_plus_core::settings::RelayMode::PureApi,
-            api_key: "sk-test".to_string(),
-            ..RelayProfile::default()
-        }],
-        ..BackendSettings::default()
-    };
-    SettingsStore::default().save(&settings).unwrap();
-
-    let result = reset_image_overlay_settings();
-    chatgpt_plus_core::paths::set_settings_path_for_tests(previous);
-
-    assert_eq!(result.status, "ok");
-    assert!(!result.payload.settings.codex_app_image_overlay_enabled);
-    assert_eq!(result.payload.settings.codex_app_image_overlay_path, "");
-    assert_eq!(result.payload.settings.codex_app_image_overlay_opacity, 35);
-    assert_eq!(
-        result.payload.settings.codex_app_image_overlay_fit_mode,
-        "fit"
-    );
-    assert_eq!(result.payload.settings.active_relay_id, "supplier-a");
-    assert_eq!(result.payload.settings.relay_profiles.len(), 1);
-    assert_eq!(result.payload.settings.relay_profiles[0].id, "supplier-a");
-    assert_eq!(result.payload.settings.relay_profiles[0].api_key, "sk-test");
 }
 
 #[test]

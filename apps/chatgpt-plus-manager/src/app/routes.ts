@@ -4,7 +4,6 @@ export const ROUTE_IDS = [
   "sessions",
   "context",
   "enhance",
-  "userScripts",
   "recommendations",
   "maintenance",
   "about",

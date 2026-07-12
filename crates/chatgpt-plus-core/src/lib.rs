@@ -1,14 +1,10 @@
 pub mod ads;
 pub mod app_paths;
-pub mod assets;
 mod atomic_file;
 pub mod branding;
-pub mod bridge;
 pub mod ccs_import;
-pub mod cdp;
 pub mod codex_home;
 pub mod codex_home_apply;
-pub mod codex_local_storage;
 pub mod codex_sqlite;
 mod computer_use_guard;
 pub mod diagnostic_log;
@@ -20,7 +16,6 @@ pub mod launcher;
 pub mod model_catalog;
 pub mod model_suffix;
 pub mod models;
-pub mod native_menu;
 pub mod paths;
 pub mod plugin_marketplace;
 pub mod ports;
@@ -30,19 +25,13 @@ pub mod provider_import;
 pub mod proxy;
 pub use codex_home_apply::relay_config;
 pub mod relay_rotation;
-pub mod routes;
-pub mod script_market;
 pub mod settings;
 pub mod status;
-pub mod stepwise;
 pub mod update;
-pub mod upstream_worktree;
-pub mod user_scripts;
 pub mod version;
 pub mod watcher;
 #[cfg(windows)]
 mod windows_integration;
-pub mod zed_remote;
 
 #[cfg(test)]
 extern crate self as chatgpt_plus_core;

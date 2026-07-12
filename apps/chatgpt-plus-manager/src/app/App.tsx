@@ -17,8 +17,6 @@ import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
 import { SettingsScreen } from "@/screens/settings/SettingsScreen";
 import { RecommendationsScreen } from "@/screens/recommendations/RecommendationsScreen";
 import type { RecommendationsActions } from "@/screens/recommendations/RecommendationsScreen";
-import { UserScriptsScreen } from "@/screens/user-scripts/UserScriptsScreen";
-import type { UserScriptsActions } from "@/screens/user-scripts/UserScriptsScreen";
 import { EnhanceScreen } from "@/screens/enhance/EnhanceScreen";
 import type { EnhanceActions, EnhanceView } from "@/screens/enhance/EnhanceScreen";
 import { MaintenanceScreen } from "@/screens/maintenance/MaintenanceScreen";
@@ -39,15 +37,6 @@ import {
   type SessionsDeleteRequest,
   type SessionsIntent,
 } from "@/features/sessions/controller";
-import {
-  createUserScriptsActionRunner,
-  type UserScriptsIntent,
-  type UserScriptsResourceKey,
-} from "@/features/user-scripts/controller";
-import {
-  projectUserScriptsView,
-  syncMarketInstalledState,
-} from "@/features/user-scripts/presentation";
 import { numberOrDefault } from "@/shared/lib/settings";
 import type {
   DiagnosticsResult,
@@ -56,7 +45,6 @@ import type {
 } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
 import type { AdsResult } from "@/shared/contracts/recommendations";
-import type { ScriptMarketResult } from "@/shared/contracts/user-scripts";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 import type { LocalSession, ProviderSyncTargetsResult } from "@/shared/contracts/sessions";
 import { readContextCatalog } from "@/features/context/config";
@@ -75,7 +63,6 @@ import type {
   ContextKind,
   EnvConflictsResult,
   ExtractRelayCommonConfigResult,
-  LaunchMode,
   ProviderDoctorResult,
   RelayFilesResult,
   RelayProfileView,
@@ -200,13 +187,8 @@ export function App() {
     message: t("尚未运行安装包更新。"),
   });
   const [ads, setAds] = useState<AdsResult | null>(null);
-  const [scriptMarket, setScriptMarket] = useState<ScriptMarketResult | null>(null);
-  const [userScriptsPending, setUserScriptsPending] = useState<
-    UserScriptsResourceKey[]
-  >([]);
   const [launchForm, setLaunchForm] = useState({
     appPath: "",
-    debugPort: "9229",
     helperPort: "57321",
   });
   const prevLaunchStatusRef = useRef<string | null>(null);
@@ -277,79 +259,6 @@ export function App() {
       return normalized;
     }
     return null;
-  };
-
-  const refreshScriptMarket = async (silent = false) => {
-    const result = await run(() => managerActions.userScripts.refreshMarket());
-    if (result) {
-      setScriptMarket(result);
-      setSettings((current) => (current ? { ...current, userScripts: result.userScripts } : current));
-      if (!silent || !isSuccessStatus(result.status)) showResultNotice(t("脚本市场"), result, { silentSuccess: true });
-    }
-  };
-
-  const installMarketScript = async (id: string) => {
-    const result = await run(() => managerActions.userScripts.install(id));
-    if (result) {
-      setScriptMarket(result);
-      setSettings((current) => (current ? { ...current, userScripts: result.userScripts } : current));
-      showResultNotice(t("脚本市场"), result);
-    }
-  };
-
-  const setUserScriptEnabled = async (key: string, enabled: boolean) => {
-    const result = await run(() => managerActions.userScripts.setEnabled(key, enabled));
-    if (result) {
-      setSettings(result);
-      setScriptMarket((current) => syncMarketInstalledState(current, result.userScripts));
-      showResultNotice(t("本地脚本"), result);
-    }
-  };
-
-  const deleteUserScript = async (key: string) => {
-    const script = settings?.userScripts?.scripts?.find((item) => item.key === key);
-    const name = script?.name || key;
-    if (!window.confirm(tf("删除脚本“{0}”？此操作会移除本地脚本文件。", [name]))) return;
-    const result = await run(() => managerActions.userScripts.delete(key));
-    if (result) {
-      setSettings(result);
-      setScriptMarket((current) => syncMarketInstalledState(current, result.userScripts));
-      showResultNotice(t("本地脚本"), result);
-    }
-  };
-
-  const userScriptsActionPortRef = useRef<
-    (intent: UserScriptsIntent) => Promise<void>
-  >(async () => {});
-  userScriptsActionPortRef.current = async (intent) => {
-    switch (intent.type) {
-      case "refreshMarket":
-        await refreshScriptMarket();
-        return;
-      case "refreshLocal":
-        await navigate(route);
-        return;
-      case "install":
-        await installMarketScript(intent.id);
-        return;
-      case "toggle":
-        await setUserScriptEnabled(intent.key, intent.enabled);
-        return;
-      case "delete":
-        await deleteUserScript(intent.key);
-    }
-  };
-  const userScriptsActionRunnerRef = useRef<
-    ReturnType<typeof createUserScriptsActionRunner> | null
-  >(null);
-  if (!userScriptsActionRunnerRef.current) {
-    userScriptsActionRunnerRef.current = createUserScriptsActionRunner({
-      execute: (intent) => userScriptsActionPortRef.current(intent),
-      pendingChanged: (pending) => setUserScriptsPending([...pending]),
-    });
-  }
-  const executeUserScriptsAction = async (intent: UserScriptsIntent) => {
-    await userScriptsActionRunnerRef.current!.execute(intent);
   };
 
   const refreshRelay = async (silent = false) => {
@@ -596,10 +505,6 @@ export function App() {
       await refreshLiveContextEntries(true);
     }
     if (next === "settings") await refreshSettings(true);
-    if (next === "userScripts") {
-      await refreshSettings(true);
-      await refreshScriptMarket(true);
-    }
     if (next === "recommendations") await refreshAds(true);
     if (next === "about") {
       await refreshOverview(true);
@@ -631,7 +536,6 @@ export function App() {
   const launchCommand = async (intent: "launch" | "restart") => {
     const request = {
       appPath: launchForm.appPath,
-      debugPort: numberOrDefault(launchForm.debugPort, 9229),
       helperPort: numberOrDefault(launchForm.helperPort, 57321),
     };
     const result = await run(() => managerActions.overview[intent](request));
@@ -925,15 +829,6 @@ export function App() {
     }
   };
 
-  const resetImageOverlaySettings = async () => {
-    const result = await run(() => managerActions.settings.resetImageOverlay());
-    if (result) {
-      setSettings(result);
-      setSettingsForm(normalizeSettings(result.settings));
-      showNotice(t("图片覆盖层"), result.message, result.status);
-    }
-  };
-
   const refreshAds = async (silent = false) => {
     const result = await run(() => managerActions.recommendations.load());
     if (result) {
@@ -1033,18 +928,6 @@ export function App() {
     return !!result && isSuccessStatus(result.status) && result.configured;
   };
 
-  const saveLaunchMode = async (launchMode: LaunchMode, silent = false, baseSettings: BackendSettings = settingsForm) => {
-    const next = { ...baseSettings, launchMode };
-    setSettingsForm(next);
-    const result = await run(() => managerActions.settings.save(next));
-    if (result) {
-      setSettings(result);
-      setSettingsForm(normalizeSettings(result.settings));
-      if (!silent) showNotice(t("Codex增强模式"), result.message, result.status);
-    }
-    return result;
-  };
-
   const applyPureApiInjection = async (silent = false) => {
     const settingsResult = await run(() => managerActions.settings.save(settingsForm));
     if (settingsResult) {
@@ -1110,11 +993,6 @@ export function App() {
     return result ?? null;
   };
 
-  const testStepwiseSettings = async (settings: BackendSettings) => {
-    const result = await run(() => managerActions.settings.testStepwise(settings));
-    if (result) showNotice("Stepwise 测试", result.message, result.status);
-  };
-
   const fetchRelayProfileModels = async (profile: RelayProfileView) => {
     const result = await run(() => managerActions.relay.fetchModels(profile));
     if (result) showNotice(t("模型列表"), result.message, result.status);
@@ -1124,15 +1002,13 @@ export function App() {
   const switchOfficialMode = async () => {
     const switched = await clearRelayInjection(true);
     if (!switched) return;
-    const result = await saveLaunchMode("relay", true);
-    if (result) showNotice(t("官方登录模式"), t("已切回官方登录；Codex增强已设为兼容增强。"), result.status);
+    showNotice(t("官方登录模式"), t("已切回官方登录。"), "ok");
   };
 
   const switchPureApiMode = async () => {
     const switched = await applyPureApiInjection(true);
     if (!switched) return;
-    const result = await saveLaunchMode("patch", true);
-    if (result) showNotice(t("纯 API 模式"), t("已切换到纯 API；Codex增强已设为完整增强。"), result.status);
+    showNotice(t("纯 API 模式"), t("已切换到纯 API。"), "ok");
   };
 
   const switchRelayProfile = async (next: BackendSettings, targetRelayId: string) => {
@@ -1190,7 +1066,6 @@ export function App() {
         message: result.message,
         settings: selectedSettings,
         settingsPath: result.settingsPath,
-        userScripts: result.userScripts,
       });
       setSettingsForm(selectedSettings);
       setRelay({
@@ -1212,7 +1087,6 @@ export function App() {
       const currentSelected = activeRelayProfile(selectedSettings);
       logDiagnostic("switchRelayProfile.ok", {
         targetRelayId: currentSelected.id,
-        launchMode: selectedSettings.launchMode,
         status: result.status,
       });
       showNotice(t("供应商切换"), relayProfileSwitchMessage(currentSelected), result.status);
@@ -1372,7 +1246,6 @@ export function App() {
       saveSettingsValue,
       refreshSettings,
       resetSettings,
-      resetImageOverlaySettings,
       chooseCodexAppPath: async (mode: "folder" | "file") => {
         let selected: unknown;
         try {
@@ -1411,28 +1284,6 @@ export function App() {
           await refreshOverview(true);
         }
       },
-      chooseImageOverlayPath: async () => {
-        let selected: unknown;
-        try {
-          selected = await open({
-            directory: false,
-            multiple: false,
-            title: t("选择覆盖图片"),
-            filters: [{ name: t("图片"), extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }],
-          });
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          showNotice(t("图片覆盖层"), tf("打开选择器失败：{0}", [message]), "failed");
-          return;
-        }
-        if (typeof selected === "string" && selected.trim()) {
-          setSettingsForm((current) => ({
-            ...current,
-            codexAppImageOverlayEnabled: true,
-            codexAppImageOverlayPath: selected.trim(),
-          }));
-        }
-      },
       saveManualCodexAppPath: async () => {
         const appPath = launchForm.appPath.trim();
         if (!appPath) {
@@ -1449,9 +1300,6 @@ export function App() {
       setProviderSyncTarget: (provider: string) => {
         setSelectedProviderSyncTarget(provider);
         setSettingsForm((current) => ({ ...current, providerSyncLastSelectedProvider: provider }));
-      },
-      setLaunchMode: async (launchMode: LaunchMode) => {
-        await saveLaunchMode(launchMode);
       },
       refreshRelay,
       refreshRelayFiles,
@@ -1470,7 +1318,6 @@ export function App() {
       extractRelayCommonConfig,
       testRelayProfile,
       diagnoseRelayProfile,
-      testStepwiseSettings,
       fetchRelayProfileModels,
       switchRelayProfile,
       relaySwitching,
@@ -1508,14 +1355,6 @@ export function App() {
     refreshAds: actions.refreshAds,
     openExternalUrl: actions.openExternalUrl,
   };
-  const userScriptsActions: UserScriptsActions = {
-    executeUserScriptsAction,
-    openExternalUrl,
-  };
-  const userScriptsView = projectUserScriptsView(
-    settings?.userScripts,
-    scriptMarket,
-  );
   const sessionsView: SessionsView = {
     ...sessionsControllerView,
     providerSync: {
@@ -1550,23 +1389,8 @@ export function App() {
   };
   const enhanceView: EnhanceView = {
     settings: {
-      enhancementsEnabled: settingsForm.enhancementsEnabled,
       computerUseGuardEnabled: settingsForm.computerUseGuardEnabled,
-      codexAppSessionDelete: settingsForm.codexAppSessionDelete,
-      codexAppMarkdownExport: settingsForm.codexAppMarkdownExport,
-      codexAppPasteFix: settingsForm.codexAppPasteFix,
-      codexAppProjectMove: settingsForm.codexAppProjectMove,
-      codexAppThreadIdBadge: settingsForm.codexAppThreadIdBadge,
-      codexAppConversationView: settingsForm.codexAppConversationView,
-      codexAppThreadScrollRestore: settingsForm.codexAppThreadScrollRestore,
-      codexAppStepwiseEnabled: settingsForm.codexAppStepwiseEnabled,
-      codexAppStepwiseDirectSend: settingsForm.codexAppStepwiseDirectSend,
-      codexAppForceChineseLocale: settingsForm.codexAppForceChineseLocale,
       codexAppFastStartup: settingsForm.codexAppFastStartup,
-      codexAppNativeMenuPlacement: settingsForm.codexAppNativeMenuPlacement,
-      codexAppNativeMenuLocalization: settingsForm.codexAppNativeMenuLocalization,
-      codexAppUpstreamWorktreeCreate: settingsForm.codexAppUpstreamWorktreeCreate,
-      launchMode: settingsForm.launchMode,
     },
     pluginMarketplaceProgress,
     remotePluginMarketplace: remotePluginMarketplace
@@ -1583,7 +1407,6 @@ export function App() {
   };
   const enhanceActions: EnhanceActions = {
     updateFlag: (key, value) => setSettingsForm((current) => ({ ...current, [key]: value })),
-    setLaunchMode: actions.setLaunchMode,
     repairPluginMarketplace: actions.repairPluginMarketplace,
     refreshRemotePluginMarketplaceStatus: async () => {
       await actions.refreshRemotePluginMarketplace();
@@ -1749,13 +1572,6 @@ export function App() {
               actions={enhanceActions}
             />
           ) : null}
-          {route === "userScripts" ? (
-            <UserScriptsScreen
-              view={userScriptsView}
-              pending={userScriptsPending}
-              actions={userScriptsActions}
-            />
-          ) : null}
           {route === "recommendations" ? <RecommendationsScreen ads={ads} actions={recommendationsActions} /> : null}
           {route === "maintenance" ? (
             <MaintenanceScreen view={maintenanceView} actions={maintenanceActions} />
@@ -1775,7 +1591,7 @@ export function App() {
               settingsPath={settings?.settingsPath ?? ""}
               theme={theme}
               form={settingsForm}
-              onFormChange={setSettingsForm}
+              onFormChange={(form) => setSettingsForm((current) => ({ ...current, ...form }))}
               actions={actions}
             />
           ) : null}
@@ -1828,15 +1644,12 @@ type Actions = {
   saveSettingsValue: (settings: BackendSettings, silent?: boolean) => Promise<void>;
   refreshSettings: (silent?: boolean) => Promise<BackendSettings | null>;
   resetSettings: () => Promise<void>;
-  resetImageOverlaySettings: () => Promise<void>;
   chooseCodexAppPath: (mode: "folder" | "file") => Promise<void>;
   clearCodexAppPath: () => Promise<void>;
-  chooseImageOverlayPath: () => Promise<void>;
   saveManualCodexAppPath: () => Promise<void>;
   syncProvidersNow: () => Promise<void>;
   refreshProviderSyncTargets: (silent?: boolean) => Promise<ProviderSyncTargetsResult | null>;
   setProviderSyncTarget: (provider: string) => void;
-  setLaunchMode: (launchMode: LaunchMode) => Promise<void>;
   refreshRelay: () => Promise<void>;
   refreshRelayFiles: () => Promise<RelayFilesResult | null>;
   refreshEnvConflicts: (silent?: boolean) => Promise<EnvConflictsResult | null>;
@@ -1854,7 +1667,6 @@ type Actions = {
   extractRelayCommonConfig: (configContents: string) => Promise<ExtractRelayCommonConfigResult | null>;
   testRelayProfile: (profile: RelayProfileView) => Promise<void>;
   diagnoseRelayProfile: (profile: RelayProfileView) => Promise<ProviderDoctorResult | null>;
-  testStepwiseSettings: (settings: BackendSettings) => Promise<void>;
   fetchRelayProfileModels: (profile: RelayProfileView) => Promise<string[] | null>;
   switchRelayProfile: (settings: BackendSettings, targetRelayId: string) => Promise<void>;
   relaySwitching: boolean;

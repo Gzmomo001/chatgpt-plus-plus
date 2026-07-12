@@ -6,7 +6,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use async_trait::async_trait;
-use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
@@ -67,7 +66,6 @@ impl CodexLaunch {
 #[derive(Debug, Clone)]
 pub struct LaunchOptions {
     pub app_dir: Option<PathBuf>,
-    pub debug_port: u16,
     pub helper_port: u16,
     pub status_store: StatusStore,
 }
@@ -76,7 +74,6 @@ impl Default for LaunchOptions {
     fn default() -> Self {
         Self {
             app_dir: None,
-            debug_port: 9229,
             helper_port: 57321,
             status_store: StatusStore::default(),
         }
@@ -85,7 +82,6 @@ impl Default for LaunchOptions {
 
 #[derive(Clone)]
 pub struct LaunchHandle {
-    pub debug_port: u16,
     pub helper_port: u16,
     pub app_dir: PathBuf,
     pub launch: CodexLaunch,
@@ -98,7 +94,6 @@ impl std::fmt::Debug for LaunchHandle {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("LaunchHandle")
-            .field("debug_port", &self.debug_port)
             .field("helper_port", &self.helper_port)
             .field("app_dir", &self.app_dir)
             .field("launch", &self.launch)
@@ -123,7 +118,6 @@ impl LaunchHandle {
         let stopped = launch_status(
             "stopped",
             "ChatGPT++ internal helper stopped by explicit app exit",
-            self.debug_port,
             self.helper_port,
             &self.app_dir,
         );
@@ -139,7 +133,6 @@ pub trait LaunchHooks: Send + Sync {
         app_dir: Option<&Path>,
         settings: &BackendSettings,
     ) -> anyhow::Result<PathBuf>;
-    fn select_debug_port(&self, requested: u16) -> u16;
     fn select_helper_port(&self, requested: u16) -> u16;
     async fn load_settings(&self) -> anyhow::Result<BackendSettings>;
     async fn run_provider_sync(&self) -> anyhow::Result<()>;
@@ -152,62 +145,19 @@ pub trait LaunchHooks: Send + Sync {
     ) -> anyhow::Result<()> {
         Ok(())
     }
+    fn sanitize_historical_model_suffixes(
+        &self,
+    ) -> anyhow::Result<crate::codex_sqlite::SanitizeModelSuffixResult> {
+        let home = crate::codex_home::default_codex_home_dir();
+        crate::codex_sqlite::sanitize_historical_model_suffixes(&home)
+    }
     async fn start_helper(&self, helper_port: u16) -> anyhow::Result<()>;
     async fn launch_codex(
         &self,
         app_dir: &Path,
-        debug_port: u16,
         settings: &BackendSettings,
         extra_args: &[String],
     ) -> anyhow::Result<CodexLaunch>;
-    async fn bridge_context(
-        &self,
-        _debug_port: u16,
-        _app_dir: &Path,
-    ) -> anyhow::Result<Option<crate::routes::BridgeContext>> {
-        Ok(None)
-    }
-    async fn inject(&self, debug_port: u16, helper_port: u16) -> anyhow::Result<()>;
-    async fn inject_bridge(
-        &self,
-        debug_port: u16,
-        helper_port: u16,
-        _ctx: crate::routes::BridgeContext,
-    ) -> anyhow::Result<()> {
-        self.inject(debug_port, helper_port).await
-    }
-    async fn ensure_injection(&self, debug_port: u16, helper_port: u16, app_dir: &Path) -> bool {
-        for attempt in 1..=120 {
-            let result = match self.bridge_context(debug_port, app_dir).await {
-                Ok(Some(ctx)) => self.inject_bridge(debug_port, helper_port, ctx).await,
-                Ok(None) => self.inject(debug_port, helper_port).await,
-                Err(error) => Err(error),
-            };
-            match result {
-                Ok(()) => return true,
-                Err(error) => {
-                    let _ = crate::diagnostic_log::append_diagnostic_log(
-                        "launcher.ensure_injection_retry_failed",
-                        serde_json::json!({
-                            "debug_port": debug_port,
-                            "helper_port": helper_port,
-                            "attempt": attempt,
-                            "message": error.to_string()
-                        }),
-                    );
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                }
-            }
-        }
-        false
-    }
-    async fn start_bridge_watchdog(
-        &self,
-        _debug_port: u16,
-        _helper_port: u16,
-    ) -> anyhow::Result<()> {
-        Ok(())
-    }
     async fn start_computer_use_guard_watchdog(
         &self,
         _settings: &BackendSettings,
@@ -224,7 +174,6 @@ pub trait LaunchHooks: Send + Sync {
 pub struct DefaultLaunchHooks {
     child: Mutex<Option<Child>>,
     helper: Mutex<Option<HelperRuntime>>,
-    bridge_watchdog: Mutex<Option<BridgeWatchdogRuntime>>,
     computer_use_guard_watchdog: Mutex<Option<ComputerUseGuardWatchdogRuntime>>,
     computer_use_guard_artifacts: Mutex<Option<crate::computer_use_guard::GuardArtifacts>>,
 }
@@ -234,21 +183,16 @@ struct HelperRuntime {
     task: tokio::task::JoinHandle<()>,
 }
 
-struct BridgeWatchdogRuntime {
-    shutdown: tokio::sync::oneshot::Sender<()>,
-    task: tokio::task::JoinHandle<()>,
-}
-
 struct ComputerUseGuardWatchdogRuntime {
     shutdown: tokio::sync::oneshot::Sender<()>,
     task: tokio::task::JoinHandle<()>,
 }
 
-pub async fn launch_and_inject(options: LaunchOptions) -> anyhow::Result<LaunchHandle> {
-    launch_and_inject_with_hooks(options, DefaultLaunchHooks::shared()).await
+pub async fn launch_codex(options: LaunchOptions) -> anyhow::Result<LaunchHandle> {
+    launch_codex_with_hooks(options, DefaultLaunchHooks::shared()).await
 }
 
-pub async fn launch_and_inject_with_hooks<H>(
+pub async fn launch_codex_with_hooks<H>(
     options: LaunchOptions,
     hooks: H,
 ) -> anyhow::Result<LaunchHandle>
@@ -256,7 +200,6 @@ where
     H: IntoLaunchHooks,
 {
     let hooks = hooks.into_launch_hooks();
-    let debug_port = hooks.select_debug_port(options.debug_port);
     let mut helper_port = hooks.select_helper_port(options.helper_port);
     let settings = hooks.load_settings().await?;
     let app_dir = hooks.resolve_app_dir(options.app_dir.as_deref(), &settings)?;
@@ -280,8 +223,7 @@ where
         if settings.computer_use_guard_enabled {
             hooks.ensure_computer_use_config(&settings).await?;
         }
-        let home = crate::codex_home::default_codex_home_dir();
-        match crate::codex_sqlite::sanitize_historical_model_suffixes(&home) {
+        match hooks.sanitize_historical_model_suffixes() {
             Ok(result) if result.updated > 0 => {
                 let _ = crate::diagnostic_log::append_diagnostic_log(
                     "launcher.sanitize_historical_model_suffixes",
@@ -305,13 +247,13 @@ where
         if protocol_proxy_enabled {
             helper_port = crate::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT;
         }
-        if settings.enhancements_enabled || protocol_proxy_enabled {
+        if protocol_proxy_enabled {
             hooks.start_helper(helper_port).await?;
             helper_started = true;
         }
 
         let launch = hooks
-            .launch_codex(&app_dir, debug_port, &settings, &settings.codex_extra_args)
+            .launch_codex(&app_dir, &settings, &settings.codex_extra_args)
             .await?;
         launched = Some(launch.clone());
         keep_launched_on_error = true;
@@ -319,48 +261,12 @@ where
             hooks.start_computer_use_guard_watchdog(&settings).await?;
         }
 
-        let mut injection_degraded = false;
-        if settings.enhancements_enabled {
-            let injection_ready = hooks
-                .ensure_injection(debug_port, helper_port, &app_dir)
-                .await;
-            if injection_ready {
-                keep_launched_on_error = false;
-                // 注入成功后页面已加载，此时可以通过 CDP 清理 Electron Local Storage
-                // 中残留的带后缀模型名，避免模型选择器继续显示废弃项。
-                crate::codex_local_storage::sanitize_local_storage_model_suffixes_nonfatal(
-                    debug_port,
-                )
-                .await;
-                hooks.start_bridge_watchdog(debug_port, helper_port).await?;
-            } else {
-                let degraded = launch_status(
-                    "running_degraded",
-                    "Codex launched; ChatGPT++ enhancements are still waiting for the page bridge.",
-                    debug_port,
-                    helper_port,
-                    &app_dir,
-                );
-                options.status_store.save_latest(&degraded)?;
-                hooks.write_status("running_degraded").await;
-                injection_degraded = true;
-            }
-        }
-
-        if !settings.enhancements_enabled || !injection_degraded {
-            let status = launch_status(
-                "running",
-                "ChatGPT++ launcher ready",
-                debug_port,
-                helper_port,
-                &app_dir,
-            );
-            options.status_store.save_latest(&status)?;
-            hooks.write_status("running").await;
-        }
+        keep_launched_on_error = false;
+        let status = launch_status("running", "ChatGPT++ launcher ready", helper_port, &app_dir);
+        options.status_store.save_latest(&status)?;
+        hooks.write_status("running").await;
 
         Ok(LaunchHandle {
-            debug_port,
             helper_port,
             app_dir: app_dir.clone(),
             launch,
@@ -383,7 +289,7 @@ where
                 }
             }
             let message = error.to_string();
-            let failure = launch_status("failed", &message, debug_port, helper_port, &app_dir);
+            let failure = launch_status("failed", &message, helper_port, &app_dir);
             let _ = status_store.save_latest(&failure);
             hooks.write_status("failed").await;
             Err(error)
@@ -393,29 +299,6 @@ where
 
 fn relay_protocol_proxy_enabled(settings: &BackendSettings) -> bool {
     settings.active_relay_uses_protocol_proxy()
-}
-
-fn select_native_menu_inspector_port(debug_port: u16) -> u16 {
-    let requested = debug_port.saturating_add(100);
-    crate::ports::select_platform_loopback_port(requested)
-}
-
-fn start_native_menu_localizer(inspector_port: u16) {
-    if inspector_port == 0 {
-        return;
-    }
-    tokio::spawn(async move {
-        if let Err(error) = crate::native_menu::install_native_menu_localizer(inspector_port).await
-        {
-            let _ = crate::diagnostic_log::append_diagnostic_log(
-                "native_menu.localization_failed",
-                serde_json::json!({
-                    "inspector_port": inspector_port,
-                    "message": error.to_string()
-                }),
-            );
-        }
-    });
 }
 
 #[cfg(windows)]
@@ -500,10 +383,6 @@ impl LaunchHooks for DefaultLaunchHooks {
         .ok_or_else(|| anyhow::anyhow!("Codex App directory not found"))
     }
 
-    fn select_debug_port(&self, requested: u16) -> u16 {
-        crate::ports::select_packaged_codex_debug_port(requested)
-    }
-
     fn select_helper_port(&self, requested: u16) -> u16 {
         crate::ports::select_platform_loopback_port(requested)
     }
@@ -529,11 +408,8 @@ impl LaunchHooks for DefaultLaunchHooks {
 
     async fn ensure_plugin_marketplace_config(
         &self,
-        settings: &BackendSettings,
+        _settings: &BackendSettings,
     ) -> anyhow::Result<()> {
-        if !settings.codex_app_plugin_marketplace_unlock {
-            return Ok(());
-        }
         let home = crate::codex_home::default_codex_home_dir();
         match crate::plugin_marketplace::ensure_openai_curated_marketplace_config(&home) {
             Ok(configured) => {
@@ -620,25 +496,12 @@ impl LaunchHooks for DefaultLaunchHooks {
     async fn launch_codex(
         &self,
         app_dir: &Path,
-        debug_port: u16,
         settings: &BackendSettings,
         extra_args: &[String],
     ) -> anyhow::Result<CodexLaunch> {
-        let native_menu_localization_enabled = settings.codex_app_native_menu_localization;
-        let native_menu_inspector_port =
-            native_menu_localization_enabled.then(|| select_native_menu_inspector_port(debug_port));
         let launch_extra_args = codex_extra_args_for_launch(settings, extra_args);
         if cfg!(windows) {
-            let activation = if let Some(inspector_port) = native_menu_inspector_port {
-                build_packaged_activation_with_native_menu_inspector(
-                    app_dir,
-                    debug_port,
-                    inspector_port,
-                    &launch_extra_args,
-                )
-            } else {
-                build_packaged_activation(app_dir, debug_port, &launch_extra_args)
-            };
+            let activation = build_packaged_activation(app_dir, &launch_extra_args);
             if let Some(activation) = activation {
                 let CodexLaunch::PackagedActivation {
                     app_user_model_id,
@@ -650,9 +513,6 @@ impl LaunchHooks for DefaultLaunchHooks {
                 };
                 let process_id = activate_packaged_app(app_user_model_id, arguments).await?;
                 apply_chatgptplusplus_window_icon_after_launch(process_id);
-                if let Some(inspector_port) = native_menu_inspector_port {
-                    start_native_menu_localizer(inspector_port);
-                }
                 return Ok(match activation {
                     CodexLaunch::PackagedActivation {
                         app_user_model_id,
@@ -674,16 +534,7 @@ impl LaunchHooks for DefaultLaunchHooks {
             } else {
                 MacosCleanupPolicy::QuitIfNotPreviouslyRunning
             };
-            let command = if let Some(inspector_port) = native_menu_inspector_port {
-                build_macos_open_command_with_native_menu_inspector(
-                    app_dir,
-                    debug_port,
-                    inspector_port,
-                    &launch_extra_args,
-                )
-            } else {
-                build_macos_open_command(app_dir, debug_port, &launch_extra_args)
-            };
+            let command = build_macos_open_command(app_dir, &launch_extra_args);
             let executable = command
                 .first()
                 .ok_or_else(|| anyhow::anyhow!("macOS open command is empty"))?;
@@ -694,9 +545,6 @@ impl LaunchHooks for DefaultLaunchHooks {
                 .spawn()
                 .context("failed to launch macOS Codex app")?;
             *self.child.lock().await = Some(child);
-            if let Some(inspector_port) = native_menu_inspector_port {
-                start_native_menu_localizer(inspector_port);
-            }
             return Ok(CodexLaunch::Process {
                 command,
                 wait_strategy: ProcessWaitStrategy::ExternalWaitCommand,
@@ -704,16 +552,7 @@ impl LaunchHooks for DefaultLaunchHooks {
             });
         }
 
-        let command = if let Some(inspector_port) = native_menu_inspector_port {
-            build_codex_command_with_native_menu_inspector(
-                app_dir,
-                debug_port,
-                inspector_port,
-                &launch_extra_args,
-            )
-        } else {
-            build_codex_command(app_dir, debug_port, &launch_extra_args)
-        };
+        let command = build_codex_command(app_dir, &launch_extra_args);
         let executable = command
             .first()
             .ok_or_else(|| anyhow::anyhow!("Codex command is empty"))?;
@@ -728,42 +567,11 @@ impl LaunchHooks for DefaultLaunchHooks {
             .spawn()
             .with_context(|| format!("failed to launch Codex executable {executable}"))?;
         *self.child.lock().await = Some(child);
-        if let Some(inspector_port) = native_menu_inspector_port {
-            start_native_menu_localizer(inspector_port);
-        }
         Ok(CodexLaunch::Process {
             command,
             wait_strategy: ProcessWaitStrategy::TrackedChild,
             macos_cleanup_policy: None,
         })
-    }
-
-    async fn inject(&self, debug_port: u16, helper_port: u16) -> anyhow::Result<()> {
-        retry_injection(debug_port, helper_port).await
-    }
-    async fn start_bridge_watchdog(&self, debug_port: u16, helper_port: u16) -> anyhow::Result<()> {
-        let (shutdown, mut shutdown_rx) = tokio::sync::oneshot::channel();
-        let task = tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
-            loop {
-                tokio::select! {
-                    _ = &mut shutdown_rx => break,
-                    _ = interval.tick() => {
-                        let _ = check_and_reinject_bridge(debug_port, helper_port).await;
-                    }
-                }
-            }
-        });
-        if let Some(runtime) = self
-            .bridge_watchdog
-            .lock()
-            .await
-            .replace(BridgeWatchdogRuntime { shutdown, task })
-        {
-            let _ = runtime.shutdown.send(());
-            let _ = runtime.task.await;
-        }
-        Ok(())
     }
 
     async fn start_computer_use_guard_watchdog(
@@ -850,10 +658,6 @@ impl LaunchHooks for DefaultLaunchHooks {
 
     async fn shutdown_helper(&self, _helper_port: u16) {
         if let Some(runtime) = self.computer_use_guard_watchdog.lock().await.take() {
-            let _ = runtime.shutdown.send(());
-            let _ = runtime.task.await;
-        }
-        if let Some(runtime) = self.bridge_watchdog.lock().await.take() {
             let _ = runtime.shutdown.send(());
             let _ = runtime.task.await;
         }
@@ -966,68 +770,13 @@ async fn handle_helper_connection(
         }
     }
 
-    let (status, body, content_type, log_event) = if path == "/backend/status"
-        && matches!(method, "GET" | "POST" | "OPTIONS")
-    {
-        (
-            "200 OK".to_string(),
-            serde_json::to_vec(&serde_json::json!({
-                "status": "ok",
-                "message": "后端已连接",
-                "version": crate::version::VERSION,
-                "transport": "http-helper"
-            }))?,
-            "application/json; charset=utf-8".to_string(),
-            "helper.backend_status_ok",
-        )
-    } else if path == "/diagnostics/log" && matches!(method, "POST" | "OPTIONS") {
-        if method == "POST" {
-            let detail =
-                serde_json::from_str::<serde_json::Value>(request_body).unwrap_or_else(|error| {
-                    serde_json::json!({
-                        "parse_error": error.to_string(),
-                        "raw": request_body
-                    })
-                });
-            let event = detail
-                .get("event")
-                .and_then(serde_json::Value::as_str)
-                .map(sanitize_diagnostic_event)
-                .unwrap_or_else(|| "event".to_string());
-            let _ =
-                crate::diagnostic_log::append_diagnostic_log(&format!("renderer.{event}"), detail);
-        }
-        (
-            "200 OK".to_string(),
-            serde_json::to_vec(&serde_json::json!({
-                "status": "ok",
-                "message": "日志已记录"
-            }))?,
-            "application/json; charset=utf-8".to_string(),
-            "helper.diagnostics_log_ok",
-        )
-    } else if path == "/overlay/image" && matches!(method, "GET" | "OPTIONS") {
-        if method == "OPTIONS" {
-            (
-                "200 OK".to_string(),
-                Vec::new(),
-                "application/octet-stream".to_string(),
-                "helper.overlay_image_options",
-            )
-        } else {
-            overlay_image_response()
-        }
-    } else {
-        (
-            "404 Not Found".to_string(),
-            serde_json::to_vec(&serde_json::json!({
-                "status": "failed",
-                "message": "未知后端路径"
-            }))?,
-            "application/json; charset=utf-8".to_string(),
-            "helper.unknown_path",
-        )
-    };
+    let status = "404 Not Found".to_string();
+    let body = serde_json::to_vec(&serde_json::json!({
+        "status": "failed",
+        "message": "未知协议代理路径"
+    }))?;
+    let content_type = "application/json; charset=utf-8".to_string();
+    let log_event = "helper.unknown_path";
     let _ = crate::diagnostic_log::append_diagnostic_log(
         log_event,
         serde_json::json!({
@@ -1053,57 +802,6 @@ async fn handle_helper_connection(
     }
     stream.shutdown().await?;
     Ok(())
-}
-
-fn overlay_image_response() -> (String, Vec<u8>, String, &'static str) {
-    let not_found = || {
-        (
-            "404 Not Found".to_string(),
-            serde_json::to_vec(&serde_json::json!({
-                "status": "failed",
-                "message": "图片覆盖层未启用或图片不可用"
-            }))
-            .unwrap_or_default(),
-            "application/json; charset=utf-8".to_string(),
-            "helper.overlay_image_not_found",
-        )
-    };
-    let settings = SettingsStore::default().load().unwrap_or_default();
-    if !settings.codex_app_image_overlay_enabled {
-        return not_found();
-    }
-    let image_path = PathBuf::from(settings.codex_app_image_overlay_path.trim());
-    if image_path.as_os_str().is_empty() || !image_path.is_file() {
-        return not_found();
-    }
-    let Some(content_type) = overlay_image_content_type(&image_path) else {
-        return not_found();
-    };
-    match std::fs::read(&image_path) {
-        Ok(bytes) => (
-            "200 OK".to_string(),
-            bytes,
-            content_type.to_string(),
-            "helper.overlay_image_ok",
-        ),
-        Err(_) => not_found(),
-    }
-}
-
-fn overlay_image_content_type(path: &Path) -> Option<&'static str> {
-    match path
-        .extension()
-        .and_then(|extension| extension.to_str())
-        .map(str::to_ascii_lowercase)
-        .as_deref()
-    {
-        Some("png") => Some("image/png"),
-        Some("jpg") | Some("jpeg") => Some("image/jpeg"),
-        Some("webp") => Some("image/webp"),
-        Some("gif") => Some("image/gif"),
-        Some("bmp") => Some("image/bmp"),
-        _ => None,
-    }
 }
 
 async fn write_protocol_proxy_response(
@@ -1189,25 +887,7 @@ fn log_helper_response(
 
 #[cfg(test)]
 mod computer_use_tests {
-    use super::{header_value_from_request, overlay_image_content_type};
-    use std::path::Path;
-
-    #[test]
-    fn overlay_image_content_type_accepts_common_images_only() {
-        assert_eq!(
-            overlay_image_content_type(Path::new("overlay.PNG")),
-            Some("image/png")
-        );
-        assert_eq!(
-            overlay_image_content_type(Path::new("overlay.jpeg")),
-            Some("image/jpeg")
-        );
-        assert_eq!(
-            overlay_image_content_type(Path::new("overlay.webp")),
-            Some("image/webp")
-        );
-        assert_eq!(overlay_image_content_type(Path::new("overlay.txt")), None);
-    }
+    use super::header_value_from_request;
 
     #[test]
     fn header_value_from_request_reads_user_agent_case_insensitively() {
@@ -1290,41 +970,15 @@ fn header_value_from_request(request: &str, header_name: &str) -> Option<String>
         .filter(|value| !value.is_empty())
 }
 
-fn sanitize_diagnostic_event(event: &str) -> String {
-    let sanitized = event
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.') {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    if sanitized.is_empty() {
-        "event".to_string()
-    } else {
-        sanitized
-    }
+pub fn build_codex_arguments(extra_args: &[String]) -> Vec<String> {
+    normalize_codex_extra_args(extra_args)
 }
 
-pub fn build_codex_arguments(debug_port: u16, extra_args: &[String]) -> Vec<String> {
-    let mut args = vec![
-        format!("--remote-debugging-port={debug_port}"),
-        format!("--remote-allow-origins=http://127.0.0.1:{debug_port}"),
-    ];
-    args.extend(normalize_codex_extra_args(extra_args));
-    args
-}
-
-pub fn build_codex_arguments_for_settings(
-    debug_port: u16,
-    settings: &BackendSettings,
-) -> Vec<String> {
-    build_codex_arguments(
-        debug_port,
-        &codex_extra_args_for_launch(settings, &settings.codex_extra_args),
-    )
+pub fn build_codex_arguments_for_settings(settings: &BackendSettings) -> Vec<String> {
+    build_codex_arguments(&codex_extra_args_for_launch(
+        settings,
+        &settings.codex_extra_args,
+    ))
 }
 
 fn codex_extra_args_for_launch(settings: &BackendSettings, extra_args: &[String]) -> Vec<String> {
@@ -1353,199 +1007,25 @@ fn statsig_fast_fail_host_resolver_rule() -> String {
     .join(",")
 }
 
-pub fn build_codex_arguments_with_native_menu_inspector(
-    debug_port: u16,
-    inspector_port: u16,
-    extra_args: &[String],
-) -> Vec<String> {
-    let mut args = build_codex_arguments(debug_port, &[]);
-    if inspector_port != 0 {
-        args.push(format!("--inspect=127.0.0.1:{inspector_port}"));
-    }
-    args.extend(normalize_codex_extra_args(extra_args));
-    args
-}
-
-pub fn build_codex_command(app_dir: &Path, debug_port: u16, extra_args: &[String]) -> Vec<String> {
+pub fn build_codex_command(app_dir: &Path, extra_args: &[String]) -> Vec<String> {
     let mut command = vec![
         crate::app_paths::build_codex_executable(app_dir)
             .to_string_lossy()
             .to_string(),
     ];
-    command.extend(build_codex_arguments(debug_port, extra_args));
+    command.extend(build_codex_arguments(extra_args));
     command
 }
 
-pub fn build_codex_command_with_native_menu_inspector(
-    app_dir: &Path,
-    debug_port: u16,
-    inspector_port: u16,
-    extra_args: &[String],
-) -> Vec<String> {
-    let mut command = vec![
-        crate::app_paths::build_codex_executable(app_dir)
-            .to_string_lossy()
-            .to_string(),
-    ];
-    command.extend(build_codex_arguments_with_native_menu_inspector(
-        debug_port,
-        inspector_port,
-        extra_args,
-    ));
-    command
-}
-
-pub fn build_packaged_activation(
-    app_dir: &Path,
-    debug_port: u16,
-    extra_args: &[String],
-) -> Option<CodexLaunch> {
+pub fn build_packaged_activation(app_dir: &Path, extra_args: &[String]) -> Option<CodexLaunch> {
     Some(CodexLaunch::PackagedActivation {
         app_user_model_id: crate::app_paths::packaged_app_user_model_id(app_dir)?,
-        arguments: command_line_arguments(&build_codex_arguments(debug_port, extra_args)),
+        arguments: command_line_arguments(&build_codex_arguments(extra_args)),
         process_id: None,
     })
 }
 
-pub fn build_packaged_activation_with_native_menu_inspector(
-    app_dir: &Path,
-    debug_port: u16,
-    inspector_port: u16,
-    extra_args: &[String],
-) -> Option<CodexLaunch> {
-    Some(CodexLaunch::PackagedActivation {
-        app_user_model_id: crate::app_paths::packaged_app_user_model_id(app_dir)?,
-        arguments: command_line_arguments(&build_codex_arguments_with_native_menu_inspector(
-            debug_port,
-            inspector_port,
-            extra_args,
-        )),
-        process_id: None,
-    })
-}
-
-async fn retry_injection(debug_port: u16, helper_port: u16) -> anyhow::Result<()> {
-    let mut last_error = None;
-    for _ in 0..20 {
-        match try_inject(debug_port, helper_port).await {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                last_error = Some(error);
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-            }
-        }
-    }
-    Err(last_error.unwrap_or_else(|| anyhow::anyhow!("Codex injection failed")))
-}
-
-pub async fn check_and_reinject_bridge(debug_port: u16, helper_port: u16) -> bool {
-    let healthy = match bridge_health_ok(debug_port).await {
-        Ok(healthy) => healthy,
-        Err(error) => {
-            let _ = crate::diagnostic_log::append_diagnostic_log(
-                "bridge.health_check_failed",
-                serde_json::json!({
-                    "debug_port": debug_port,
-                    "helper_port": helper_port,
-                    "message": error.to_string()
-                }),
-            );
-            false
-        }
-    };
-    if healthy {
-        return false;
-    }
-
-    let _ = crate::diagnostic_log::append_diagnostic_log(
-        "bridge.reinject_start",
-        serde_json::json!({
-            "debug_port": debug_port,
-            "helper_port": helper_port
-        }),
-    );
-    match retry_injection(debug_port, helper_port).await {
-        Ok(()) => {
-            let _ = crate::diagnostic_log::append_diagnostic_log(
-                "bridge.reinject_ok",
-                serde_json::json!({
-                    "debug_port": debug_port,
-                    "helper_port": helper_port
-                }),
-            );
-            true
-        }
-        Err(error) => {
-            let _ = crate::diagnostic_log::append_diagnostic_log(
-                "bridge.reinject_failed",
-                serde_json::json!({
-                    "debug_port": debug_port,
-                    "helper_port": helper_port,
-                    "message": error.to_string()
-                }),
-            );
-            false
-        }
-    }
-}
-
-async fn bridge_health_ok(debug_port: u16) -> anyhow::Result<bool> {
-    let targets = crate::cdp::list_targets(debug_port).await?;
-    let target = crate::cdp::pick_injectable_codex_page_target(&targets)?;
-    let websocket_url = target
-        .web_socket_debugger_url
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("selected CDP target has no websocket URL"))?;
-    let result = crate::bridge::evaluate_script_with_await_promise(
-        websocket_url,
-        crate::bridge::bridge_health_check_script(),
-        true,
-    )
-    .await?;
-    Ok(runtime_evaluate_result_is_true(&result))
-}
-
-fn runtime_evaluate_result_is_true(result: &Value) -> bool {
-    result
-        .get("result")
-        .and_then(|result| result.get("result"))
-        .and_then(|result| result.get("value"))
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-}
-
-async fn try_inject(debug_port: u16, helper_port: u16) -> anyhow::Result<()> {
-    let targets = crate::cdp::list_targets(debug_port).await?;
-    let target = crate::cdp::pick_injectable_codex_page_target(&targets)?;
-    let websocket_url = target
-        .web_socket_debugger_url
-        .as_deref()
-        .ok_or_else(|| anyhow::anyhow!("selected CDP target has no websocket URL"))?;
-    let settings = SettingsStore::default().load().unwrap_or_default();
-    let script = crate::assets::injection_script_with_settings(helper_port, &settings);
-    let ctx = crate::routes::BridgeContext::core(Arc::new(crate::routes::CoreRuntimeService::new(
-        debug_port,
-        StatusStore::default(),
-    )));
-    crate::bridge::install_bridge(
-        websocket_url,
-        crate::bridge::BRIDGE_BINDING_NAME,
-        Arc::new(move |path, payload| {
-            let ctx = ctx.clone();
-            Box::pin(
-                async move { Ok(crate::routes::handle_bridge_request(ctx, &path, payload).await) },
-            )
-        }),
-        &[script],
-    )
-    .await
-}
-
-pub fn build_macos_open_command(
-    app_dir: &Path,
-    debug_port: u16,
-    extra_args: &[String],
-) -> Vec<String> {
+pub fn build_macos_open_command(app_dir: &Path, extra_args: &[String]) -> Vec<String> {
     let mut command = vec![
         "open".to_string(),
         "-W".to_string(),
@@ -1553,28 +1033,7 @@ pub fn build_macos_open_command(
         app_dir.to_string_lossy().to_string(),
         "--args".to_string(),
     ];
-    command.extend(build_codex_arguments(debug_port, extra_args));
-    command
-}
-
-pub fn build_macos_open_command_with_native_menu_inspector(
-    app_dir: &Path,
-    debug_port: u16,
-    inspector_port: u16,
-    extra_args: &[String],
-) -> Vec<String> {
-    let mut command = vec![
-        "open".to_string(),
-        "-W".to_string(),
-        "-a".to_string(),
-        app_dir.to_string_lossy().to_string(),
-        "--args".to_string(),
-    ];
-    command.extend(build_codex_arguments_with_native_menu_inspector(
-        debug_port,
-        inspector_port,
-        extra_args,
-    ));
+    command.extend(build_codex_arguments(extra_args));
     command
 }
 
@@ -1835,18 +1294,11 @@ async fn terminate_windows_process_id(process_id: u32) -> anyhow::Result<()> {
     anyhow::bail!("cannot terminate Windows process id {process_id} on this platform")
 }
 
-fn launch_status(
-    status: &str,
-    message: &str,
-    debug_port: u16,
-    helper_port: u16,
-    app_dir: &Path,
-) -> LaunchStatus {
+fn launch_status(status: &str, message: &str, helper_port: u16, app_dir: &Path) -> LaunchStatus {
     LaunchStatus {
         status: status.to_string(),
         message: message.to_string(),
         started_at_ms: now_ms(),
-        debug_port: Some(debug_port),
         helper_port: Some(helper_port),
         codex_app: Some(app_dir.to_string_lossy().to_string()),
     }
