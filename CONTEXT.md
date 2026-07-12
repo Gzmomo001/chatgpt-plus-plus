@@ -19,3 +19,7 @@ _Avoid_: Injection, file copy, config write
 **Relay profile editor**:
 The editing lifecycle that turns user intent into a valid Relay profile, including draft normalization and aggregate membership rules.
 _Avoid_: Provider form, profile helpers
+
+**Enhanced launch lifecycle**:
+The single transition that prepares Codex, starts the required ChatGPT++ resources, and either reaches a recorded running state or releases every resource it started.
+_Avoid_: Launch helper, startup sequence
