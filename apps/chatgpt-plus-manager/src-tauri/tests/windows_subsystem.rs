@@ -22,6 +22,29 @@ fn manager_release_binary_uses_embedded_frontend_assets() {
 }
 
 #[test]
+fn workspace_and_manager_build_do_not_include_an_independent_launcher() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repository = manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+        .expect("repository root");
+    let workspace =
+        std::fs::read_to_string(repository.join("Cargo.toml")).expect("read workspace Cargo.toml");
+    let package =
+        std::fs::read_to_string(repository.join("apps/chatgpt-plus-manager/package.json"))
+            .expect("read manager package.json");
+
+    assert!(!workspace.contains("apps/chatgpt-plus-launcher"));
+    assert!(!package.contains("chatgpt-plus-launcher"));
+    assert!(
+        !repository
+            .join("apps/chatgpt-plus-launcher/Cargo.toml")
+            .exists()
+    );
+}
+
+#[test]
 fn manager_uses_single_instance_guard_before_starting_tauri() {
     let lib_rs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
         .expect("read manager lib.rs");
@@ -79,26 +102,21 @@ fn manager_close_minimizes_to_tray_without_confirmation() {
 }
 
 #[test]
-fn explicit_quit_requests_internal_helper_shutdown_but_window_close_does_not() {
+fn explicit_quit_releases_manager_owned_runtime_but_window_close_does_not() {
     let lib_rs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
         .expect("read manager lib.rs");
-    let launcher = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("chatgpt-plus-launcher/src/main.rs"),
-    )
-    .expect("read launcher main.rs");
+    let runtime = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/launch_runtime.rs"
+    ))
+    .expect("read manager launch runtime");
 
-    assert!(lib_rs.contains("request_enhanced_shutdown()"));
+    assert!(lib_rs.contains("runtime.shutdown_owned_resources()"));
     assert!(lib_rs.contains("WindowEvent::CloseRequested"));
-    assert!(!lib_rs.contains(
-        "WindowEvent::CloseRequested { api, .. } => {\n            request_enhanced_shutdown"
-    ));
-    assert!(launcher.contains("wait_for_enhanced_shutdown_request()"));
-    assert!(launcher.contains("handle.shutdown_owned_resources().await"));
+    assert!(!lib_rs.contains("launcher.shutdown"));
+    assert!(runtime.contains("handle.wait_for_codex_exit().await"));
+    assert!(runtime.contains("handle.shutdown_owned_resources().await"));
+    assert!(runtime.contains("restart_after_configuration_change"));
 }
 
 #[test]
@@ -114,32 +132,12 @@ fn manager_queues_chatgptplusplus_provider_urls_for_confirmation_on_startup() {
 }
 
 #[test]
-fn launcher_binary_embeds_codex_icon_resource() {
-    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let launcher_build = manifest_dir
-        .parent()
-        .and_then(std::path::Path::parent)
-        .unwrap()
-        .join("chatgpt-plus-launcher/build.rs");
-    let build_rs = std::fs::read_to_string(&launcher_build).expect("read launcher build.rs");
-
-    assert!(build_rs.contains("WindowsResource"));
-    assert!(build_rs.contains("icons/icon.ico"));
-}
-
-#[test]
-fn windows_binaries_request_administrator_privileges() {
+fn windows_main_binary_requests_administrator_privileges() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let manager_build =
         std::fs::read_to_string(manifest_dir.join("build.rs")).expect("read manager build.rs");
     let windows_manifest = std::fs::read_to_string(manifest_dir.join("windows-app-manifest.xml"))
         .expect("read windows app manifest");
-    let launcher_build = manifest_dir
-        .parent()
-        .and_then(std::path::Path::parent)
-        .unwrap()
-        .join("chatgpt-plus-launcher/build.rs");
-    let launcher_build = std::fs::read_to_string(&launcher_build).expect("read launcher build.rs");
     let windows_installer = manifest_dir
         .parent()
         .and_then(std::path::Path::parent)
@@ -150,7 +148,6 @@ fn windows_binaries_request_administrator_privileges() {
         std::fs::read_to_string(&windows_installer).expect("read windows installer");
 
     assert!(manager_build.contains("windows-app-manifest.xml"));
-    assert!(launcher_build.contains("windows-app-manifest.xml"));
     assert!(windows_manifest.contains("requireAdministrator"));
     assert!(windows_manifest.contains("Microsoft.Windows.Common-Controls"));
     assert!(windows_installer.contains("RequestExecutionLevel admin"));
@@ -175,17 +172,40 @@ fn windows_entrypoints_register_chatgptplusplus_url_protocol() {
 }
 
 #[test]
-fn manager_launch_button_uses_the_deep_enhanced_launch_interface() {
+fn manager_launch_button_uses_the_manager_owned_launch_runtime() {
     let commands_rs = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/src/commands/settings.rs"
     ))
     .expect("read manager settings commands");
 
-    assert!(commands_rs.contains("start_enhanced_codex(action, launch_request)"));
+    assert!(commands_rs.contains("runtime.start(action, launch_request).await"));
     assert!(!commands_rs.contains("std::process::Command::new"));
     assert!(!commands_rs.contains("companion_binary_path"));
-    assert!(!commands_rs.contains("launch_and_inject_with_hooks(options"));
+    assert!(!commands_rs.contains("start_enhanced_codex"));
+}
+
+#[test]
+fn windows_relaunch_fallbacks_target_the_unified_manager_binary() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let repository = manifest_dir
+        .parent()
+        .and_then(std::path::Path::parent)
+        .and_then(std::path::Path::parent)
+        .expect("repository root");
+    let launcher =
+        std::fs::read_to_string(repository.join("crates/chatgpt-plus-core/src/launcher.rs"))
+            .expect("read launch runtime");
+    let windows_integration = std::fs::read_to_string(
+        repository.join("crates/chatgpt-plus-core/src/windows_integration.rs"),
+    )
+    .expect("read Windows integration");
+
+    for source in [launcher, windows_integration] {
+        assert!(source.contains("chatgpt-plus-plus-manager.exe"));
+        assert!(!source.contains("PathBuf::from(\"chatgpt-plus-plus.exe\")"));
+        assert!(!source.contains("|| \"chatgpt-plus-plus.exe\".to_string()"));
+    }
 }
 
 #[test]
@@ -389,7 +409,7 @@ fn quoted_string_array(source: &str, constant: &str) -> Vec<String> {
 }
 
 #[test]
-fn macos_packager_builds_one_visible_app_with_an_embedded_launcher_helper() {
+fn macos_packager_builds_one_visible_app_with_one_main_binary() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let packager = manifest_dir
         .parent()
@@ -405,8 +425,8 @@ fn macos_packager_builds_one_visible_app_with_an_embedded_launcher_helper() {
     assert!(script.contains("ChatGPTPlusPlus-${VERSION}-macos-${ARCH}.dmg"));
     assert!(script.contains("local app_name=\"ChatGPT++\""));
     assert!(script.contains("local binary_path=\"$BINARY_DIR/chatgpt-plus-plus-manager\""));
-    assert!(script.contains("local helper_path=\"$BINARY_DIR/chatgpt-plus-plus\""));
-    assert!(script.contains("$app_dir/Contents/Helpers/chatgpt-plus-plus"));
+    assert!(!script.contains("local helper_path=\"$BINARY_DIR/chatgpt-plus-plus\""));
+    assert!(!script.contains("$app_dir/Contents/Helpers/chatgpt-plus-plus"));
     assert!(script.contains("<false/>"));
     assert!(!script.contains("create_app \"ChatGPT++ 管理工具\""));
     assert!(!script.contains("$STAGE/ChatGPT++ 管理工具.app"));
@@ -432,7 +452,7 @@ fn github_release_workflow_builds_separate_macos_x64_and_arm64_dmgs() {
     assert!(workflow.contains(
         "zip -r \"../ChatGPTPlusPlus-${VERSION}-macos-${{ matrix.arch }}.zip\" \"ChatGPT++.app\""
     ));
-    assert!(workflow.contains("$app/Contents/Helpers/chatgpt-plus-plus"));
+    assert!(workflow.contains("test ! -e \"$app/Contents/Helpers/chatgpt-plus-plus\""));
     assert!(!workflow.contains("ChatGPT++ 管理工具.app"));
 }
 

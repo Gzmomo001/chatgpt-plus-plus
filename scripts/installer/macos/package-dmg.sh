@@ -31,6 +31,7 @@ prepare_icon() {
   sips -z 512 512 "$ICON_SOURCE" --out "$iconset/icon_512x512.png" >/dev/null
   sips -z 1024 1024 "$ICON_SOURCE" --out "$iconset/icon_512x512@2x.png" >/dev/null
 
+  xattr -cr "$iconset" 2>/dev/null || true
   iconutil -c icns "$iconset" -o "$ICON_ICNS"
 }
 
@@ -38,7 +39,6 @@ create_app() {
   local app_name="ChatGPT++"
   local executable_name="ChatGPTPlusPlus"
   local binary_path="$BINARY_DIR/chatgpt-plus-plus-manager"
-  local helper_path="$BINARY_DIR/chatgpt-plus-plus"
   local bundle_id="com.gzmomo001.chatgptplusplus"
   local app_dir="$STAGE/$app_name.app"
 
@@ -46,18 +46,11 @@ create_app() {
     echo "error: binary not found or not executable: $binary_path" >&2
     return 1
   fi
-  if [ ! -x "$helper_path" ]; then
-    echo "error: helper binary not found or not executable: $helper_path" >&2
-    return 1
-  fi
-
   rm -rf "$app_dir"
-  mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Helpers" "$app_dir/Contents/Resources"
+  mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
   cp "$binary_path" "$app_dir/Contents/MacOS/$executable_name"
-  cp "$helper_path" "$app_dir/Contents/Helpers/chatgpt-plus-plus"
   cp "$ICON_ICNS" "$app_dir/Contents/Resources/$ICON_NAME"
   chmod +x "$app_dir/Contents/MacOS/$executable_name"
-  chmod +x "$app_dir/Contents/Helpers/chatgpt-plus-plus"
   printf 'APPL????' > "$app_dir/Contents/PkgInfo"
   cat > "$app_dir/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -99,7 +92,6 @@ sign_app() {
   local app_dir="$1"
   local executable
   executable="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app_dir/Contents/Info.plist")"
-  codesign --force --sign - "$app_dir/Contents/Helpers/chatgpt-plus-plus"
   codesign --force --sign - "$app_dir/Contents/MacOS/$executable"
   codesign --force --sign - "$app_dir"
 }
@@ -116,10 +108,6 @@ verify_app() {
   fi
   if [ ! -f "$app_dir/Contents/PkgInfo" ]; then
     echo "error: missing PkgInfo in $app_dir" >&2
-    return 1
-  fi
-  if [ ! -x "$app_dir/Contents/Helpers/chatgpt-plus-plus" ]; then
-    echo "error: missing launcher helper in $app_dir" >&2
     return 1
   fi
   codesign -dv "$app_dir" >/dev/null 2>&1 || {

@@ -3,7 +3,6 @@ resolver = "2"
 members = [
   "crates/chatgpt-plus-core",
   "crates/chatgpt-plus-data",
-  "apps/chatgpt-plus-launcher",
   "apps/chatgpt-plus-manager/src-tauri",
 ]
 

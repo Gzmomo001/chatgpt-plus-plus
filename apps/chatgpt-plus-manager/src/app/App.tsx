@@ -189,7 +189,6 @@ export function App() {
   const [ads, setAds] = useState<AdsResult | null>(null);
   const [launchForm, setLaunchForm] = useState({
     appPath: "",
-    helperPort: "57321",
   });
   const prevLaunchStatusRef = useRef<string | null>(null);
   const [settingsForm, setSettingsForm] = useState<BackendSettings>({ ...defaultSettings });
@@ -536,7 +535,6 @@ export function App() {
   const launchCommand = async (intent: "launch" | "restart") => {
     const request = {
       appPath: launchForm.appPath,
-      helperPort: numberOrDefault(launchForm.helperPort, 57321),
     };
     const result = await run(() => managerActions.overview[intent](request));
     return result;

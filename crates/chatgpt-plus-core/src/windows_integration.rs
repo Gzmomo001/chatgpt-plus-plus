@@ -508,7 +508,7 @@ fn apply_taskbar_properties(hwnd: HWND, icon_resource_path: &PathBuf) -> anyhow:
     let relaunch_command = std::env::current_exe()
         .ok()
         .map(|path| path.to_string_lossy().to_string())
-        .unwrap_or_else(|| "chatgpt-plus-plus.exe".to_string());
+        .unwrap_or_else(|| "chatgpt-plus-plus-manager.exe".to_string());
     set_property_string(
         &store,
         &PKEY_AppUserModel_ID,

@@ -6,7 +6,7 @@ use std::path::Path;
 
 use super::{
     InstallOptions, LEGACY_MANAGER_NAME, MACOS_MAIN_EXECUTABLE, MANAGER_BINARY, MacosAppBundle,
-    SILENT_BINARY, SILENT_NAME, install_root_or_default, option_or_current_exe,
+    SILENT_NAME, install_root_or_default, option_or_current_exe,
 };
 
 pub fn build_app_bundle(options: &InstallOptions) -> MacosAppBundle {
@@ -15,17 +15,11 @@ pub fn build_app_bundle(options: &InstallOptions) -> MacosAppBundle {
         option_or_current_exe(&options.manager_path, MANAGER_BINARY),
         MANAGER_BINARY,
     );
-    let helper_binary_source = install_binary_source(
-        option_or_current_exe(&options.launcher_path, SILENT_BINARY),
-        SILENT_BINARY,
-    );
     MacosAppBundle {
         app_path: install_root.join(format!("{SILENT_NAME}.app")),
         info_plist: info_plist(SILENT_NAME, MACOS_MAIN_EXECUTABLE),
         main_binary_source: Some(main_binary_source),
         main_binary_target_name: Some(MACOS_MAIN_EXECUTABLE.to_string()),
-        helper_binary_source: Some(helper_binary_source),
-        helper_binary_target_name: Some(SILENT_BINARY.to_string()),
     }
 }
 
@@ -90,21 +84,18 @@ pub fn uninstall_app_bundles(_options: &InstallOptions) -> anyhow::Result<()> {
 fn write_bundle(bundle: &MacosAppBundle) -> anyhow::Result<()> {
     let contents = bundle.app_path.join("Contents");
     let macos = contents.join("MacOS");
-    let helpers = contents.join("Helpers");
+    let retired_helpers = contents.join("Helpers");
     let resources = contents.join("Resources");
+    if retired_helpers.exists() {
+        fs::remove_dir_all(&retired_helpers)?;
+    }
     fs::create_dir_all(&macos)?;
-    fs::create_dir_all(&helpers)?;
     fs::create_dir_all(&resources)?;
     fs::write(contents.join("Info.plist"), &bundle.info_plist)?;
     copy_executable(
         bundle.main_binary_source.as_ref(),
         bundle.main_binary_target_name.as_deref(),
         &macos,
-    )?;
-    copy_executable(
-        bundle.helper_binary_source.as_ref(),
-        bundle.helper_binary_target_name.as_deref(),
-        &helpers,
     )?;
     copy_icon(&resources)?;
     Ok(())

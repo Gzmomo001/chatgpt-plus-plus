@@ -7,44 +7,42 @@
 - Launch and restart actions continue to run the complete enhanced Codex lifecycle through one scenario-level backend interface.
 - Opening the UI does not automatically restart Codex; users launch or restart explicitly.
 
-## Manager and launcher lifecycle
+## Manager-owned lifecycle
 
-- Keep `chatgpt-plus-launcher` as an internal helper process so Codex/helper/watchdog lifetime is independent of the Tauri window.
-- The manager calls a single deep launch interface that owns helper discovery, arguments, hidden process creation, restart cleanup, and diagnostic errors.
-- The helper retains single-instance recovery, provider sync, protocol proxy, and official Codex activation behavior; Renderer injection and CDP flags have been removed.
-- Closing the main window hides it to the tray/menu bar. Quitting the UI releases UI resources; a running helper remains responsible for its own Codex/helper lifecycle until Codex exits.
+- The Tauri manager directly owns Codex launch/restart, Provider Sync, pre-launch maintenance, status, and cleanup.
+- Relay protocol proxy starts only for active profiles that require conversion or aggregation and remains owned by the tray process.
+- Closing the main window hides it to the tray/menu bar. Quitting the app synchronously releases the proxy and watchdog resources it created.
+- Switching the active Relay profile restarts an active managed launch so proxy state cannot outlive its configuration.
 
 ## macOS bundle layout
 
 ```text
 ChatGPT++.app/
   Contents/
-    MacOS/ChatGPTPlusPlus            # Tauri manager, visible app entry
-    Helpers/chatgpt-plus-plus        # hidden launcher helper
+    MacOS/ChatGPTPlusPlus            # Tauri manager and background runtime
     Resources/...
 ```
 
 - The DMG contains only `ChatGPT++.app` plus the `/Applications` link.
-- Companion resolution prefers the embedded helper/main executable and still recognizes the previous two-app layout during upgrades.
+- No `Contents/Helpers/chatgpt-plus-plus` executable is packaged.
 
 ## Windows install layout
 
-- Keep both internal binaries in the install directory to minimize migration risk.
+- Install only `chatgpt-plus-plus-manager.exe`.
 - Desktop and Start Menu expose only `ChatGPT++.lnk`, targeting the manager executable.
-- Watcher/autostart targets the hidden launcher helper directly.
+- Watcher/autostart targets the main application.
 - The uninstaller remains visible only as the normal uninstall entry.
 
 ## Upgrade migration
 
 - Installer and entrypoint repair remove legacy `ChatGPT++ 管理工具` shortcuts without touching settings or user data.
 - macOS first-run/repair removes only the exact legacy sibling `ChatGPT++ 管理工具.app`; configuration directories are never removed.
-- Windows keeps existing executable filenames and URL protocol registration so upgrades do not break companion paths.
-- Companion resolution supports both the new embedded-helper layout and old sibling-app layout.
+- Windows removes the retired `chatgpt-plus-plus.exe` during upgrade while preserving the main executable and URL protocol registration.
 
 ## Delivery slices
 
-1. Characterize the one-entry install plans, legacy cleanup, and companion resolution (RED).
-2. Add the deep enhanced-launch interface and migrate manager launch/restart to it.
-3. Convert macOS/Windows packaging, repair, watcher, and CI bundle checks to the single-entry layout.
-4. Remove user-facing manager/silent-entry terminology from UI and docs.
-5. Run installer, core, manager, frontend, formatting, and workspace gates; record package-level validation risks.
+1. Characterize one-binary install plans and legacy cleanup.
+2. Move the launch lifecycle and proxy ownership into the manager.
+3. Convert macOS/Windows packaging, watcher, and CI checks to one binary.
+4. Remove helper-only protocols and stale documentation.
+5. Run installer, core, manager, frontend, formatting, and workspace gates.

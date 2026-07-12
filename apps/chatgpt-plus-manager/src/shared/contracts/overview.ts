@@ -9,7 +9,7 @@ export type LaunchStatus = {
   status: string;
   message: string;
   startedAtMs: number;
-  helperPort: number | null;
+  protocolProxyPort: number | null;
   codexApp: string | null;
 };
 

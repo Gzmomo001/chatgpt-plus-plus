@@ -1,14 +1,13 @@
 use chatgpt_plus_core::install::{
-    InstallOptions, MANAGER_BINARY, SILENT_BINARY, app_bundle_names, build_macos_app_bundle,
-    build_windows_entrypoint_plan, companion_binary_path_from_exe, default_install_root_strategy,
-    legacy_entrypoint_paths, shortcut_names,
+    InstallOptions, app_bundle_names, build_macos_app_bundle, build_windows_entrypoint_plan,
+    default_install_root_strategy, legacy_entrypoint_paths, retired_launcher_paths_from_exe,
+    shortcut_names,
 };
 
 #[test]
 fn windows_entrypoint_plan_exposes_only_the_main_app_shortcut() {
     let options = InstallOptions {
         install_root: Some("C:/Users/A/Desktop".into()),
-        launcher_path: Some("C:/Tools/chatgpt-plus-plus.exe".into()),
         manager_path: Some("C:/Tools/chatgpt-plus-plus-manager.exe".into()),
         remove_owned_data: false,
     };
@@ -24,7 +23,6 @@ fn windows_entrypoint_plan_exposes_only_the_main_app_shortcut() {
         plan.legacy_management_shortcut
             .ends_with("ChatGPT++ 管理工具.lnk")
     );
-    assert_eq!(plan.launcher_path, "C:/Tools/chatgpt-plus-plus.exe");
     assert_eq!(plan.app_path, "C:/Tools/chatgpt-plus-plus-manager.exe");
     assert_eq!(plan.app_icon_path, "C:/Tools/chatgpt-plus-plus-manager.exe");
     assert_eq!(plan.uninstall_key, "ChatGPTPlusPlus");
@@ -51,7 +49,6 @@ fn windows_entrypoint_plan_exposes_only_the_main_app_shortcut() {
 fn windows_entrypoint_plan_can_request_owned_data_removal_without_shell_script() {
     let options = InstallOptions {
         install_root: Some("C:/Users/A/Desktop".into()),
-        launcher_path: None,
         manager_path: None,
         remove_owned_data: true,
     };
@@ -63,10 +60,9 @@ fn windows_entrypoint_plan_can_request_owned_data_removal_without_shell_script()
 }
 
 #[test]
-fn macos_bundle_plan_contains_one_visible_app_and_an_embedded_launcher_helper() {
+fn macos_bundle_plan_contains_one_visible_app_and_one_main_binary() {
     let options = InstallOptions {
         install_root: Some("/Applications".into()),
-        launcher_path: Some("/opt/ChatGPT++/chatgpt-plus-plus".into()),
         manager_path: Some("/opt/ChatGPT++/chatgpt-plus-plus-manager".into()),
         remove_owned_data: false,
     };
@@ -88,10 +84,6 @@ fn macos_bundle_plan_contains_one_visible_app_and_an_embedded_launcher_helper() 
     assert_eq!(
         bundle.main_binary_target_name.as_deref(),
         Some("ChatGPTPlusPlus")
-    );
-    assert_eq!(
-        bundle.helper_binary_target_name.as_deref(),
-        Some("chatgpt-plus-plus")
     );
 }
 
@@ -132,9 +124,8 @@ fn macos_dmg_includes_applications_shortcut_for_drag_install() {
         .expect("read macOS DMG packaging script");
 
     assert!(script.contains("ln -s /Applications \"$STAGE/Applications\""));
-    assert!(script.contains("$app_dir/Contents/Helpers"));
     assert!(script.contains("$BINARY_DIR/chatgpt-plus-plus-manager"));
-    assert!(script.contains("$BINARY_DIR/chatgpt-plus-plus"));
+    assert!(!script.contains("Contents/Helpers/chatgpt-plus-plus"));
     assert!(!script.contains("create_app \"ChatGPT++ 管理工具\""));
     assert!(!script.contains("$STAGE/ChatGPT++ 管理工具.app"));
 }
@@ -154,75 +145,21 @@ fn windows_installer_exposes_only_the_main_app_and_cleans_legacy_shortcuts() {
     assert!(!script.contains("CreateShortcut \"$SMPROGRAMS\\ChatGPT++\\ChatGPT++ 管理工具.lnk\""));
     assert!(script.contains("Delete \"$DESKTOP\\ChatGPT++ 管理工具.lnk\""));
     assert!(script.contains("Delete \"$SMPROGRAMS\\ChatGPT++\\ChatGPT++ 管理工具.lnk\""));
-    assert!(script.contains("File \"${ROOT}\\dist\\windows\\app\\chatgpt-plus-plus.exe\""));
+    assert!(!script.contains("File \"${ROOT}\\dist\\windows\\app\\chatgpt-plus-plus.exe\""));
     assert!(script.contains("File \"${ROOT}\\dist\\windows\\app\\chatgpt-plus-plus-manager.exe\""));
+    assert!(script.contains("Delete \"$INSTDIR\\chatgpt-plus-plus.exe\""));
 }
 
 #[test]
-fn companion_binary_path_resolves_macos_silent_app_next_to_manager_app() {
-    let manager_exe = std::path::Path::new(
-        "/Applications/ChatGPT++ 管理工具.app/Contents/MacOS/ChatGPTPlusPlusManager",
-    );
-
-    let companion = companion_binary_path_from_exe(manager_exe, SILENT_BINARY);
-
-    assert_eq!(
-        companion,
-        std::path::PathBuf::from("/Applications/ChatGPT++.app/Contents/MacOS/ChatGPTPlusPlus")
-    );
-    assert_ne!(
-        companion,
-        std::path::PathBuf::from(
-            "/Applications/ChatGPT++ 管理工具.app/Contents/MacOS/chatgpt-plus-plus"
-        )
-    );
-}
-
-#[test]
-fn companion_binary_path_resolves_embedded_helper_from_the_single_app() {
-    let app_exe =
-        std::path::Path::new("/Applications/ChatGPT++.app/Contents/MacOS/ChatGPTPlusPlus");
-
-    let companion = companion_binary_path_from_exe(app_exe, SILENT_BINARY);
-
-    assert_eq!(
-        companion,
-        std::path::PathBuf::from("/Applications/ChatGPT++.app/Contents/Helpers/chatgpt-plus-plus")
-    );
-}
-
-#[test]
-fn companion_binary_path_resolves_main_app_from_the_embedded_helper() {
-    let helper_exe =
-        std::path::Path::new("/Applications/ChatGPT++.app/Contents/Helpers/chatgpt-plus-plus");
-
-    let companion = companion_binary_path_from_exe(helper_exe, MANAGER_BINARY);
-
-    assert_eq!(
-        companion,
-        std::path::PathBuf::from("/Applications/ChatGPT++.app/Contents/MacOS/ChatGPTPlusPlus")
-    );
-}
-
-#[test]
-fn macos_bundle_uses_existing_main_and_helper_sources_without_wrapping_them() {
+fn macos_bundle_uses_the_existing_main_source_without_a_helper() {
     let options = InstallOptions {
         install_root: Some("/Applications".into()),
-        launcher_path: Some(
-            "/Applications/ChatGPT++.app/Contents/Helpers/chatgpt-plus-plus".into(),
-        ),
         manager_path: Some("/Applications/ChatGPT++.app/Contents/MacOS/ChatGPTPlusPlus".into()),
         remove_owned_data: false,
     };
 
     let bundle = build_macos_app_bundle(&options);
 
-    assert_eq!(
-        bundle.helper_binary_source,
-        Some(std::path::PathBuf::from(
-            "/Applications/ChatGPT++.app/Contents/Helpers/chatgpt-plus-plus"
-        ))
-    );
     assert_eq!(
         bundle.main_binary_source,
         Some(std::path::PathBuf::from(
@@ -242,4 +179,22 @@ fn windows_default_install_root_uses_known_folder_before_userprofile_desktop() {
     } else {
         assert_eq!(strategy, "user-dirs-desktop");
     }
+}
+
+#[test]
+fn retired_launcher_cleanup_targets_only_the_old_companion_binary() {
+    assert_eq!(
+        retired_launcher_paths_from_exe(std::path::Path::new(
+            "C:/Tools/chatgpt-plus-plus-manager.exe"
+        )),
+        vec![std::path::PathBuf::from("C:/Tools/chatgpt-plus-plus.exe")]
+    );
+    assert_eq!(
+        retired_launcher_paths_from_exe(std::path::Path::new(
+            "/Applications/ChatGPT++.app/Contents/MacOS/ChatGPTPlusPlus"
+        )),
+        vec![std::path::PathBuf::from(
+            "/Applications/ChatGPT++.app/Contents/Helpers/chatgpt-plus-plus"
+        )]
+    );
 }

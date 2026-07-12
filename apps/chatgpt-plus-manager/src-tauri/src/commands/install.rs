@@ -538,10 +538,8 @@ pub fn load_watcher_state() -> CommandResult<WatcherPayload> {
 
 #[tauri::command]
 pub fn install_watcher() -> CommandResult<WatcherPayload> {
-    let launcher_path = chatgpt_plus_core::install::companion_binary_path(
-        chatgpt_plus_core::install::SILENT_BINARY,
-    );
-    match chatgpt_plus_core::watcher::install_watcher(&launcher_path) {
+    let app_path = std::env::current_exe().unwrap_or_default();
+    match chatgpt_plus_core::watcher::install_watcher(&app_path) {
         Ok(()) => ok("watcher 已安装。", watcher_payload()),
         Err(error) => failed(&format!("安装 watcher 失败：{error}"), watcher_payload()),
     }

@@ -16,7 +16,7 @@
   <img alt="Tauri" src="https://img.shields.io/badge/tauri-2.x-24C8DB">
 </p>
 
-ChatGPT++ 是面向 Codex App 的一体化管理应用。它通过内部 launcher helper 按官方方式启动 Codex，并在独立管理界面中提供 Provider、会话、插件与维护能力，不修改 Codex Renderer、DOM 或页面请求。
+ChatGPT++ 是面向 Codex App 的一体化管理应用。主程序按官方方式启动 Codex，并在独立管理界面中提供 Provider、会话、插件与维护能力，不修改 Codex Renderer、DOM 或页面请求。
 
 ## 快速使用
 
@@ -32,7 +32,7 @@ ChatGPT++ 是面向 Codex App 的一体化管理应用。它通过内部 launche
 2. 打开 `ChatGPT++`，进入统一的管理主界面。
 3. 从应用中启动 Codex，或先配置 Provider、插件与启动维护选项后再启动。
 
-Windows 桌面和开始菜单只创建一个 `ChatGPT++` 快捷方式；macOS 只安装 `/Applications/ChatGPT++.app`。启动流程由应用包或安装目录中的内部 launcher helper 执行；它不是独立的用户应用，也不会创建快捷方式。
+Windows 桌面和开始菜单只创建一个 `ChatGPT++` 快捷方式；macOS 只安装 `/Applications/ChatGPT++.app`。Codex 启动、必要的协议代理与后台资源都由常驻托盘的 ChatGPT++ 主程序管理。
 
 ## 赞助商
 
@@ -132,7 +132,7 @@ Telegram 频道：<https://t.me/CodexPlusPlus>
 
 ## 主要功能
 
-- Rust 后端和内部 launcher helper，启动时不依赖额外运行时。
+- Rust 后端内置 Codex 启动生命周期与按需 Relay protocol proxy，不依赖额外 helper 程序。
 - Tauri + React 主界面，支持深色/浅色切换。
 - 按官方方式启动 Codex/ChatGPT，不修改 Renderer、DOM 或页面请求。
 - 多 Provider 配置：写入受管理的 `ChatGPTPlusPlus` provider，并可切回官方 ChatGPT 登录态。
@@ -142,7 +142,7 @@ Telegram 频道：<https://t.me/CodexPlusPlus>
 - 按模型粒度配置上下文窗口：「模型列表」分为左右两列，左侧填模型名，右侧填上下文窗口（如 `1M`、`200K` 或 `1000000`）；ChatGPT++ 自动生成 `model_catalog_json` 并注入 `config.toml`，切换模型即生效。右侧留空则使用 Codex 默认长度。
 - GitHub Release 自动更新，统一从 ChatGPT++ 主界面检查和安装；内部 helper 可提示主应用显示更新页。
 - Windows 单实例、无黑框启动、管理员权限清单、系统桌面路径识别。
-- macOS x64/arm64 分架构 DMG，内部 launcher 位于 `ChatGPT++.app/Contents/Helpers/`，不会成为独立 Dock 应用。
+- macOS x64/arm64 分架构 DMG，`ChatGPT++.app` 只包含一个主可执行程序。
 
 ## 中转注入
 
@@ -204,7 +204,7 @@ https://cdn.jsdelivr.net/gh/BigPizzaV3/Ad-List@main/ads.json
 
 ChatGPT++ 通过 GitHub Release 发布安装包。Windows 会生成 NSIS 安装程序，macOS 会生成 Intel x64 和 Apple Silicon arm64 两个 DMG。
 
-ChatGPT++ 的“关于”页可以检查并启动更新。内部 launcher helper 发现新版本时会唤起 ChatGPT++ 主界面并进入更新提示。
+ChatGPT++ 的“关于”页可以检查并启动更新。
 
 ## 数据位置
 
@@ -255,8 +255,7 @@ cargo build --release
 
 ```text
 apps/
-  chatgpt-plus-launcher/          内部 launcher helper
-  chatgpt-plus-manager/           ChatGPT++ Tauri 主应用
+  chatgpt-plus-manager/           ChatGPT++ Tauri 主应用与后台运行时
 crates/
   chatgpt-plus-core/              启动、配置、更新、安装和协议代理等核心逻辑
   chatgpt-plus-data/              会话数据、导出、Provider 同步

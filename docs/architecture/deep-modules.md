@@ -58,7 +58,9 @@ config, auth, catalog, backup, and postcondition steps. Reconciliation preserves
 unmanaged Codex state and shared context. Activation validates the target,
 persists settings, reconciles the home, checks the resulting status, and rolls
 back both raw settings and the original `config.toml`/`auth.json` on failure.
-Launching ChatGPT++ does not automatically reconcile or activate a profile.
+Opening the ChatGPT++ UI does not mutate Codex home. A managed Codex launch
+reconciles the already-selected active profile before Provider Sync and spawn;
+explicit profile selection still uses the transactional `activate` path.
 
 **Adapters and locality:** Manager Relay commands resolve the configured home
 and delegate the scenario to this module. Parsing, status capture, and context
@@ -96,8 +98,8 @@ with store.
 unknown-field preservation, normalization, and atomic storage mechanics.
 
 **Deletion test:** Removing it would spread serde compatibility and migration
-decisions into manager commands, Relay mutation, launcher configuration, and
-other settings consumers.
+decisions into manager commands, Relay mutation, managed launch configuration,
+and other settings consumers.
 
 ## Tauri command domains
 
@@ -142,33 +144,26 @@ behavior, aggregate failover, buffered response conversion, and streaming SSE
 conversion. Internal route/request/response/stream/tools/upstream files are not
 re-exported as a helper API. A reusable owned request body survives failover.
 
-**Adapters and locality:** The launcher owns socket lifecycle, parses the raw
-HTTP envelope into `ProtocolProxyRequest`, invokes one transaction, and writes
-the returned response. It does not choose conversion or failover order.
+**Adapters and locality:** The manager-owned launch runtime owns socket
+lifecycle, parses the raw HTTP envelope into `ProtocolProxyRequest`, invokes one
+transaction, and writes the returned response. It does not choose conversion
+or failover order.
 
 **Leverage:** The same seam handles Responses passthrough, Chat Completions
 translation, models/options routes, streaming, and errors while keeping
-protocol state out of the launcher.
+protocol state out of the manager adapter.
 
 **Deletion test:** Removing the transaction would move routing, conversion,
 stream state, upstream policy, retry/failover, and error ordering into the
-launcher. That concentration of recovered complexity demonstrates the seam's
-depth.
+launch runtime. That concentration of recovered complexity demonstrates the
+seam's depth.
 
 ## Zed compatibility boundary
 
-The **Manager Zed Remote** product surface has been removed: there is no
-manager route, screen, action, or registered Tauri command for listing,
-opening, or forgetting Zed remote projects.
-
-This removal intentionally does not delete the **core SSH bridge**. Launcher and
-core bridge routes still expose Zed status, SSH resolution, open, list,
-remember, and forget operations, so the corresponding core Zed parsing, launch,
-and registry primitives remain. Separately, `upstream_worktree` depends on the
-narrower SSH target type and host-id resolver to run remote Git over SSH. The
-**legacy settings** fields for Zed behavior also remain readable/defaulted so
-existing settings files retain wire compatibility. Those retained internals
-are not a promise to restore the removed Manager feature.
+The **Manager Zed Remote** and upstream-worktree product surfaces, core
+adapters, settings, and Bridge routes have been removed end to end. Serde
+continues to ignore unknown fields in old settings JSON, but removed fields are
+never serialized back into current settings.
 
 ## Repository dependency contract
 

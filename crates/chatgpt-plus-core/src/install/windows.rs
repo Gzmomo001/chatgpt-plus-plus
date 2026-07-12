@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    InstallOptions, LEGACY_MANAGER_NAME, MANAGER_BINARY, SILENT_BINARY, SILENT_NAME,
-    install_root_or_default, option_or_current_exe,
+    InstallOptions, LEGACY_MANAGER_NAME, MANAGER_BINARY, SILENT_NAME, install_root_or_default,
+    option_or_current_exe,
 };
 
 const UNINSTALL_SUBKEY: &str =
@@ -20,7 +20,6 @@ pub struct WindowsEntrypointPlan {
     pub app_shortcut: String,
     pub legacy_management_shortcut: String,
     pub app_shortcut_target: String,
-    pub launcher_path: String,
     pub app_path: String,
     pub icon_path: String,
     pub app_icon_path: String,
@@ -34,7 +33,6 @@ pub struct WindowsEntrypointPlan {
 
 pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypointPlan {
     let install_root = install_root_or_default(options);
-    let launcher_path = option_or_current_exe(&options.launcher_path, SILENT_BINARY);
     let manager_path = option_or_current_exe(&options.manager_path, MANAGER_BINARY);
     let icon_path = default_icon_path();
     let install_location = manager_path
@@ -55,7 +53,6 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypo
             .to_string(),
         app_shortcut_target: manager_path.to_string_lossy().to_string(),
         install_root: install_root.to_string_lossy().to_string(),
-        launcher_path: launcher_path.to_string_lossy().to_string(),
         app_path: manager_path.to_string_lossy().to_string(),
         icon_path: icon_path.to_string_lossy().to_string(),
         app_icon_path: manager_path.to_string_lossy().to_string(),

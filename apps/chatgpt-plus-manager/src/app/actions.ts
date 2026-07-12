@@ -189,7 +189,7 @@ export type RemotePluginMarketplaceResult = CommandResult<{
   skillCount: number;
 }>;
 
-export type LaunchRequest = { appPath: string; helperPort: number };
+export type LaunchRequest = { appPath: string };
 export type UpdateRelease = {
   version: string;
   url: string;
@@ -219,7 +219,7 @@ type WireOverviewResult = CommandResult<{
     status: string;
     message: string;
     started_at_ms: number;
-    helper_port: number | null;
+    protocol_proxy_port: number | null;
     codex_app: string | null;
   };
   current_version: string;
@@ -266,7 +266,7 @@ const mapOverviewResult = ({
         status: latest_launch.status,
         message: latest_launch.message,
         startedAtMs: latest_launch.started_at_ms,
-        helperPort: latest_launch.helper_port,
+        protocolProxyPort: latest_launch.protocol_proxy_port,
         codexApp: latest_launch.codex_app,
       }
     : null,

@@ -16,7 +16,7 @@
   <img alt="Tauri" src="https://img.shields.io/badge/tauri-2.x-24C8DB">
 </p>
 
-ChatGPT++ is a unified management app for the Codex App. Its internal launcher helper starts Codex through the official launch path, while the separate manager provides Provider, session, plugin, and maintenance capabilities without modifying the Codex Renderer, DOM, or page requests.
+ChatGPT++ is a unified management app for the Codex App. The main program starts Codex through the official launch path and provides Provider, session, plugin, and maintenance capabilities without modifying the Codex Renderer, DOM, or page requests.
 
 ## Quick Start
 
@@ -32,7 +32,7 @@ Quick use:
 2. Open `ChatGPT++` to enter the unified main interface.
 3. Start Codex from the app, or configure Providers, plugins, and launch maintenance first.
 
-Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. macOS installs only `/Applications/ChatGPT++.app`. The launch flow runs through an internal launcher helper inside the app bundle or install directory; it is not a separate user application and has no shortcut.
+Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. macOS installs only `/Applications/ChatGPT++.app`. The tray-resident ChatGPT++ main process owns Codex launch, the optional protocol proxy, and its background resources.
 
 ## Sponsors
 
@@ -115,7 +115,7 @@ Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. mac
 
 ## Highlights
 
-- Rust backend and internal launcher helper with no extra runtime requirement.
+- Rust backend with the Codex launch lifecycle and on-demand Relay protocol proxy built into the main process.
 - Tauri + React main interface with dark/light theme support.
 - Launches the official Codex/ChatGPT app without modifying its Renderer, DOM, or page requests.
 - Multiple Provider profiles with managed `ChatGPTPlusPlus` configuration and a one-click return to official ChatGPT login mode.
@@ -123,9 +123,9 @@ Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. mac
 - Manager-native marketplace, plugin, and skill inventory without Codex page injection.
 - Provider Sync to keep historical sessions visible after switching providers.
 - Per-model context window configuration: the "Model list" is split into two columns, model name on the left and context window (e.g. `1M`, `200K`, or `1000000`) on the right. ChatGPT++ auto-generates `model_catalog_json` and injects it into `config.toml`; the matching window is applied when you switch models. Leave the window empty to use Codex's default length.
-- GitHub Release updates from the unified ChatGPT++ UI; the internal helper can ask the main app to show the update page.
+- GitHub Release updates from the unified ChatGPT++ UI.
 - Windows single instance, no console window, administrator manifest, and system Desktop path detection.
-- Separate macOS x64 and arm64 DMGs. The internal launcher lives under `ChatGPT++.app/Contents/Helpers/` and is not a separate Dock app.
+- Separate macOS x64 and arm64 DMGs containing one main executable in `ChatGPT++.app`.
 
 ## Relay Injection
 
@@ -187,7 +187,7 @@ Requests automatically append a `?v=timestamp` cache buster to avoid stale CDN c
 
 ChatGPT++ publishes installers through GitHub Releases. Windows builds an NSIS installer, while macOS builds separate Intel x64 and Apple Silicon arm64 DMGs.
 
-ChatGPT++'s About page can check and start updates. When the internal launcher helper finds a new version, it opens the ChatGPT++ main interface directly on the update prompt.
+ChatGPT++'s About page can check and start updates.
 
 ## Data Locations
 
@@ -227,8 +227,7 @@ Project structure:
 
 ```text
 apps/
-  chatgpt-plus-launcher/          Internal launcher helper
-  chatgpt-plus-manager/           ChatGPT++ Tauri main app
+  chatgpt-plus-manager/           ChatGPT++ Tauri main app and background runtime
 crates/
   chatgpt-plus-core/              Launch, config, update, install, and protocol proxy
   chatgpt-plus-data/              Session data, export, Provider Sync

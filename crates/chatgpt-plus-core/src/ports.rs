@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use fs2::FileExt;
 
-pub const LAUNCHER_GUARD_PORT_BASE: u16 = 57320;
 pub const MANAGER_GUARD_PORT_BASE: u16 = 57319;
 
 /// Offset applied to guard port base to avoid conflicts in multi-user
@@ -25,33 +24,6 @@ fn guard_port_offset() -> u16 {
         }
     }
     0
-}
-
-/// Effective launcher guard port (base + auto-offset, overridable via env var).
-pub fn launcher_guard_port() -> u16 {
-    if let Some(port) =
-        crate::branding::env_var_with_legacy("CHATGPT_PLUS_GUARD_PORT", "CODEX_PLUS_GUARD_PORT")
-            .or_else(|_| {
-                crate::branding::env_var_with_legacy(
-                    "CHATGPT_PLUS_LAUNCHER_GUARD_PORT",
-                    "CODEX_PLUS_LAUNCHER_GUARD_PORT",
-                )
-            })
-            .ok()
-            .and_then(|v| v.parse::<u16>().ok())
-    {
-        return port;
-    }
-    if let Some(offset) = crate::branding::env_var_with_legacy(
-        "CHATGPT_PLUS_GUARD_PORT_OFFSET",
-        "CODEX_PLUS_GUARD_PORT_OFFSET",
-    )
-    .ok()
-    .and_then(|v| v.parse::<u16>().ok())
-    {
-        return LAUNCHER_GUARD_PORT_BASE + offset;
-    }
-    LAUNCHER_GUARD_PORT_BASE + guard_port_offset()
 }
 
 /// Effective manager guard port (base + auto-offset, overridable via env var).
@@ -323,17 +295,6 @@ mod tests {
     }
 
     #[test]
-    fn launcher_guard_port_returns_base_when_no_env_override() {
-        let _guard = guard_port_env_lock();
-        _clear_guard_port_env_vars();
-        let port = launcher_guard_port();
-        // On non-Windows: LAUNCHER_GUARD_PORT_BASE + 0
-        // On Windows: LAUNCHER_GUARD_PORT_BASE + USERNAME hash mod 1000
-        assert!(port >= LAUNCHER_GUARD_PORT_BASE);
-        assert!(port < LAUNCHER_GUARD_PORT_BASE + 1000);
-    }
-
-    #[test]
     fn manager_guard_port_returns_base_when_no_env_override() {
         let _guard = guard_port_env_lock();
         _clear_guard_port_env_vars();
@@ -343,23 +304,13 @@ mod tests {
     }
 
     #[test]
-    fn launcher_guard_port_honors_env_override() {
+    fn manager_guard_port_honors_env_override() {
         let _guard = guard_port_env_lock();
         _clear_guard_port_env_vars();
         unsafe { std::env::set_var("CHATGPT_PLUS_GUARD_PORT", "9999") };
-        let port = launcher_guard_port();
+        let port = manager_guard_port();
         unsafe { std::env::remove_var("CHATGPT_PLUS_GUARD_PORT") };
         assert_eq!(port, 9999);
-    }
-
-    #[test]
-    fn launcher_guard_port_honors_specific_env_override() {
-        let _guard = guard_port_env_lock();
-        _clear_guard_port_env_vars();
-        unsafe { std::env::set_var("CHATGPT_PLUS_LAUNCHER_GUARD_PORT", "8888") };
-        let port = launcher_guard_port();
-        unsafe { std::env::remove_var("CHATGPT_PLUS_LAUNCHER_GUARD_PORT") };
-        assert_eq!(port, 8888);
     }
 
     #[test]
@@ -373,13 +324,13 @@ mod tests {
     }
 
     #[test]
-    fn launcher_guard_port_honors_offset_env() {
+    fn manager_guard_port_honors_offset_env() {
         let _guard = guard_port_env_lock();
         _clear_guard_port_env_vars();
         unsafe { std::env::set_var("CHATGPT_PLUS_GUARD_PORT_OFFSET", "50") };
-        let port = launcher_guard_port();
+        let port = manager_guard_port();
         unsafe { std::env::remove_var("CHATGPT_PLUS_GUARD_PORT_OFFSET") };
-        assert_eq!(port, LAUNCHER_GUARD_PORT_BASE + 50);
+        assert_eq!(port, MANAGER_GUARD_PORT_BASE + 50);
     }
 
     fn guard_port_env_lock() -> MutexGuard<'static, ()> {
@@ -394,7 +345,6 @@ mod tests {
 fn _clear_guard_port_env_vars() {
     unsafe {
         let _ = std::env::remove_var("CHATGPT_PLUS_GUARD_PORT");
-        let _ = std::env::remove_var("CHATGPT_PLUS_LAUNCHER_GUARD_PORT");
         let _ = std::env::remove_var("CHATGPT_PLUS_MANAGER_GUARD_PORT");
         let _ = std::env::remove_var("CHATGPT_PLUS_GUARD_PORT_OFFSET");
     }

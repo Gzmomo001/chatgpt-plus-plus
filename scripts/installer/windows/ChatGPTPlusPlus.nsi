@@ -37,7 +37,6 @@ Section "Install"
   nsExec::ExecToLog 'taskkill /IM codex-plus-plus-manager.exe /F'
   Pop $0
 
-  File "${ROOT}\dist\windows\app\chatgpt-plus-plus.exe"
   File "${ROOT}\dist\windows\app\chatgpt-plus-plus-manager.exe"
 
   Delete "$DESKTOP\ChatGPT++ 绠＄悊宸ュ叿.lnk"

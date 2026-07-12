@@ -47,7 +47,6 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist/windows/app | Out-Null
-          Copy-Item target/release/chatgpt-plus-plus.exe dist/windows/app/
           Copy-Item target/release/chatgpt-plus-plus-manager.exe dist/windows/app/
 
       - name: Build Windows zip asset
@@ -144,7 +143,7 @@ jobs:
             test -f "$app/Contents/Info.plist"
             test -f "$app/Contents/PkgInfo"
             test -x "$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
-            test -x "$app/Contents/Helpers/chatgpt-plus-plus"
+            test ! -e "$app/Contents/Helpers/chatgpt-plus-plus"
             plutil -lint "$app/Contents/Info.plist" >/dev/null
             codesign -dv "$app" >/dev/null 2>&1
             echo "verified: $app"

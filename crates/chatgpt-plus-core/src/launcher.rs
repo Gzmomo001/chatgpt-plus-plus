@@ -66,7 +66,7 @@ impl CodexLaunch {
 #[derive(Debug, Clone)]
 pub struct LaunchOptions {
     pub app_dir: Option<PathBuf>,
-    pub helper_port: u16,
+    pub protocol_proxy_port: u16,
     pub status_store: StatusStore,
 }
 
@@ -74,7 +74,7 @@ impl Default for LaunchOptions {
     fn default() -> Self {
         Self {
             app_dir: None,
-            helper_port: 57321,
+            protocol_proxy_port: 57321,
             status_store: StatusStore::default(),
         }
     }
@@ -82,11 +82,10 @@ impl Default for LaunchOptions {
 
 #[derive(Clone)]
 pub struct LaunchHandle {
-    pub helper_port: u16,
+    pub protocol_proxy_port: u16,
     pub app_dir: PathBuf,
     pub launch: CodexLaunch,
     pub status_store: StatusStore,
-    helper_started: bool,
     hooks: Arc<dyn LaunchHooks>,
 }
 
@@ -94,7 +93,7 @@ impl std::fmt::Debug for LaunchHandle {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("LaunchHandle")
-            .field("helper_port", &self.helper_port)
+            .field("protocol_proxy_port", &self.protocol_proxy_port)
             .field("app_dir", &self.app_dir)
             .field("launch", &self.launch)
             .field("status_store", &self.status_store)
@@ -105,20 +104,20 @@ impl std::fmt::Debug for LaunchHandle {
 impl LaunchHandle {
     pub async fn wait_for_codex_exit(&self) -> anyhow::Result<()> {
         let result = self.hooks.wait_for_codex_exit(&self.launch).await;
-        if self.helper_started {
-            self.hooks.shutdown_helper(self.helper_port).await;
-        }
+        self.hooks
+            .shutdown_owned_resources(self.protocol_proxy_port)
+            .await;
         result
     }
 
     pub async fn shutdown_owned_resources(&self) {
-        if self.helper_started {
-            self.hooks.shutdown_helper(self.helper_port).await;
-        }
+        self.hooks
+            .shutdown_owned_resources(self.protocol_proxy_port)
+            .await;
         let stopped = launch_status(
             "stopped",
-            "ChatGPT++ internal helper stopped by explicit app exit",
-            self.helper_port,
+            "ChatGPT++ protocol proxy stopped by explicit app exit",
+            self.protocol_proxy_port,
             &self.app_dir,
         );
         let _ = self.status_store.save_latest(&stopped);
@@ -126,15 +125,26 @@ impl LaunchHandle {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 pub trait LaunchHooks: Send + Sync {
     fn resolve_app_dir(
         &self,
         app_dir: Option<&Path>,
         settings: &BackendSettings,
     ) -> anyhow::Result<PathBuf>;
-    fn select_helper_port(&self, requested: u16) -> u16;
+    fn select_protocol_proxy_port(&self, requested: u16) -> u16;
     async fn load_settings(&self) -> anyhow::Result<BackendSettings>;
+    fn apply_codex_home(&self, settings: &BackendSettings) -> anyhow::Result<()> {
+        if !settings.relay_profiles_enabled {
+            return Ok(());
+        }
+        let home = crate::codex_home::default_codex_home_dir();
+        crate::codex_home_apply::reconcile(
+            &home,
+            crate::codex_home_apply::CodexHomeReconcileIntent::ApplyActiveProfile { settings },
+        )?;
+        Ok(())
+    }
     async fn run_provider_sync(&self) -> anyhow::Result<()>;
     async fn ensure_computer_use_config(&self, _settings: &BackendSettings) -> anyhow::Result<()> {
         Ok(())
@@ -151,7 +161,7 @@ pub trait LaunchHooks: Send + Sync {
         let home = crate::codex_home::default_codex_home_dir();
         crate::codex_sqlite::sanitize_historical_model_suffixes(&home)
     }
-    async fn start_helper(&self, helper_port: u16) -> anyhow::Result<()>;
+    async fn start_protocol_proxy(&self, protocol_proxy_port: u16) -> anyhow::Result<()>;
     async fn launch_codex(
         &self,
         app_dir: &Path,
@@ -166,19 +176,19 @@ pub trait LaunchHooks: Send + Sync {
     }
     async fn write_status(&self, status: &str);
     async fn wait_for_codex_exit(&self, launch: &CodexLaunch) -> anyhow::Result<()>;
-    async fn shutdown_helper(&self, helper_port: u16);
+    async fn shutdown_owned_resources(&self, protocol_proxy_port: u16);
     async fn terminate_codex(&self, launch: &CodexLaunch);
 }
 
 #[derive(Default)]
 pub struct DefaultLaunchHooks {
     child: Mutex<Option<Child>>,
-    helper: Mutex<Option<HelperRuntime>>,
+    protocol_proxy: Mutex<Option<ProtocolProxyRuntime>>,
     computer_use_guard_watchdog: Mutex<Option<ComputerUseGuardWatchdogRuntime>>,
     computer_use_guard_artifacts: Mutex<Option<crate::computer_use_guard::GuardArtifacts>>,
 }
 
-struct HelperRuntime {
+struct ProtocolProxyRuntime {
     shutdown: tokio::sync::oneshot::Sender<()>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -200,21 +210,20 @@ where
     H: IntoLaunchHooks,
 {
     let hooks = hooks.into_launch_hooks();
-    let mut helper_port = hooks.select_helper_port(options.helper_port);
+    let mut protocol_proxy_port = hooks.select_protocol_proxy_port(options.protocol_proxy_port);
     let settings = hooks.load_settings().await?;
     let app_dir = hooks.resolve_app_dir(options.app_dir.as_deref(), &settings)?;
     let status_store = options.status_store.clone();
-    let mut helper_started = false;
     let mut launched = None;
-    let mut keep_launched_on_error = false;
 
     let result: anyhow::Result<LaunchHandle> = async {
+        hooks.apply_codex_home(&settings)?;
         if settings.provider_sync_enabled {
             hooks.run_provider_sync().await?;
         }
         if let Err(error) = hooks.ensure_plugin_marketplace_config(&settings).await {
             let _ = crate::diagnostic_log::append_diagnostic_log(
-                "launcher.plugin_marketplace_config_failed_nonfatal",
+                "launch_runtime.plugin_marketplace_config_failed_nonfatal",
                 serde_json::json!({
                     "message": error.to_string()
                 }),
@@ -226,7 +235,7 @@ where
         match hooks.sanitize_historical_model_suffixes() {
             Ok(result) if result.updated > 0 => {
                 let _ = crate::diagnostic_log::append_diagnostic_log(
-                    "launcher.sanitize_historical_model_suffixes",
+                    "launch_runtime.sanitize_historical_model_suffixes",
                     serde_json::json!({
                         "scanned": result.scanned,
                         "updated": result.updated
@@ -236,7 +245,7 @@ where
             Ok(_) => {}
             Err(error) => {
                 let _ = crate::diagnostic_log::append_diagnostic_log(
-                    "launcher.sanitize_historical_model_suffixes_failed",
+                    "launch_runtime.sanitize_historical_model_suffixes_failed",
                     serde_json::json!({
                         "error": error.to_string()
                     }),
@@ -245,33 +254,34 @@ where
         }
         let protocol_proxy_enabled = relay_protocol_proxy_enabled(&settings);
         if protocol_proxy_enabled {
-            helper_port = crate::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT;
+            protocol_proxy_port = crate::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT;
         }
         if protocol_proxy_enabled {
-            hooks.start_helper(helper_port).await?;
-            helper_started = true;
+            hooks.start_protocol_proxy(protocol_proxy_port).await?;
         }
 
         let launch = hooks
             .launch_codex(&app_dir, &settings, &settings.codex_extra_args)
             .await?;
         launched = Some(launch.clone());
-        keep_launched_on_error = true;
         if settings.computer_use_guard_enabled {
             hooks.start_computer_use_guard_watchdog(&settings).await?;
         }
 
-        keep_launched_on_error = false;
-        let status = launch_status("running", "ChatGPT++ launcher ready", helper_port, &app_dir);
+        let status = launch_status(
+            "running",
+            "ChatGPT++ managed launch ready",
+            protocol_proxy_port,
+            &app_dir,
+        );
         options.status_store.save_latest(&status)?;
         hooks.write_status("running").await;
 
         Ok(LaunchHandle {
-            helper_port,
+            protocol_proxy_port,
             app_dir: app_dir.clone(),
             launch,
             status_store: status_store.clone(),
-            helper_started,
             hooks: Arc::clone(&hooks),
         })
     }
@@ -280,16 +290,12 @@ where
     match result {
         Ok(handle) => Ok(handle),
         Err(error) => {
-            if helper_started {
-                hooks.shutdown_helper(helper_port).await;
-            }
+            hooks.shutdown_owned_resources(protocol_proxy_port).await;
             if let Some(launch) = &launched {
-                if !keep_launched_on_error {
-                    hooks.terminate_codex(launch).await;
-                }
+                hooks.terminate_codex(launch).await;
             }
             let message = error.to_string();
-            let failure = launch_status("failed", &message, helper_port, &app_dir);
+            let failure = launch_status("failed", &message, protocol_proxy_port, &app_dir);
             let _ = status_store.save_latest(&failure);
             hooks.write_status("failed").await;
             Err(error)
@@ -304,7 +310,7 @@ fn relay_protocol_proxy_enabled(settings: &BackendSettings) -> bool {
 #[cfg(windows)]
 fn apply_chatgptplusplus_window_icon_after_launch(process_id: u32) {
     let icon_resource_path =
-        std::env::current_exe().unwrap_or_else(|_| PathBuf::from("chatgpt-plus-plus.exe"));
+        std::env::current_exe().unwrap_or_else(|_| PathBuf::from("chatgpt-plus-plus-manager.exe"));
     tokio::spawn(async move {
         for attempt in 1..=30 {
             if crate::windows_apply_chatgptplusplus_icon_to_process_window(
@@ -316,7 +322,7 @@ fn apply_chatgptplusplus_window_icon_after_launch(process_id: u32) {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             if attempt == 30 {
                 let _ = crate::diagnostic_log::append_diagnostic_log(
-                    "launcher.window_icon.apply_failed",
+                    "launch_runtime.window_icon.apply_failed",
                     serde_json::json!({
                         "process_id": process_id,
                         "icon_resource_path": icon_resource_path.to_string_lossy()
@@ -361,7 +367,7 @@ impl DefaultLaunchHooks {
     }
 }
 
-fn helper_bind_host() -> String {
+fn protocol_proxy_bind_host() -> String {
     crate::branding::env_var_with_legacy("CHATGPT_PLUS_HELPER_BIND", "CODEX_PLUS_HELPER_BIND")
         .ok()
         .map(|value| value.trim().to_string())
@@ -369,7 +375,7 @@ fn helper_bind_host() -> String {
         .unwrap_or_else(|| "127.0.0.1".to_string())
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LaunchHooks for DefaultLaunchHooks {
     fn resolve_app_dir(
         &self,
@@ -383,7 +389,7 @@ impl LaunchHooks for DefaultLaunchHooks {
         .ok_or_else(|| anyhow::anyhow!("Codex App directory not found"))
     }
 
-    fn select_helper_port(&self, requested: u16) -> u16 {
+    fn select_protocol_proxy_port(&self, requested: u16) -> u16 {
         crate::ports::select_platform_loopback_port(requested)
     }
 
@@ -392,7 +398,9 @@ impl LaunchHooks for DefaultLaunchHooks {
     }
 
     async fn run_provider_sync(&self) -> anyhow::Result<()> {
-        anyhow::bail!("provider sync requires launcher hooks with chatgpt-plus-data integration")
+        anyhow::bail!(
+            "provider sync requires manager launch hooks with chatgpt-plus-data integration"
+        )
     }
 
     async fn ensure_computer_use_config(&self, settings: &BackendSettings) -> anyhow::Result<()> {
@@ -415,7 +423,7 @@ impl LaunchHooks for DefaultLaunchHooks {
             Ok(configured) => {
                 if configured {
                     let _ = crate::diagnostic_log::append_diagnostic_log(
-                        "launcher.openai_curated_marketplace_configured",
+                        "launch_runtime.openai_curated_marketplace_configured",
                         serde_json::json!({
                             "home": home,
                         }),
@@ -424,7 +432,7 @@ impl LaunchHooks for DefaultLaunchHooks {
             }
             Err(error) => {
                 let _ = crate::diagnostic_log::append_diagnostic_log(
-                    "launcher.openai_curated_marketplace_config_failed",
+                    "launch_runtime.openai_curated_marketplace_config_failed",
                     serde_json::json!({
                         "home": home,
                         "message": error.to_string(),
@@ -436,7 +444,7 @@ impl LaunchHooks for DefaultLaunchHooks {
             Ok(configured) => {
                 if configured {
                     let _ = crate::diagnostic_log::append_diagnostic_log(
-                        "launcher.role_specific_plugins_marketplace_configured",
+                        "launch_runtime.role_specific_plugins_marketplace_configured",
                         serde_json::json!({
                             "home": home,
                         }),
@@ -445,7 +453,7 @@ impl LaunchHooks for DefaultLaunchHooks {
             }
             Err(error) => {
                 let _ = crate::diagnostic_log::append_diagnostic_log(
-                    "launcher.role_specific_plugins_marketplace_config_failed",
+                    "launch_runtime.role_specific_plugins_marketplace_config_failed",
                     serde_json::json!({
                         "home": home,
                         "message": error.to_string(),
@@ -456,19 +464,19 @@ impl LaunchHooks for DefaultLaunchHooks {
         Ok(())
     }
 
-    async fn start_helper(&self, helper_port: u16) -> anyhow::Result<()> {
-        let bind_host = helper_bind_host();
-        let listener = tokio::net::TcpListener::bind((bind_host.as_str(), helper_port))
+    async fn start_protocol_proxy(&self, protocol_proxy_port: u16) -> anyhow::Result<()> {
+        let bind_host = protocol_proxy_bind_host();
+        let listener = tokio::net::TcpListener::bind((bind_host.as_str(), protocol_proxy_port))
             .await
             .with_context(|| {
-                format!("failed to bind helper runtime on {bind_host}:{helper_port}")
+                format!("failed to bind protocol proxy on {bind_host}:{protocol_proxy_port}")
             })?;
         let _ = crate::diagnostic_log::append_diagnostic_log(
-            "helper.listening",
+            "protocol_proxy.listening",
             serde_json::json!({
-                "helper_port": helper_port,
+                "protocol_proxy_port": protocol_proxy_port,
                 "bind_host": bind_host,
-                "address": format!("http://{bind_host}:{helper_port}")
+                "address": format!("http://{bind_host}:{protocol_proxy_port}")
             }),
         );
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
@@ -479,14 +487,14 @@ impl LaunchHooks for DefaultLaunchHooks {
                     accepted = listener.accept() => {
                         if let Ok((stream, addr)) = accepted {
                             tokio::spawn(async move {
-                                let _ = handle_helper_connection(stream, Some(addr)).await;
+                                let _ = handle_protocol_proxy_connection(stream, Some(addr)).await;
                             });
                         }
                     }
                 }
             }
         });
-        *self.helper.lock().await = Some(HelperRuntime {
+        *self.protocol_proxy.lock().await = Some(ProtocolProxyRuntime {
             shutdown: shutdown_tx,
             task,
         });
@@ -656,12 +664,12 @@ impl LaunchHooks for DefaultLaunchHooks {
         Ok(())
     }
 
-    async fn shutdown_helper(&self, _helper_port: u16) {
+    async fn shutdown_owned_resources(&self, _protocol_proxy_port: u16) {
         if let Some(runtime) = self.computer_use_guard_watchdog.lock().await.take() {
             let _ = runtime.shutdown.send(());
             let _ = runtime.task.await;
         }
-        if let Some(runtime) = self.helper.lock().await.take() {
+        if let Some(runtime) = self.protocol_proxy.lock().await.take() {
             let _ = runtime.shutdown.send(());
             let _ = runtime.task.await;
         }
@@ -702,7 +710,7 @@ impl LaunchHooks for DefaultLaunchHooks {
     }
 }
 
-async fn handle_helper_connection(
+async fn handle_protocol_proxy_connection(
     mut stream: tokio::net::TcpStream,
     remote_addr: Option<SocketAddr>,
 ) -> anyhow::Result<()> {
@@ -718,7 +726,7 @@ async fn handle_helper_connection(
     let remote_addr_text = remote_addr.map(|addr| addr.to_string());
 
     let _ = crate::diagnostic_log::append_diagnostic_log(
-        "helper.request",
+        "protocol_proxy.request",
         serde_json::json!({
             "method": method,
             "path": path,
@@ -758,8 +766,8 @@ async fn handle_helper_connection(
                 &body,
             )
             .await?;
-            log_helper_response(
-                "helper.protocol_proxy_failed",
+            log_protocol_proxy_response(
+                "protocol_proxy.protocol_proxy_failed",
                 method,
                 path,
                 "502 Bad Gateway",
@@ -776,7 +784,7 @@ async fn handle_helper_connection(
         "message": "未知协议代理路径"
     }))?;
     let content_type = "application/json; charset=utf-8".to_string();
-    let log_event = "helper.unknown_path";
+    let log_event = "protocol_proxy.unknown_path";
     let _ = crate::diagnostic_log::append_diagnostic_log(
         log_event,
         serde_json::json!({
@@ -825,11 +833,11 @@ async fn write_protocol_proxy_response(
         }
         write_http_response(stream, &status, &content_type, &body).await?;
     }
-    log_helper_response(
+    log_protocol_proxy_response(
         if response.is_success() {
-            "helper.protocol_proxy_ok"
+            "protocol_proxy.protocol_proxy_ok"
         } else {
-            "helper.protocol_proxy_upstream_error"
+            "protocol_proxy.protocol_proxy_upstream_error"
         },
         method,
         path,
@@ -867,7 +875,7 @@ async fn write_http_stream_headers(
     Ok(())
 }
 
-fn log_helper_response(
+fn log_protocol_proxy_response(
     event: &str,
     method: &str,
     path: &str,
@@ -1294,12 +1302,17 @@ async fn terminate_windows_process_id(process_id: u32) -> anyhow::Result<()> {
     anyhow::bail!("cannot terminate Windows process id {process_id} on this platform")
 }
 
-fn launch_status(status: &str, message: &str, helper_port: u16, app_dir: &Path) -> LaunchStatus {
+fn launch_status(
+    status: &str,
+    message: &str,
+    protocol_proxy_port: u16,
+    app_dir: &Path,
+) -> LaunchStatus {
     LaunchStatus {
         status: status.to_string(),
         message: message.to_string(),
         started_at_ms: now_ms(),
-        helper_port: Some(helper_port),
+        protocol_proxy_port: Some(protocol_proxy_port),
         codex_app: Some(app_dir.to_string_lossy().to_string()),
     }
 }

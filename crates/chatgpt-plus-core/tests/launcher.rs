@@ -98,6 +98,8 @@ fn macos_cleanup_respects_preexisting_official_app() {
 struct FakeHooks {
     settings: BackendSettings,
     events: Arc<Mutex<Vec<String>>>,
+    fail_launch: bool,
+    fail_watchdog: bool,
 }
 
 impl FakeHooks {
@@ -105,6 +107,8 @@ impl FakeHooks {
         Self {
             settings,
             events: Arc::new(Mutex::new(Vec::new())),
+            fail_launch: false,
+            fail_watchdog: false,
         }
     }
 
@@ -113,7 +117,7 @@ impl FakeHooks {
     }
 }
 
-#[async_trait(?Send)]
+#[async_trait]
 impl LaunchHooks for FakeHooks {
     fn resolve_app_dir(
         &self,
@@ -125,12 +129,17 @@ impl LaunchHooks for FakeHooks {
             .to_path_buf())
     }
 
-    fn select_helper_port(&self, requested: u16) -> u16 {
+    fn select_protocol_proxy_port(&self, requested: u16) -> u16 {
         requested
     }
 
     async fn load_settings(&self) -> anyhow::Result<BackendSettings> {
         Ok(self.settings.clone())
+    }
+
+    fn apply_codex_home(&self, _settings: &BackendSettings) -> anyhow::Result<()> {
+        self.event("codex-home-apply");
+        Ok(())
     }
 
     async fn run_provider_sync(&self) -> anyhow::Result<()> {
@@ -152,8 +161,8 @@ impl LaunchHooks for FakeHooks {
         Ok(Default::default())
     }
 
-    async fn start_helper(&self, helper_port: u16) -> anyhow::Result<()> {
-        self.event(format!("helper:{helper_port}"));
+    async fn start_protocol_proxy(&self, protocol_proxy_port: u16) -> anyhow::Result<()> {
+        self.event(format!("proxy:{protocol_proxy_port}"));
         Ok(())
     }
 
@@ -164,11 +173,25 @@ impl LaunchHooks for FakeHooks {
         extra_args: &[String],
     ) -> anyhow::Result<CodexLaunch> {
         self.event(format!("launch:{}", extra_args.join("|")));
+        if self.fail_launch {
+            anyhow::bail!("simulated Codex launch failure");
+        }
         Ok(CodexLaunch::Process {
             command: vec!["official-app".to_string()],
             wait_strategy: ProcessWaitStrategy::TrackedChild,
             macos_cleanup_policy: None,
         })
+    }
+
+    async fn start_computer_use_guard_watchdog(
+        &self,
+        _settings: &BackendSettings,
+    ) -> anyhow::Result<()> {
+        self.event("watchdog");
+        if self.fail_watchdog {
+            anyhow::bail!("simulated watchdog failure");
+        }
+        Ok(())
     }
 
     async fn write_status(&self, status: &str) {
@@ -180,8 +203,8 @@ impl LaunchHooks for FakeHooks {
         Ok(())
     }
 
-    async fn shutdown_helper(&self, helper_port: u16) {
-        self.event(format!("shutdown-helper:{helper_port}"));
+    async fn shutdown_owned_resources(&self, protocol_proxy_port: u16) {
+        self.event(format!("shutdown-owned:{protocol_proxy_port}"));
     }
 
     async fn terminate_codex(&self, _launch: &CodexLaunch) {
@@ -192,13 +215,13 @@ impl LaunchHooks for FakeHooks {
 fn options(temp: &tempfile::TempDir) -> LaunchOptions {
     LaunchOptions {
         app_dir: Some(PathBuf::from("/Applications/ChatGPT.app")),
-        helper_port: 57321,
+        protocol_proxy_port: 57321,
         status_store: StatusStore::new(temp.path().join("latest-status.json")),
     }
 }
 
 #[tokio::test]
-async fn official_launch_does_not_start_renderer_helper_or_injection() {
+async fn official_launch_does_not_start_renderer_injection_or_proxy() {
     let temp = tempfile::tempdir().unwrap();
     let hooks = FakeHooks::new(BackendSettings::default());
 
@@ -210,7 +233,14 @@ async fn official_launch_does_not_start_renderer_helper_or_injection() {
     let events = hooks.events.lock().unwrap().clone();
     assert_eq!(
         events,
-        ["marketplace-config", "launch:", "status:running", "wait"]
+        [
+            "codex-home-apply",
+            "marketplace-config",
+            "launch:",
+            "status:running",
+            "wait",
+            "shutdown-owned:57321"
+        ]
     );
     let status = StatusStore::new(temp.path().join("latest-status.json"))
         .load_latest()
@@ -220,7 +250,7 @@ async fn official_launch_does_not_start_renderer_helper_or_injection() {
 }
 
 #[tokio::test]
-async fn chat_protocol_proxy_starts_only_the_protocol_helper() {
+async fn chat_protocol_proxy_starts_only_the_protocol_proxy() {
     let temp = tempfile::tempdir().unwrap();
     let mut settings = BackendSettings::default();
     settings.relay_profiles[0].protocol = RelayProtocol::ChatCompletions;
@@ -232,8 +262,8 @@ async fn chat_protocol_proxy_starts_only_the_protocol_helper() {
     handle.wait_for_codex_exit().await.unwrap();
 
     let events = hooks.events.lock().unwrap().clone();
-    assert!(events.contains(&"helper:57321".to_string()));
-    assert!(events.contains(&"shutdown-helper:57321".to_string()));
+    assert!(events.contains(&"proxy:57321".to_string()));
+    assert!(events.contains(&"shutdown-owned:57321".to_string()));
     assert!(!events.iter().any(|event| event.contains("inject")));
 }
 
@@ -251,7 +281,58 @@ async fn provider_sync_and_plugin_configuration_remain_prelaunch_maintenance() {
 
     let events = hooks.events.lock().unwrap().clone();
     assert_eq!(
-        &events[..3],
-        ["provider-sync", "marketplace-config", "launch:"]
+        &events[..4],
+        [
+            "codex-home-apply",
+            "provider-sync",
+            "marketplace-config",
+            "launch:"
+        ]
     );
+}
+
+#[tokio::test]
+async fn launch_failure_releases_started_protocol_proxy_and_records_failed_status() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut settings = BackendSettings::default();
+    settings.relay_profiles[0].protocol = RelayProtocol::ChatCompletions;
+    let mut hooks = FakeHooks::new(settings);
+    hooks.fail_launch = true;
+
+    let error = launch_codex_with_hooks(options(&temp), &hooks)
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("simulated Codex launch failure"));
+    let events = hooks.events.lock().unwrap().clone();
+    assert!(events.contains(&"proxy:57321".to_string()));
+    assert!(events.contains(&"shutdown-owned:57321".to_string()));
+    assert!(events.contains(&"status:failed".to_string()));
+    let status = StatusStore::new(temp.path().join("latest-status.json"))
+        .load_latest()
+        .unwrap()
+        .unwrap();
+    assert_eq!(status.status, "failed");
+}
+
+#[tokio::test]
+async fn post_launch_failure_terminates_codex_and_records_failed_status() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut hooks = FakeHooks::new(BackendSettings {
+        computer_use_guard_enabled: true,
+        ..BackendSettings::default()
+    });
+    hooks.fail_watchdog = true;
+
+    let error = launch_codex_with_hooks(options(&temp), &hooks)
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("simulated watchdog failure"));
+    let events = hooks.events.lock().unwrap().clone();
+    assert!(events.contains(&"launch:".to_string()));
+    assert!(events.contains(&"watchdog".to_string()));
+    assert!(events.contains(&"shutdown-owned:57321".to_string()));
+    assert!(events.contains(&"terminate".to_string()));
+    assert!(events.contains(&"status:failed".to_string()));
 }

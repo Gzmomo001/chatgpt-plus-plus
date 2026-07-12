@@ -130,6 +130,7 @@ pub struct RelayProfileSwitchRequest {
 
 #[tauri::command]
 pub fn switch_relay_profile(
+    runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
     request: RelayProfileSwitchRequest,
 ) -> CommandResult<RelaySwitchPayload> {
     let Ok(_guard) = relay_switch_mutex().lock() else {
@@ -168,6 +169,7 @@ pub fn switch_relay_profile(
                     "backupPath": backup_path.as_ref()
                 }),
             );
+            runtime.restart_after_configuration_change();
             ok(
                 "供应商已切换。",
                 relay_switch_payload(activation.settings, activation.home.status, backup_path),
@@ -351,29 +353,41 @@ pub async fn diagnose_relay_profile(profile: RelayProfile) -> CommandResult<Prov
 }
 
 #[tauri::command]
-pub fn apply_relay_injection() -> CommandResult<RelayPayload> {
+pub fn apply_relay_injection(
+    runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
+) -> CommandResult<RelayPayload> {
     let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
-    reconcile_relay_injection_in_home(
+    let result = reconcile_relay_injection_in_home(
         "manager.apply_relay_injection",
         &home,
         &settings,
         "供应商配置已应用。",
         "应用供应商配置失败",
-    )
+    );
+    if result.status == "ok" {
+        runtime.restart_after_configuration_change();
+    }
+    result
 }
 
 #[tauri::command]
-pub fn apply_pure_api_injection() -> CommandResult<RelayPayload> {
+pub fn apply_pure_api_injection(
+    runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
+) -> CommandResult<RelayPayload> {
     let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
-    reconcile_relay_injection_in_home(
+    let result = reconcile_relay_injection_in_home(
         "manager.apply_pure_api_injection",
         &home,
         &settings,
         "纯 API 供应商配置已应用。",
         "应用纯 API 供应商配置失败",
-    )
+    );
+    if result.status == "ok" {
+        runtime.restart_after_configuration_change();
+    }
+    result
 }
 
 pub(super) fn reconcile_relay_injection_in_home(
@@ -420,10 +434,16 @@ pub(super) fn reconcile_relay_injection_in_home(
 }
 
 #[tauri::command]
-pub fn clear_relay_injection() -> CommandResult<RelayPayload> {
+pub fn clear_relay_injection(
+    runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
+) -> CommandResult<RelayPayload> {
     let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
-    clear_relay_injection_in_home(&home, &settings)
+    let result = clear_relay_injection_in_home(&home, &settings);
+    if result.status == "ok" {
+        runtime.restart_after_configuration_change();
+    }
+    result
 }
 
 pub(super) fn clear_relay_injection_in_home(

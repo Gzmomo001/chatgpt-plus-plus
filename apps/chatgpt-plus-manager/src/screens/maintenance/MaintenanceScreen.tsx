@@ -13,7 +13,6 @@ type MaintenanceStatusView = {
 
 export type MaintenanceLaunchForm = {
   appPath: string;
-  helperPort: string;
 };
 
 export type MaintenanceView = {
@@ -121,14 +120,6 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
               placeholder={savedCodexAppPath || t("例如 C:\\Program Files\\WindowsApps\\OpenAI.Codex...\\app")}
             />
           </Field>
-          <div className="form-row">
-            <Field label={t("Helper 端口")}>
-              <Input
-                value={launchForm.helperPort}
-                onChange={(event) => actions.updateLaunchForm({ ...launchForm, helperPort: event.currentTarget.value })}
-              />
-            </Field>
-          </div>
           <Toolbar>
             <Button onClick={() => void actions.launch()}>{t("启动 ChatGPT++")}</Button>
             <Button variant="secondary" onClick={() => void actions.saveManualCodexAppPath()}>

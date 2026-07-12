@@ -1,11 +1,10 @@
-use chatgpt_plus_core::enhanced_launch::{
-    EnhancedLaunchAction, EnhancedLaunchRequest, start_enhanced_codex,
-};
 use chatgpt_plus_core::settings::{BackendSettings, SettingsStore, normalize_settings_before_save};
 use serde::Serialize;
 use serde_json::{Value, json};
+use tauri::Manager;
 
 use super::shared::{CommandResult, OverviewPayload, SettingsPayload, failed, ok};
+use crate::launch_runtime::{LaunchAction, ManagedLaunchRuntime};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct VersionPayload {
@@ -29,8 +28,6 @@ pub struct PendingProviderImportPayload {
 pub struct LaunchRequest {
     #[serde(default)]
     pub app_path: String,
-    #[serde(default = "default_helper_port")]
-    pub helper_port: u16,
 }
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -90,53 +87,71 @@ pub async fn load_overview() -> CommandResult<OverviewPayload> {
 }
 
 #[tauri::command]
-pub fn launch_chatgpt_plus(request: LaunchRequest) -> CommandResult<Value> {
-    request_enhanced_launch(
+pub async fn launch_chatgpt_plus(
+    app: tauri::AppHandle,
+    request: LaunchRequest,
+) -> CommandResult<Value> {
+    let runtime = app.state::<ManagedLaunchRuntime>().inner().clone();
+    request_managed_launch(
+        &runtime,
         request,
-        EnhancedLaunchAction::Launch,
+        LaunchAction::Launch,
         "启动任务已在后台开始，可稍后查看概览状态。",
     )
+    .await
 }
 
 #[tauri::command]
-pub fn restart_chatgpt_plus(request: LaunchRequest) -> CommandResult<Value> {
-    request_enhanced_launch(
+pub async fn restart_chatgpt_plus(
+    app: tauri::AppHandle,
+    request: LaunchRequest,
+) -> CommandResult<Value> {
+    let runtime = app.state::<ManagedLaunchRuntime>().inner().clone();
+    request_managed_launch(
+        &runtime,
         request,
-        EnhancedLaunchAction::Restart,
+        LaunchAction::Restart,
         "Codex 已请求重启，启动任务正在后台运行。",
     )
+    .await
 }
 
-fn request_enhanced_launch(
+async fn request_managed_launch(
+    runtime: &ManagedLaunchRuntime,
     request: LaunchRequest,
-    action: EnhancedLaunchAction,
+    action: LaunchAction,
     accepted_message: &str,
 ) -> CommandResult<Value> {
-    let helper_port = request.helper_port;
+    let protocol_proxy_port = chatgpt_plus_core::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT;
     let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
         "manager.launch_requested",
         json!({
-            "helper_port": helper_port,
+            "protocol_proxy_port": protocol_proxy_port,
             "app_path": request.app_path.trim()
         }),
     );
-    let launch_request = EnhancedLaunchRequest {
+    let launch_request = crate::launch_runtime::LaunchRequest {
         app_path: (!request.app_path.trim().is_empty())
             .then(|| std::path::PathBuf::from(request.app_path.trim())),
-        helper_port,
+        protocol_proxy_port,
     };
-    match start_enhanced_codex(action, launch_request) {
-        Ok(()) => CommandResult {
+    match runtime.start(action, launch_request).await {
+        Ok(outcome) => CommandResult {
             status: "accepted".to_string(),
-            message: accepted_message.to_string(),
+            message: if outcome.already_running {
+                "Codex 已由 ChatGPT++ 主应用管理。".to_string()
+            } else {
+                accepted_message.to_string()
+            },
             payload: json!({
-                "helperPort": helper_port
+                "protocolProxyPort": outcome.protocol_proxy_port,
+                "alreadyRunning": outcome.already_running
             }),
         },
         Err(error) => failed(
             &format!("启动增强 Codex 失败：{error}"),
             json!({
-                "helperPort": helper_port
+                "protocolProxyPort": protocol_proxy_port
             }),
         ),
     }
@@ -329,8 +344,4 @@ fn settings_payload_value() -> Result<SettingsPayload, (anyhow::Error, SettingsP
             },
         )),
     }
-}
-
-fn default_helper_port() -> u16 {
-    57321
 }

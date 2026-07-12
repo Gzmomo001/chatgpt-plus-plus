@@ -46,7 +46,7 @@ test("adapters own wire command names and nested payload shapes", async () => {
   const settings = {} as never;
   const profile = { id: "relay-a" } as never;
 
-  await actions.overview.launch({ appPath: "/Applications/Codex.app", helperPort: 57321 });
+  await actions.overview.launch({ appPath: "/Applications/Codex.app" });
   await actions.context.upsert({ settings, kind: "skill", id: "skill-a", tomlBody: "enabled = true" });
   await actions.relay.switchProfile({ settings, targetRelayId: "relay-a" });
   await actions.relay.saveFile("config", "model = \"gpt-5\"\n");
@@ -62,7 +62,7 @@ test("adapters own wire command names and nested payload shapes", async () => {
   assert.deepEqual(invocations, [
     {
       command: "launch_chatgpt_plus",
-      args: { request: { appPath: "/Applications/Codex.app", helperPort: 57321 } },
+      args: { request: { appPath: "/Applications/Codex.app" } },
     },
     {
       command: "upsert_context_entry",
@@ -136,7 +136,7 @@ test("adapters honor each command's Rust wire casing before callers observe it",
           status: "running",
           message: "ok",
           started_at_ms: 10,
-          helper_port: 57321,
+          protocol_proxy_port: 57321,
           codex_app: "/Applications/Codex.app",
         },
         current_version: "1.2.3",
@@ -202,7 +202,7 @@ test("adapters honor each command's Rust wire casing before callers observe it",
     status: "running",
     message: "ok",
     startedAtMs: 10,
-    helperPort: 57321,
+    protocolProxyPort: 57321,
     codexApp: "/Applications/Codex.app",
   });
   assert.equal(overview.settingsPath, "/tmp/settings.json");

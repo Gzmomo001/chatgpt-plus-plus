@@ -7,7 +7,6 @@ pub mod windows;
 
 pub const SILENT_NAME: &str = "ChatGPT++";
 pub const LEGACY_MANAGER_NAME: &str = "ChatGPT++ 管理工具";
-pub const SILENT_BINARY: &str = "chatgpt-plus-plus";
 pub const MANAGER_BINARY: &str = "chatgpt-plus-plus-manager";
 pub const MACOS_MAIN_EXECUTABLE: &str = "ChatGPTPlusPlus";
 
@@ -16,8 +15,6 @@ pub const MACOS_MAIN_EXECUTABLE: &str = "ChatGPTPlusPlus";
 pub struct InstallOptions {
     #[serde(default)]
     pub install_root: Option<PathBuf>,
-    #[serde(default)]
-    pub launcher_path: Option<PathBuf>,
     #[serde(default)]
     pub manager_path: Option<PathBuf>,
     #[serde(default)]
@@ -50,8 +47,6 @@ pub struct MacosAppBundle {
     pub info_plist: String,
     pub main_binary_source: Option<PathBuf>,
     pub main_binary_target_name: Option<String>,
-    pub helper_binary_source: Option<PathBuf>,
-    pub helper_binary_target_name: Option<String>,
 }
 
 impl ShortcutState {
@@ -243,78 +238,8 @@ pub fn option_or_current_exe(value: &Option<PathBuf>, binary: &str) -> PathBuf {
     if let Some(value) = value {
         return value.clone();
     }
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    companion_binary_path_from_exe(&exe, binary)
-}
-
-pub fn companion_binary_path(binary: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    companion_binary_path_from_exe(&exe, binary)
-}
-
-pub fn companion_binary_path_from_exe(exe: &Path, binary: &str) -> PathBuf {
-    let dir = exe.parent().unwrap_or_else(|| Path::new("."));
-    let suffix = if cfg!(windows) { ".exe" } else { "" };
-    if let Some(bundle_binary) = macos_companion_binary_from_exe(exe, binary) {
-        return bundle_binary;
-    }
-    let same_bundle = dir.join(binary);
-    if same_bundle.exists() {
-        return same_bundle;
-    }
-    dir.join(format!("{binary}{suffix}"))
-}
-
-fn macos_companion_binary_from_exe(exe: &Path, binary: &str) -> Option<PathBuf> {
-    let (applications_dir, app_name) = macos_applications_dir_and_app_name_from_exe(exe)?;
-    let app_root = applications_dir.join(&app_name);
-    let contents = app_root.join("Contents");
-    let executable_dir = exe.parent().unwrap_or_else(|| Path::new("."));
-    let is_embedded_helper =
-        executable_dir.file_name().and_then(|name| name.to_str()) == Some("Helpers");
-
-    if binary == SILENT_BINARY {
-        if app_name == format!("{SILENT_NAME}.app") {
-            return Some(contents.join("Helpers").join(SILENT_BINARY));
-        }
-        let macos = applications_dir
-            .join(format!("{SILENT_NAME}.app"))
-            .join("Contents")
-            .join("MacOS");
-        return Some(
-            macos
-                .join(SILENT_BINARY)
-                .exists()
-                .then(|| macos.join(SILENT_BINARY))
-                .unwrap_or_else(|| macos.join("ChatGPTPlusPlus")),
-        );
-    }
-    if binary == MANAGER_BINARY {
-        if app_name == format!("{SILENT_NAME}.app")
-            && (is_embedded_helper || contents.join("Helpers").join(SILENT_BINARY).exists())
-        {
-            return Some(contents.join("MacOS").join(MACOS_MAIN_EXECUTABLE));
-        }
-        if app_name == format!("{LEGACY_MANAGER_NAME}.app") {
-            return Some(macos_preferred_bundle_binary(
-                exe,
-                MANAGER_BINARY,
-                "ChatGPTPlusPlusManager",
-            ));
-        }
-        let macos = applications_dir
-            .join(format!("{LEGACY_MANAGER_NAME}.app"))
-            .join("Contents")
-            .join("MacOS");
-        return Some(
-            macos
-                .join(MANAGER_BINARY)
-                .exists()
-                .then(|| macos.join(MANAGER_BINARY))
-                .unwrap_or_else(|| macos.join("ChatGPTPlusPlusManager")),
-        );
-    }
-    None
+    let _ = binary;
+    std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 pub fn legacy_entrypoint_paths(root: &Path, windows: bool) -> Vec<PathBuf> {
@@ -357,7 +282,41 @@ pub fn cleanup_legacy_user_entrypoints() -> anyhow::Result<Vec<PathBuf>> {
         }
     }
 
+    if let Ok(exe) = std::env::current_exe() {
+        for path in retired_launcher_paths_from_exe(&exe) {
+            if !path.exists() {
+                continue;
+            }
+            std::fs::remove_file(&path)?;
+            if let Some(parent) = path.parent()
+                && parent.file_name().and_then(|name| name.to_str()) == Some("Helpers")
+            {
+                let _ = std::fs::remove_dir(parent);
+            }
+            removed.push(path);
+        }
+    }
+
     Ok(removed)
+}
+
+pub fn retired_launcher_paths_from_exe(exe: &Path) -> Vec<PathBuf> {
+    let mut path = exe;
+    while let Some(parent) = path.parent() {
+        if path.extension().and_then(|extension| extension.to_str()) == Some("app") {
+            return vec![path.join("Contents/Helpers/chatgpt-plus-plus")];
+        }
+        path = parent;
+    }
+    let Some(parent) = exe.parent() else {
+        return Vec::new();
+    };
+    let filename = if exe.extension().and_then(|extension| extension.to_str()) == Some("exe") {
+        "chatgpt-plus-plus.exe"
+    } else {
+        "chatgpt-plus-plus"
+    };
+    vec![parent.join(filename)]
 }
 
 fn cleanup_legacy_entrypoints_at(root: &Path, windows: bool) -> anyhow::Result<Vec<PathBuf>> {
@@ -374,23 +333,6 @@ fn cleanup_legacy_entrypoints_at(root: &Path, windows: bool) -> anyhow::Result<V
         removed.push(path);
     }
     Ok(removed)
-}
-
-fn macos_preferred_bundle_binary(
-    exe: &Path,
-    sidecar_name: &str,
-    bundle_executable_name: &str,
-) -> PathBuf {
-    let macos = exe.parent().unwrap_or_else(|| Path::new("."));
-    let sidecar = macos.join(sidecar_name);
-    if sidecar.exists() {
-        return sidecar;
-    }
-    let bundle_executable = macos.join(bundle_executable_name);
-    if bundle_executable.exists() {
-        return bundle_executable;
-    }
-    exe.to_path_buf()
 }
 
 #[cfg(target_os = "macos")]

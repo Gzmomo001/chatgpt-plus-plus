@@ -23,7 +23,6 @@ export const EN_PLAIN: Record<string, string> = {
   "这些能力不读取或修改 Codex Renderer。": "These capabilities neither read nor modify the Codex Renderer.",
   "GitHub Release 更新": "GitHub Release update",
   "GitHub Release 检查": "GitHub Release check",
-  "Helper 端口": "Helper port",
   "MCP、Skills、Plugins 作为全局配置独立管理，切换任意供应商都会合并。":
     "MCP, Skills and Plugins are managed independently as global config and merged in whenever you switch providers.",
   "Markdown 导出": "Markdown export",

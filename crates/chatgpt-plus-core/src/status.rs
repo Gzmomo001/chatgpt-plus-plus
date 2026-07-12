@@ -8,7 +8,7 @@ pub struct LaunchStatus {
     pub status: String,
     pub message: String,
     pub started_at_ms: u64,
-    pub helper_port: Option<u16>,
+    pub protocol_proxy_port: Option<u16>,
     pub codex_app: Option<String>,
 }
 
@@ -73,7 +73,7 @@ mod tests {
             status: "running".to_string(),
             message: "ready".to_string(),
             started_at_ms: 12345,
-            helper_port: Some(4545),
+            protocol_proxy_port: Some(4545),
             codex_app: Some("Codex".to_string()),
         };
 
@@ -98,5 +98,37 @@ mod tests {
         let store = StatusStore::new(path);
 
         assert_eq!(store.load_latest().unwrap(), None);
+    }
+
+    #[test]
+    fn launch_status_ignores_legacy_helper_port() {
+        let status: LaunchStatus = serde_json::from_str(
+            r#"{
+                "status": "running",
+                "message": "ready",
+                "started_at_ms": 12345,
+                "helper_port": 4545,
+                "codex_app": "Codex"
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(status.protocol_proxy_port, None);
+    }
+
+    #[test]
+    fn launch_status_serializes_only_protocol_proxy_port() {
+        let status = LaunchStatus {
+            status: "running".to_string(),
+            message: "ready".to_string(),
+            started_at_ms: 12345,
+            protocol_proxy_port: Some(4545),
+            codex_app: Some("Codex".to_string()),
+        };
+
+        let serialized = serde_json::to_value(status).unwrap();
+
+        assert_eq!(serialized["protocol_proxy_port"], 4545);
+        assert!(serialized.get("helper_port").is_none());
     }
 }

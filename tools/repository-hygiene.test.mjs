@@ -83,7 +83,7 @@ test("pnpm is the manager's only dependency-install contract", () => {
   assert.equal(hasCompetingPackageManagerCommand(workflows), false);
 });
 
-test("deep-module ownership and retained compatibility are documented", () => {
+test("deep-module ownership and removed compatibility surfaces are documented", () => {
   const architecturePath = new URL("docs/architecture/deep-modules.md", repositoryRoot);
 
   assert.equal(existsSync(architecturePath), true);
@@ -97,10 +97,11 @@ test("deep-module ownership and retained compatibility are documented", () => {
     "Settings facade",
     "Tauri command domains",
     "Protocol transaction seam",
+    "manager-owned launch runtime",
     "Manager Zed Remote",
-    "core SSH bridge",
-    "upstream_worktree",
-    "legacy settings",
+    "upstream-worktree",
+    "removed end to end",
+    "unknown fields",
     "Deletion test",
   ]) {
     assert.match(

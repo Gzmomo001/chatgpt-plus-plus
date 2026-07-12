@@ -57,17 +57,17 @@ pub fn disable_watcher() -> std::io::Result<()> {
     disable_watcher_at(&crate::paths::default_app_state_dir())
 }
 
-pub fn build_spawn_launcher_command(launcher_path: &str) -> Vec<String> {
-    vec![launcher_path.to_string()]
+pub fn build_spawn_app_command(app_path: &str) -> Vec<String> {
+    vec![app_path.to_string()]
 }
 
-pub fn build_watcher_install_plan(launcher_path: PathBuf) -> WatcherInstallPlan {
-    let launcher = launcher_path.to_string_lossy().to_string();
+pub fn build_watcher_install_plan(app_path: PathBuf) -> WatcherInstallPlan {
+    let app = app_path.to_string_lossy().to_string();
     WatcherInstallPlan {
         run_value_name: WATCHER_RUN_NAME.to_string(),
-        run_value: format!("\"{launcher}\""),
+        run_value: format!("\"{app}\""),
         shortcut_name: WATCHER_STARTUP_SHORTCUT_NAME.to_string(),
-        shortcut_target: launcher,
+        shortcut_target: app,
         shortcut_arguments: String::new(),
     }
 }
@@ -99,7 +99,7 @@ fn is_windowsapps_codex_app_process(executable: &str) -> bool {
             .is_some_and(crate::app_paths::is_supported_app_executable_name)
 }
 
-pub fn filter_killable_launcher_processes<'a>(
+pub fn filter_killable_legacy_launcher_processes<'a>(
     processes: impl IntoIterator<Item = (u32, u32, &'a str)>,
     current_process_id: u32,
 ) -> Vec<u32> {
@@ -136,20 +136,20 @@ pub fn process_ids_still_running(
 }
 
 #[cfg(windows)]
-pub fn install_watcher(launcher_path: &Path) -> anyhow::Result<()> {
-    let plan = build_watcher_install_plan(launcher_path.to_path_buf());
+pub fn install_watcher(app_path: &Path) -> anyhow::Result<()> {
+    let plan = build_watcher_install_plan(app_path.to_path_buf());
     crate::windows_integration::set_current_user_string_value(
         WATCHER_RUN_KEY,
         &plan.run_value_name,
         &plan.run_value,
     )?;
-    create_startup_shortcut(launcher_path, &plan.shortcut_arguments)?;
-    spawn_launcher(launcher_path);
+    create_startup_shortcut(app_path, &plan.shortcut_arguments)?;
+    spawn_app(app_path);
     Ok(())
 }
 
 #[cfg(not(windows))]
-pub fn install_watcher(_launcher_path: &Path) -> anyhow::Result<()> {
+pub fn install_watcher(_app_path: &Path) -> anyhow::Result<()> {
     anyhow::bail!("watcher install is only supported on Windows")
 }
 
@@ -160,7 +160,7 @@ pub fn uninstall_watcher() -> anyhow::Result<()> {
     if let Some(shortcut) = startup_shortcut_path() {
         let _ = std::fs::remove_file(shortcut);
     }
-    stop_launcher_processes();
+    stop_legacy_launcher_processes();
     Ok(())
 }
 
@@ -219,9 +219,9 @@ pub fn find_codex_processes() -> Vec<u32> {
 }
 
 #[cfg(windows)]
-pub fn stop_launcher_processes() {
+pub fn stop_legacy_launcher_processes() {
     let processes = crate::windows_integration::enumerate_processes();
-    let killable = filter_killable_launcher_processes(
+    let killable = filter_killable_legacy_launcher_processes(
         processes.iter().map(|process| {
             (
                 process.process_id,
@@ -237,30 +237,7 @@ pub fn stop_launcher_processes() {
 }
 
 #[cfg(not(windows))]
-pub fn stop_launcher_processes() {}
-
-#[cfg(windows)]
-pub fn stop_launcher_processes_and_wait() {
-    let processes = crate::windows_integration::enumerate_processes();
-    let killable = filter_killable_launcher_processes(
-        processes.iter().map(|process| {
-            (
-                process.process_id,
-                process.parent_process_id,
-                process.exe_file.as_str(),
-            )
-        }),
-        std::process::id(),
-    );
-    terminate_and_wait_for_exit(
-        killable,
-        RESTART_STOP_WAIT_TIMEOUT_MS,
-        RESTART_STOP_WAIT_INTERVAL_MS,
-    );
-}
-
-#[cfg(not(windows))]
-pub fn stop_launcher_processes_and_wait() {}
+pub fn stop_legacy_launcher_processes() {}
 
 #[cfg(windows)]
 pub fn stop_codex_processes() {
@@ -315,15 +292,15 @@ fn terminate_and_wait_for_exit(process_ids: Vec<u32>, timeout_ms: u64, interval_
 }
 
 #[cfg(windows)]
-fn create_startup_shortcut(launcher_path: &Path, arguments: &str) -> anyhow::Result<()> {
+fn create_startup_shortcut(app_path: &Path, arguments: &str) -> anyhow::Result<()> {
     let Some(shortcut_path) = startup_shortcut_path() else {
         anyhow::bail!("无法定位 Windows 启动目录")
     };
     crate::windows_integration::create_shortcut(&crate::windows_integration::ShortcutSpec {
         path: shortcut_path,
-        target: launcher_path.to_path_buf(),
+        target: app_path.to_path_buf(),
         arguments: arguments.to_string(),
-        working_directory: launcher_path.parent().map(Path::to_path_buf),
+        working_directory: app_path.parent().map(Path::to_path_buf),
         description: "ChatGPT++ watcher".to_string(),
         icon: None,
         show_minimized: true,
@@ -331,8 +308,8 @@ fn create_startup_shortcut(launcher_path: &Path, arguments: &str) -> anyhow::Res
 }
 
 #[cfg(windows)]
-fn spawn_launcher(launcher_path: &Path) {
-    let command = build_spawn_launcher_command(&launcher_path.to_string_lossy());
+fn spawn_app(app_path: &Path) {
+    let command = build_spawn_app_command(&app_path.to_string_lossy());
     if let Some((exe, args)) = command.split_first() {
         let mut command = Command::new(exe);
         command

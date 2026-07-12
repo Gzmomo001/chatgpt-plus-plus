@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod install;
+pub mod launch_runtime;
 mod overview;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +34,7 @@ pub fn run() {
     };
     let show_update = commands::settings::startup_should_show_update();
     let run_result = tauri::Builder::default()
+        .manage(launch_runtime::ManagedLaunchRuntime::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let url = if show_update {
@@ -144,7 +146,7 @@ fn install_tray<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
                 show_main_window(app);
             }
             TRAY_MENU_QUIT => {
-                prepare_app_exit();
+                prepare_app_exit(app);
                 app.exit(0);
             }
             _ => {}
@@ -197,18 +199,14 @@ fn register_main_window_events<R: tauri::Runtime>(window: tauri::WebviewWindow<R
 
 #[tauri::command]
 fn manager_exit_app<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
-    prepare_app_exit();
+    prepare_app_exit(&app);
     app.exit(0);
 }
 
-fn prepare_app_exit() {
+fn prepare_app_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     APP_EXITING.store(true, Ordering::SeqCst);
-    if let Err(error) = chatgpt_plus_core::enhanced_launch::request_enhanced_shutdown() {
-        let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
-            "app.enhanced_shutdown_request_failed",
-            serde_json::json!({ "error": error.to_string() }),
-        );
-    }
+    let runtime = app.state::<launch_runtime::ManagedLaunchRuntime>();
+    tauri::async_runtime::block_on(runtime.shutdown_owned_resources());
 }
 
 #[tauri::command]
