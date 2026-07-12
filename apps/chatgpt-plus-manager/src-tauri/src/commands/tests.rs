@@ -8,7 +8,7 @@ use serde_json::json;
 
 use super::context::{self, delete_context_entry, list_context_entries, upsert_context_entry};
 use super::diagnostics::{self, check_env_conflicts, read_latest_logs};
-use super::install::{ads_payload, load_watcher_state, open_external_url, perform_update};
+use super::install::{self, ads_payload, load_watcher_state, open_external_url, perform_update};
 use super::relay::*;
 use super::sessions::{self, delete_local_session, list_local_sessions};
 use super::settings::{
@@ -419,6 +419,142 @@ fn delete_local_session_removes_duplicate_threads_from_all_candidate_dbs() {
     assert_eq!(result.status, "ok");
     assert_eq!(thread_count(&current_db, "t1"), 0);
     assert_eq!(thread_count(&legacy_db, "t1"), 0);
+}
+
+#[test]
+fn session_export_command_prepares_and_saves_markdown_with_explicit_states() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("codex-home");
+    std::fs::create_dir_all(&home).unwrap();
+    let db_path = home.join("state_5.sqlite");
+    let rollout_path = home.join("rollout.jsonl");
+    std::fs::write(
+        &rollout_path,
+        "{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Hello\"}]}}\n",
+    )
+    .unwrap();
+    create_thread_db_with_rollout(&db_path, &rollout_path);
+
+    let prepared = sessions::export_local_session_markdown_from_home(
+        &home,
+        sessions::ExportLocalSessionRequest {
+            session_id: "t1".to_string(),
+            title: "Thread".to_string(),
+            db_path: Some(db_path.to_string_lossy().to_string()),
+            destination_path: None,
+        },
+    );
+    assert_eq!(prepared.status, "ok");
+    assert!(
+        prepared
+            .payload
+            .markdown
+            .as_deref()
+            .unwrap()
+            .contains("Hello")
+    );
+
+    let destination = temp.path().join("exports").join("thread.md");
+    let saved = sessions::export_local_session_markdown_from_home(
+        &home,
+        sessions::ExportLocalSessionRequest {
+            session_id: "t1".to_string(),
+            title: "Thread".to_string(),
+            db_path: Some(db_path.to_string_lossy().to_string()),
+            destination_path: Some(destination.to_string_lossy().to_string()),
+        },
+    );
+    assert_eq!(saved.status, "ok");
+    assert!(saved.message.contains("Markdown 已保存到"));
+    assert!(
+        std::fs::read_to_string(destination)
+            .unwrap()
+            .contains("Hello")
+    );
+}
+
+#[test]
+fn session_usage_command_returns_rollout_token_history() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("codex-home");
+    std::fs::create_dir_all(&home).unwrap();
+    let db_path = home.join("state_5.sqlite");
+    let rollout_path = home.join("rollout.jsonl");
+    std::fs::write(
+        &rollout_path,
+        concat!(
+            "{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"turn-1\"}}\n",
+            "{\"timestamp\":\"2026-07-12T00:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":1500},\"last_token_usage\":{\"input_tokens\":1000,\"output_tokens\":200,\"total_tokens\":1200},\"model_context_window\":200000}}}\n"
+        ),
+    )
+    .unwrap();
+    create_thread_db_with_rollout(&db_path, &rollout_path);
+
+    let result = sessions::load_local_session_usage_from_home(
+        &home,
+        sessions::LocalSessionUsageRequest {
+            session_id: "t1".to_string(),
+            title: "Thread".to_string(),
+            db_path: Some(db_path.to_string_lossy().to_string()),
+        },
+    );
+
+    assert_eq!(result.status, "ok");
+    assert_eq!(result.payload["history"][0]["turnId"], "turn-1");
+    assert_eq!(result.payload["history"][0]["usage"]["totalTokens"], 1200);
+}
+
+#[test]
+fn plugin_marketplace_commands_register_inventory_and_mutate_plugins() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join("home");
+    let source = temp.path().join("personal-market");
+    std::fs::create_dir_all(source.join(".agents").join("plugins")).unwrap();
+    std::fs::create_dir_all(source.join("plugins").join("demo")).unwrap();
+    std::fs::write(
+        source
+            .join(".agents")
+            .join("plugins")
+            .join("marketplace.json"),
+        r#"{"name":"personal","plugins":[{"name":"demo","description":"Demo plugin"}]}"#,
+    )
+    .unwrap();
+
+    let registered = install::register_plugin_marketplace_in_home(
+        &home,
+        install::RegisterPluginMarketplaceRequest {
+            name: "personal".to_string(),
+            source: source.to_string_lossy().to_string(),
+        },
+    );
+    assert_eq!(registered.status, "ok");
+    assert_eq!(registered.payload.plugins[0].id, "demo@personal");
+    assert!(!registered.payload.plugins[0].installed);
+
+    let installed = install::mutate_plugin_in_home(
+        &home,
+        install::PluginMutationRequest {
+            plugin_id: "demo@personal".to_string(),
+            action: "install".to_string(),
+        },
+    );
+    assert_eq!(installed.status, "ok");
+    assert!(installed.payload.plugins[0].installed);
+    assert!(installed.payload.plugins[0].enabled);
+}
+
+fn create_thread_db_with_rollout(path: &Path, rollout_path: &Path) {
+    let db = rusqlite::Connection::open(path).unwrap();
+    db.execute(
+        "CREATE TABLE threads (id TEXT PRIMARY KEY, rollout_path TEXT, title TEXT)",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO threads VALUES ('t1', ?1, 'Thread')",
+        [rollout_path.to_string_lossy().to_string()],
+    )
+    .unwrap();
 }
 
 fn create_minimal_thread_db(path: &Path, id: &str, title: &str, updated_at_ms: i64) {

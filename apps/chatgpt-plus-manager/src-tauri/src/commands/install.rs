@@ -40,6 +40,20 @@ pub struct RemotePluginMarketplacePayload {
     pub plugin_count: usize,
     pub skill_count: usize,
 }
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginMutationRequest {
+    pub plugin_id: String,
+    pub action: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterPluginMarketplaceRequest {
+    pub name: String,
+    pub source: String,
+}
 #[derive(Debug, Clone, Serialize)]
 pub struct WatcherPayload {
     pub enabled: bool,
@@ -220,6 +234,158 @@ pub fn plugin_marketplace_status() -> CommandResult<PluginMarketplaceStatusPaylo
             needs_repair: status.needs_repair(),
         },
     )
+}
+
+#[tauri::command]
+pub fn plugin_marketplace_inventory()
+-> CommandResult<chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory> {
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
+    plugin_marketplace_inventory_from_home(&home)
+}
+
+pub(super) fn plugin_marketplace_inventory_from_home(
+    home: &Path,
+) -> CommandResult<chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory> {
+    match chatgpt_plus_core::plugin_marketplace::plugin_marketplace_inventory(home) {
+        Ok(inventory) => ok(
+            &format!("已读取 {} 个插件。", inventory.plugins.len()),
+            inventory,
+        ),
+        Err(error) => failed(
+            &format!("读取插件库存失败：{error}"),
+            chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory {
+                marketplaces: Vec::new(),
+                plugins: Vec::new(),
+            },
+        ),
+    }
+}
+
+#[tauri::command]
+pub fn mutate_plugin(
+    request: PluginMutationRequest,
+) -> CommandResult<chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory> {
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
+    mutate_plugin_in_home(&home, request)
+}
+
+pub(super) fn mutate_plugin_in_home(
+    home: &Path,
+    request: PluginMutationRequest,
+) -> CommandResult<chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory> {
+    use chatgpt_plus_core::plugin_marketplace::PluginMutation;
+    let mutation = match request.action.as_str() {
+        "install" => PluginMutation::Install,
+        "uninstall" => PluginMutation::Uninstall,
+        "enable" => PluginMutation::Enable,
+        "disable" => PluginMutation::Disable,
+        _ => {
+            return failed(
+                "不支持的插件操作。",
+                chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory {
+                    marketplaces: Vec::new(),
+                    plugins: Vec::new(),
+                },
+            );
+        }
+    };
+    if let Err(error) =
+        chatgpt_plus_core::plugin_marketplace::mutate_plugin(home, &request.plugin_id, mutation)
+    {
+        return failed(
+            &format!("插件操作失败：{error}"),
+            chatgpt_plus_core::plugin_marketplace::plugin_marketplace_inventory(home).unwrap_or(
+                chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory {
+                    marketplaces: Vec::new(),
+                    plugins: Vec::new(),
+                },
+            ),
+        );
+    }
+    match chatgpt_plus_core::plugin_marketplace::plugin_marketplace_inventory(home) {
+        Ok(inventory) => ok("插件配置已更新。", inventory),
+        Err(error) => failed(
+            &format!("插件已更新，但刷新库存失败：{error}"),
+            chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory {
+                marketplaces: Vec::new(),
+                plugins: Vec::new(),
+            },
+        ),
+    }
+}
+
+#[tauri::command]
+pub fn register_plugin_marketplace(
+    request: RegisterPluginMarketplaceRequest,
+) -> CommandResult<chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory> {
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
+    register_plugin_marketplace_in_home(&home, request)
+}
+
+pub(super) fn register_plugin_marketplace_in_home(
+    home: &Path,
+    request: RegisterPluginMarketplaceRequest,
+) -> CommandResult<chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory> {
+    if let Err(error) = chatgpt_plus_core::plugin_marketplace::register_local_plugin_marketplace(
+        home,
+        &request.name,
+        Path::new(&request.source),
+    ) {
+        return failed(
+            &format!("注册插件市场失败：{error}"),
+            chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory {
+                marketplaces: Vec::new(),
+                plugins: Vec::new(),
+            },
+        );
+    }
+    plugin_marketplace_inventory_from_home(home)
+}
+
+#[tauri::command]
+pub async fn refresh_plugin_marketplace() -> CommandResult<PluginMarketplaceRepairPayload> {
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
+    match chatgpt_plus_core::plugin_marketplace::refresh_openai_curated_marketplace_and_configure(
+        &home,
+    )
+    .await
+    {
+        Ok(result) => ok(
+            "官方插件市场已刷新并注册。",
+            PluginMarketplaceRepairPayload {
+                codex_home: home.to_string_lossy().to_string(),
+                marketplace_root:
+                    chatgpt_plus_core::plugin_marketplace::openai_curated_marketplace_status(&home)
+                        .marketplace_root
+                        .map(|path| path.to_string_lossy().to_string()),
+                initialized: result.initialized,
+                configured: result.configured,
+                needs_repair: false,
+            },
+        ),
+        Err(error) => failed(
+            &format!("刷新官方插件市场失败：{error}"),
+            PluginMarketplaceRepairPayload {
+                codex_home: home.to_string_lossy().to_string(),
+                marketplace_root: None,
+                initialized: false,
+                configured: false,
+                needs_repair: true,
+            },
+        ),
+    }
+}
+
+#[tauri::command]
+pub fn refresh_remote_plugin_marketplace() -> CommandResult<RemotePluginMarketplacePayload> {
+    let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
+    match chatgpt_plus_core::plugin_marketplace::refresh_openai_curated_remote_marketplace_and_configure(&home) {
+        Ok(_) => remote_plugin_marketplace_status(),
+        Err(error) => failed(
+            &format!("刷新官方远端插件市场失败：{error}"),
+            RemotePluginMarketplacePayload { codex_home: home.to_string_lossy().to_string(), marketplace_root: None, config_registered: false, needs_repair: true, plugin_count: 0, skill_count: 0 },
+        ),
+    }
 }
 
 #[tauri::command]

@@ -2,6 +2,7 @@ use std::io::{Cursor, Read};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::Context;
+use serde::Serialize;
 use toml_edit::{DocumentMut, Item, Table};
 
 const OPENAI_CURATED_MARKETPLACE: &str = "openai-curated";
@@ -165,6 +166,229 @@ pub async fn initialize_openai_curated_marketplace_and_configure(
 pub struct MarketplaceEnsureResult {
     pub initialized: bool,
     pub configured: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginMarketplaceInventory {
+    pub marketplaces: Vec<PluginMarketplaceSource>,
+    pub plugins: Vec<PluginInventoryItem>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginMarketplaceSource {
+    pub name: String,
+    pub source: String,
+    pub available: bool,
+    pub plugin_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginInventoryItem {
+    pub id: String,
+    pub name: String,
+    pub display_name: String,
+    pub description: String,
+    pub marketplace: String,
+    pub installed: bool,
+    pub enabled: bool,
+    pub skill_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginMutation {
+    Install,
+    Uninstall,
+    Enable,
+    Disable,
+}
+
+pub fn plugin_marketplace_inventory(home: &Path) -> anyhow::Result<PluginMarketplaceInventory> {
+    let config_path = home.join("config.toml");
+    let config = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let doc = parse_toml_document(&config)?;
+    let installed = doc.get("plugins").and_then(Item::as_table);
+    let mut sources = Vec::new();
+    let mut plugins = Vec::new();
+    let Some(marketplaces) = doc.get("marketplaces").and_then(Item::as_table) else {
+        return Ok(PluginMarketplaceInventory {
+            marketplaces: sources,
+            plugins,
+        });
+    };
+    for (configured_name, item) in marketplaces.iter() {
+        let Some(table) = item.as_table() else {
+            continue;
+        };
+        if table.get("source_type").and_then(Item::as_str) != Some("local") {
+            continue;
+        }
+        let source = table
+            .get("source")
+            .and_then(Item::as_str)
+            .map(normalize_windows_extended_path)
+            .unwrap_or_default();
+        let root = PathBuf::from(&source);
+        let manifest_path = root
+            .join(".agents")
+            .join("plugins")
+            .join("marketplace.json");
+        let manifest = std::fs::read_to_string(&manifest_path)
+            .ok()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+        let entries = manifest
+            .as_ref()
+            .and_then(|value| value.get("plugins"))
+            .and_then(serde_json::Value::as_array);
+        sources.push(PluginMarketplaceSource {
+            name: configured_name.to_string(),
+            source: source.clone(),
+            available: entries.is_some(),
+            plugin_count: entries.map(|items| items.len()).unwrap_or_default(),
+        });
+        for entry in entries.into_iter().flatten() {
+            let Some(name) = entry
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+            else {
+                continue;
+            };
+            let id = format!("{name}@{configured_name}");
+            let plugin_config = installed
+                .and_then(|table| table.get(&id))
+                .and_then(Item::as_table);
+            let is_installed = plugin_config.is_some();
+            let enabled = plugin_config
+                .and_then(|table| table.get("enabled"))
+                .and_then(Item::as_bool)
+                .unwrap_or(false);
+            let interface = entry.get("interface");
+            let display_name = interface
+                .and_then(|value| value.get("displayName"))
+                .or_else(|| entry.get("displayName"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or(name)
+                .to_string();
+            let description = interface
+                .and_then(|value| value.get("description"))
+                .or_else(|| entry.get("description"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            plugins.push(PluginInventoryItem {
+                id,
+                name: name.to_string(),
+                display_name,
+                description,
+                marketplace: configured_name.to_string(),
+                installed: is_installed,
+                enabled,
+                skill_count: count_skill_files(&root.join("plugins").join(name))?,
+            });
+        }
+    }
+    sources.sort_by(|left, right| left.name.cmp(&right.name));
+    plugins.sort_by(|left, right| left.id.cmp(&right.id));
+    Ok(PluginMarketplaceInventory {
+        marketplaces: sources,
+        plugins,
+    })
+}
+
+pub fn mutate_plugin(home: &Path, plugin_id: &str, mutation: PluginMutation) -> anyhow::Result<()> {
+    let plugin_id = plugin_id.trim();
+    if plugin_id.is_empty() {
+        anyhow::bail!("plugin id cannot be empty");
+    }
+    let config_path = home.join("config.toml");
+    let existing = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let mut doc = parse_toml_document(&existing)?;
+    let known = plugin_marketplace_inventory(home)?
+        .plugins
+        .iter()
+        .any(|plugin| plugin.id == plugin_id);
+    if !known && !matches!(mutation, PluginMutation::Uninstall) {
+        anyhow::bail!("plugin is not present in registered marketplaces: {plugin_id}");
+    }
+    let plugins = table_mut_or_insert(&mut doc, "plugins")?;
+    match mutation {
+        PluginMutation::Install => {
+            if plugins.get(plugin_id).and_then(Item::as_table).is_none() {
+                plugins[plugin_id] = toml_edit::table();
+            }
+            plugins[plugin_id]["enabled"] = toml_edit::value(true);
+        }
+        PluginMutation::Uninstall => {
+            plugins.remove(plugin_id);
+        }
+        PluginMutation::Enable | PluginMutation::Disable => {
+            if plugins.get(plugin_id).and_then(Item::as_table).is_none() {
+                anyhow::bail!("plugin is not installed: {plugin_id}");
+            }
+            plugins[plugin_id]["enabled"] =
+                toml_edit::value(matches!(mutation, PluginMutation::Enable));
+        }
+    }
+    crate::atomic_file::write(
+        &config_path,
+        ensure_trailing_newline(doc.to_string()).as_bytes(),
+    )
+}
+
+pub fn register_local_plugin_marketplace(
+    home: &Path,
+    name: &str,
+    source: &Path,
+) -> anyhow::Result<bool> {
+    let name = name.trim();
+    if name.is_empty() || name.contains('.') || name.contains(']') {
+        anyhow::bail!("marketplace name is invalid");
+    }
+    local_marketplace_root_from_root(source, name)?
+        .ok_or_else(|| anyhow::anyhow!("marketplace manifest is missing or name does not match"))?;
+    ensure_marketplace_configs(home, &[name], source)
+}
+
+pub async fn refresh_openai_curated_marketplace_and_configure(
+    home: &Path,
+) -> anyhow::Result<MarketplaceEnsureResult> {
+    initialize_openai_curated_marketplace_from_github(home).await?;
+    let configured = ensure_openai_curated_marketplace_config(home)?;
+    Ok(MarketplaceEnsureResult {
+        initialized: true,
+        configured,
+    })
+}
+
+pub fn refresh_openai_curated_remote_marketplace_and_configure(
+    home: &Path,
+) -> anyhow::Result<MarketplaceEnsureResult> {
+    install_openai_curated_remote_marketplace_zip(home, OPENAI_CURATED_REMOTE_MARKETPLACE_ZIP)?;
+    let configured = ensure_openai_curated_remote_marketplace_config(home)?;
+    Ok(MarketplaceEnsureResult {
+        initialized: true,
+        configured,
+    })
+}
+
+fn count_skill_files(root: &Path) -> anyhow::Result<usize> {
+    if !root.is_dir() {
+        return Ok(0);
+    }
+    let mut total = 0;
+    for entry in std::fs::read_dir(root)? {
+        let path = entry?.path();
+        if path.is_dir() {
+            total += count_skill_files(&path)?;
+        } else if path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
+            total += 1;
+        }
+    }
+    Ok(total)
 }
 
 fn local_openai_curated_marketplace_root(home: &Path) -> anyhow::Result<Option<PathBuf>> {
@@ -848,6 +1072,106 @@ mod tests {
                 .as_str()
             )
         );
+    }
+
+    #[test]
+    fn inventory_and_plugin_mutations_use_codex_config_as_the_public_interface() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        write_marketplace(home);
+        std::fs::create_dir_all(
+            home.join(".tmp")
+                .join("plugins")
+                .join("plugins")
+                .join("gmail")
+                .join("skills")
+                .join("compose"),
+        )
+        .unwrap();
+        std::fs::write(
+            home.join(".tmp")
+                .join("plugins")
+                .join("plugins")
+                .join("gmail")
+                .join("skills")
+                .join("compose")
+                .join("SKILL.md"),
+            "# Compose",
+        )
+        .unwrap();
+        ensure_openai_curated_marketplace_config(home).unwrap();
+
+        let inventory = plugin_marketplace_inventory(home).unwrap();
+        let gmail = inventory
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == "gmail@openai-curated")
+            .unwrap();
+        assert!(!gmail.installed);
+        assert_eq!(gmail.skill_count, 1);
+
+        mutate_plugin(home, &gmail.id, PluginMutation::Install).unwrap();
+        let installed = plugin_marketplace_inventory(home).unwrap();
+        let installed_gmail = installed
+            .plugins
+            .iter()
+            .find(|plugin| plugin.id == gmail.id)
+            .unwrap();
+        assert!(installed_gmail.installed);
+        assert!(installed_gmail.enabled);
+
+        mutate_plugin(home, &gmail.id, PluginMutation::Disable).unwrap();
+        assert!(
+            !plugin_marketplace_inventory(home)
+                .unwrap()
+                .plugins
+                .iter()
+                .find(|plugin| plugin.id == gmail.id)
+                .unwrap()
+                .enabled
+        );
+        mutate_plugin(home, &gmail.id, PluginMutation::Enable).unwrap();
+        assert!(
+            plugin_marketplace_inventory(home)
+                .unwrap()
+                .plugins
+                .iter()
+                .find(|plugin| plugin.id == gmail.id)
+                .unwrap()
+                .enabled
+        );
+        mutate_plugin(home, &gmail.id, PluginMutation::Uninstall).unwrap();
+        assert!(
+            !plugin_marketplace_inventory(home)
+                .unwrap()
+                .plugins
+                .iter()
+                .find(|plugin| plugin.id == gmail.id)
+                .unwrap()
+                .installed
+        );
+    }
+
+    #[test]
+    fn registers_a_valid_personal_local_marketplace() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("home");
+        let source = temp.path().join("personal-market");
+        std::fs::create_dir_all(source.join(".agents").join("plugins")).unwrap();
+        std::fs::create_dir_all(source.join("plugins").join("my-plugin")).unwrap();
+        std::fs::write(
+            source
+                .join(".agents")
+                .join("plugins")
+                .join("marketplace.json"),
+            r#"{"name":"personal","plugins":[{"name":"my-plugin"}]}"#,
+        )
+        .unwrap();
+
+        assert!(register_local_plugin_marketplace(&home, "personal", &source).unwrap());
+        let inventory = plugin_marketplace_inventory(&home).unwrap();
+        assert_eq!(inventory.marketplaces[0].name, "personal");
+        assert_eq!(inventory.plugins[0].id, "my-plugin@personal");
     }
 
     #[test]

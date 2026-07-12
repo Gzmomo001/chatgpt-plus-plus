@@ -192,11 +192,11 @@ pub struct BackendSettings {
     pub enhancements_enabled: bool,
     #[serde(rename = "computerUseGuardEnabled", default)]
     pub computer_use_guard_enabled: bool,
-    #[serde(rename = "codexAppPluginMarketplaceUnlock", default = "default_true")]
+    #[serde(rename = "codexAppPluginMarketplaceUnlock", default)]
     pub codex_app_plugin_marketplace_unlock: bool,
-    #[serde(rename = "codexAppPluginAutoExpand", default = "default_true")]
+    #[serde(rename = "codexAppPluginAutoExpand", default)]
     pub codex_app_plugin_auto_expand: bool,
-    #[serde(rename = "codexAppModelWhitelistUnlock", default = "default_true")]
+    #[serde(rename = "codexAppModelWhitelistUnlock", default)]
     pub codex_app_model_whitelist_unlock: bool,
     #[serde(rename = "codexAppSessionDelete", default = "default_true")]
     pub codex_app_session_delete: bool,
@@ -324,9 +324,9 @@ impl Default for BackendSettings {
             relay_profiles_enabled: true,
             enhancements_enabled: true,
             computer_use_guard_enabled: false,
-            codex_app_plugin_marketplace_unlock: true,
-            codex_app_plugin_auto_expand: true,
-            codex_app_model_whitelist_unlock: true,
+            codex_app_plugin_marketplace_unlock: false,
+            codex_app_plugin_auto_expand: false,
+            codex_app_model_whitelist_unlock: false,
             codex_app_session_delete: true,
             codex_app_markdown_export: true,
             codex_app_paste_fix: false,

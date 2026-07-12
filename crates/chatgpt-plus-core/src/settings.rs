@@ -48,8 +48,8 @@ mod tests {
         assert!(settings.relay_profiles_enabled);
         assert!(settings.enhancements_enabled);
         assert!(!settings.computer_use_guard_enabled);
-        assert!(settings.codex_app_plugin_marketplace_unlock);
-        assert!(settings.codex_app_plugin_auto_expand);
+        assert!(!settings.codex_app_plugin_marketplace_unlock);
+        assert!(!settings.codex_app_plugin_auto_expand);
         assert!(!settings.codex_app_thread_id_badge);
         assert!(settings.codex_app_force_chinese_locale);
         assert!(!settings.codex_goals_enabled);
@@ -121,8 +121,8 @@ mod tests {
         )
         .unwrap();
 
-        assert!(legacy_settings.codex_app_plugin_marketplace_unlock);
-        assert!(legacy_settings.codex_app_plugin_auto_expand);
+        assert!(!legacy_settings.codex_app_plugin_marketplace_unlock);
+        assert!(!legacy_settings.codex_app_plugin_auto_expand);
     }
 
     #[test]
@@ -645,7 +645,7 @@ experimental_bearer_token = "sk-existing""#
         assert!(updated.codex_app_conversation_view);
         assert!(updated.codex_app_thread_id_badge);
         assert!(!updated.codex_app_native_menu_localization);
-        assert!(updated.codex_app_service_tier_controls);
+        assert!(!updated.codex_app_service_tier_controls);
         assert!(updated.codex_goals_enabled);
         assert_eq!(updated.relay_base_url, "https://relay.example.test/v1");
         assert_eq!(updated.relay_api_key, "sk-relay");

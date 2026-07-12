@@ -454,10 +454,10 @@ fn injection_script_removes_legacy_plugin_sidebar_entry_unlock() {
 }
 
 #[test]
-fn injection_script_keeps_plugin_marketplace_unlock_separate_from_entry_unlock() {
+fn injection_script_keeps_legacy_plugin_marketplace_patch_disabled_by_default() {
     let script = assets::injection_script(57321);
 
-    assert!(script.contains("pluginMarketplaceUnlock: true"));
+    assert!(script.contains("pluginMarketplaceUnlock: false"));
     assert!(script.contains("pluginMarketplaceUnlock: \"codexAppPluginMarketplaceUnlock\""));
     assert!(script.contains("if (!chatgptPlusSettings().pluginMarketplaceUnlock) return"));
     assert!(script.contains("installPluginBuildFlavorFilterPatch"));
@@ -1442,7 +1442,7 @@ fn manager_ui_exposes_pure_api_relay_mode_button() {
 }
 
 #[test]
-fn manager_ui_disables_plugin_auto_expand_in_compatible_mode() {
+fn manager_ui_replaces_renderer_plugin_controls_with_native_inventory() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(std::path::Path::parent)
@@ -1452,9 +1452,10 @@ fn manager_ui_disables_plugin_auto_expand_in_compatible_mode() {
     )
     .unwrap();
 
-    assert!(source.contains(
-        "checked={settings.codexAppPluginAutoExpand} disabled={!masterEnabled || !patchMode}"
-    ));
+    assert!(!source.contains("settings.codexAppPluginAutoExpand"));
+    assert!(!source.contains("settings.codexAppPluginMarketplaceUnlock"));
+    assert!(source.contains("projectPluginInventoryState"));
+    assert!(source.contains("actions.mutatePlugin"));
 }
 
 #[test]

@@ -26,6 +26,13 @@ const RESERVED_MODEL_PROVIDER_IDS: &[&str] = &[
 const PROTOCOL_PROXY_PORT: u16 = 57321;
 
 pub(super) fn normalize_settings_config_sections(mut settings: BackendSettings) -> BackendSettings {
+    // These capabilities now live in the manager or the official Codex UI.
+    // Keep accepting legacy fields until the renderer bridge is removed, but
+    // never reactivate request/DOM/service-tier patches from old settings.
+    settings.codex_app_plugin_marketplace_unlock = false;
+    settings.codex_app_plugin_auto_expand = false;
+    settings.codex_app_model_whitelist_unlock = false;
+    settings.codex_app_service_tier_controls = false;
     let (common, extracted_context) =
         split_context_config_sections(&settings.relay_common_config_contents);
     let context = join_config_sections(&[

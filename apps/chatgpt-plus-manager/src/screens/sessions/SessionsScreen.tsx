@@ -1,4 +1,4 @@
-import { Info, RefreshCw, Trash2 } from "lucide-react";
+import { BarChart3, Download, Info, RefreshCw, Trash2, X } from "lucide-react";
 
 import { formatTime } from "@/shared/lib/time";
 import { Field } from "@/shared/ui/field";
@@ -8,6 +8,10 @@ import { StatusBadge as Badge } from "@/shared/ui/status-badge";
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
 import { t, tf } from "@/i18n";
+import type {
+  ExportLocalSessionResult,
+  LocalSessionUsageResult,
+} from "@/shared/contracts/sessions";
 
 export type SessionsView = {
   dbPath: string | null;
@@ -21,7 +25,10 @@ export type SessionsView = {
   }[];
   selectedSessionIds: readonly string[];
   selectionMode: boolean;
-  pendingOperation: "refresh" | "deleteOne" | "deleteSelection" | null;
+  pendingOperation: "refresh" | "deleteOne" | "deleteSelection" | "export" | "usage" | null;
+  activeSessionId: string | null;
+  exportResult: ExportLocalSessionResult | null;
+  usageResult: LocalSessionUsageResult | null;
   providerSync: {
     active: boolean;
     percent: number;
@@ -43,6 +50,9 @@ export type SessionsActions = {
   clearSessionSelection: () => Promise<void>;
   deleteSelectedSessions: () => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
+  exportSession: (sessionId: string) => Promise<void>;
+  loadSessionUsage: (sessionId: string) => Promise<void>;
+  closeSessionDetail: () => Promise<void>;
   syncProvidersNow: () => Promise<void>;
   selectProviderSyncTarget: (provider: string) => void;
   setProviderSyncEnabled: (enabled: boolean) => void;
@@ -159,6 +169,12 @@ export function SessionsScreen({
         <CardContent>
           {items.length ? (
             <>
+              {view.exportResult ? (
+                <div className={`hint-line ${view.exportResult.status === "ok" ? "" : "error"}`}>
+                  <Download className="h-4 w-4" />
+                  <span>{view.exportResult.message}</span>
+                </div>
+              ) : null}
               <div className="session-list-toolbar">
                 <span className="session-selection-summary">{t("已选择")} {selectedCount} / {items.length} {t("个会话")}</span>
                 <div className="session-selection-actions">
@@ -200,10 +216,20 @@ export function SessionsScreen({
                         <span>{session.modelProvider || t("provider 未记录")}</span>
                         <span>{formatTime(session.updatedAtMs ?? 0)}</span>
                       </div>
-                      <Button aria-busy={pendingOperation === "deleteOne"} className="session-delete-button" disabled={sessionsBusy} variant="outline" onClick={() => void actions.deleteSession(session.id)}>
-                        <Trash2 className="h-4 w-4" />
-                        {t("删除")}
-                      </Button>
+                      <div className="session-row-actions">
+                        <Button aria-busy={pendingOperation === "export"} disabled={sessionsBusy} variant="outline" onClick={() => void actions.exportSession(session.id)}>
+                          <Download className="h-4 w-4" />
+                          {pendingOperation === "export" ? t("正在导出…") : t("导出")}
+                        </Button>
+                        <Button aria-busy={pendingOperation === "usage"} disabled={sessionsBusy} variant="outline" onClick={() => void actions.loadSessionUsage(session.id)}>
+                          <BarChart3 className="h-4 w-4" />
+                          {t("Token 用量")}
+                        </Button>
+                        <Button aria-busy={pendingOperation === "deleteOne"} className="session-delete-button" disabled={sessionsBusy} variant="outline" onClick={() => void actions.deleteSession(session.id)}>
+                          <Trash2 className="h-4 w-4" />
+                          {t("删除")}
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
@@ -214,6 +240,66 @@ export function SessionsScreen({
           )}
         </CardContent>
       </Panel>
+      {view.activeSessionId ? (
+        <SessionUsagePanel
+          result={view.usageResult}
+          running={pendingOperation === "usage"}
+          sessionTitle={items.find((item) => item.id === view.activeSessionId)?.title || view.activeSessionId}
+          onClose={actions.closeSessionDetail}
+        />
+      ) : null}
     </>
+  );
+}
+
+function SessionUsagePanel({ result, running, sessionTitle, onClose }: {
+  result: LocalSessionUsageResult | null;
+  running: boolean;
+  sessionTitle: string;
+  onClose: () => Promise<void>;
+}) {
+  const history = result?.history ?? [];
+  const latest = history.at(-1);
+  return (
+    <Panel>
+      <CardHead title={t("Token 使用历史")} detail={sessionTitle} />
+      <CardContent>
+        <Toolbar>
+          <Button disabled={running} onClick={() => void onClose()} size="sm" variant="outline">
+            <X className="h-4 w-4" />{t("关闭")}
+          </Button>
+        </Toolbar>
+        {running ? <div className="empty">{t("正在读取 Token 使用历史…")}</div> : null}
+        {!running && result && result.status !== "ok" ? (
+          <div className="empty error">{result.message}</div>
+        ) : null}
+        {!running && result?.status === "ok" && !history.length ? (
+          <div className="empty">{t("该会话暂时没有 Token 使用记录。")}</div>
+        ) : null}
+        {!running && history.length ? (
+          <>
+            <div className="metric-list">
+              <Metric label={t("记录数")} value={tf("{0} 条", [history.length])} />
+              <Metric label={t("最近上下文用量")} value={String(latest?.usage.contextUsed ?? 0)} />
+              <Metric label={t("上下文上限")} value={String(latest?.usage.contextLimit ?? 0)} />
+            </div>
+            <div className="session-usage-list">
+              {history.map((point, index) => (
+                <div className="status-row" key={`${point.turnId}-${point.observedAt}-${index}`}>
+                  <span>{point.turnId || tf("记录 {0}", [index + 1])}</span>
+                  <code>{tf("输入 {0} / 输出 {1} / 合计 {2} / 缓存 {3}", [
+                    point.usage.inputTokens,
+                    point.usage.outputTokens,
+                    point.usage.totalTokens,
+                    point.usage.cachedTokens,
+                  ])}</code>
+                  <small>{point.observedAt || t("时间未知")}</small>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </CardContent>
+    </Panel>
   );
 }

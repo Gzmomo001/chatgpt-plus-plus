@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   CircleArrowUp,
   Languages,
@@ -57,6 +57,7 @@ import type {
 import type { OverviewResult } from "@/shared/contracts/overview";
 import type { AdsResult } from "@/shared/contracts/recommendations";
 import type { ScriptMarketResult } from "@/shared/contracts/user-scripts";
+import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 import type { LocalSession, ProviderSyncTargetsResult } from "@/shared/contracts/sessions";
 import { readContextCatalog } from "@/features/context/config";
 import {
@@ -163,10 +164,15 @@ export function App() {
     selectedSessionIds: [],
     selectionMode: false,
     pendingOperation: null,
+    activeSessionId: null,
+    exportResult: null,
+    usageResult: null,
   });
   const sessionsControllerPortsRef = useRef<SessionsControllerPorts>({
     loadSessions: async () => null,
     deleteSession: async () => null,
+    exportSession: async () => null,
+    loadUsage: async () => null,
     confirmDelete: async () => false,
     reportDelete: () => {},
     viewChanged: setSessionsControllerView,
@@ -176,6 +182,8 @@ export function App() {
     sessionsControllerRef.current = createSessionsController({
       loadSessions: (silent) => sessionsControllerPortsRef.current.loadSessions(silent),
       deleteSession: (session) => sessionsControllerPortsRef.current.deleteSession(session),
+      exportSession: (session) => sessionsControllerPortsRef.current.exportSession(session),
+      loadUsage: (session) => sessionsControllerPortsRef.current.loadUsage(session),
       confirmDelete: (request) => sessionsControllerPortsRef.current.confirmDelete(request),
       reportDelete: (report) => sessionsControllerPortsRef.current.reportDelete(report),
       viewChanged: (view) => sessionsControllerPortsRef.current.viewChanged(view),
@@ -220,6 +228,8 @@ export function App() {
     percent: 0,
     message: t("尚未检查官方远端插件缓存。"),
   });
+  const [pluginInventory, setPluginInventory] = useState<PluginMarketplaceInventoryResult | null>(null);
+  const [pluginInventoryPending, setPluginInventoryPending] = useState<string | null>(null);
   const [providerSyncTargets, setProviderSyncTargets] = useState<ProviderSyncTargetsResult | null>(null);
   const [selectedProviderSyncTarget, setSelectedProviderSyncTarget] = useState("");
   const [removeOwnedData, setRemoveOwnedData] = useState(false);
@@ -488,9 +498,35 @@ export function App() {
     }
   };
 
+  const exportLocalSession = async (session: LocalSession) => {
+    const prepared = await run(() => managerActions.sessions.exportMarkdown(session));
+    if (!prepared || !isSuccessStatus(prepared.status)) {
+      if (prepared) showResultNotice(t("Markdown 导出"), prepared);
+      return prepared;
+    }
+    const destination = await save({
+      defaultPath: prepared.filename ?? `${session.title || session.id}.md`,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    });
+    if (!destination) return null;
+    const result = await run(() => managerActions.sessions.exportMarkdown(session, destination));
+    if (result) showResultNotice(t("Markdown 导出"), result);
+    return result;
+  };
+
+  const loadLocalSessionUsage = async (session: LocalSession) => {
+    const result = await run(() => managerActions.sessions.loadUsage(session));
+    if (result && !isSuccessStatus(result.status)) {
+      showResultNotice(t("Token 使用历史"), result);
+    }
+    return result;
+  };
+
   sessionsControllerPortsRef.current = {
     loadSessions: loadLocalSessions,
     deleteSession: (session) => run(() => requestDeleteLocalSession(session)),
+    exportSession: exportLocalSession,
+    loadUsage: loadLocalSessionUsage,
     confirmDelete: confirmSessionsDelete,
     reportDelete: reportSessionsDelete,
     viewChanged: setSessionsControllerView,
@@ -696,6 +732,72 @@ export function App() {
       }
     } finally {
       window.clearInterval(progressTimer);
+    }
+  };
+
+  const refreshPluginInventory = async (silent = false) => {
+    const result = await run(() => managerActions.maintenance.pluginInventory());
+    if (result) {
+      setPluginInventory(result);
+      if (!silent && !isSuccessStatus(result.status)) showResultNotice(t("插件与技能库存"), result);
+    }
+    return result;
+  };
+
+  const mutatePlugin = async (pluginId: string, action: "install" | "uninstall" | "enable" | "disable") => {
+    if (pluginInventoryPending) return;
+    setPluginInventoryPending(pluginId);
+    try {
+      const result = await run(() => managerActions.maintenance.mutatePlugin(pluginId, action));
+      if (result) {
+        setPluginInventory(result);
+        showResultNotice(t("插件管理"), result, { silentSuccess: true });
+      }
+    } finally {
+      setPluginInventoryPending(null);
+    }
+  };
+
+  const registerPluginMarketplace = async (name: string) => {
+    if (pluginInventoryPending) return;
+    const source = await open({ directory: true, multiple: false, title: t("选择插件市场目录") });
+    if (typeof source !== "string") return;
+    setPluginInventoryPending("register");
+    try {
+      const result = await run(() => managerActions.maintenance.registerPluginMarketplace(name, source));
+      if (result) {
+        setPluginInventory(result);
+        showResultNotice(t("注册插件市场"), result, { silentSuccess: true });
+      }
+    } finally {
+      setPluginInventoryPending(null);
+    }
+  };
+
+  const upgradePluginMarketplace = async () => {
+    if (pluginInventoryPending) return;
+    setPluginInventoryPending("refresh-official");
+    try {
+      const result = await run(() => managerActions.maintenance.refreshPluginMarketplace());
+      if (result) showResultNotice(t("升级官方市场"), result, { silentSuccess: true });
+      await refreshPluginInventory(true);
+    } finally {
+      setPluginInventoryPending(null);
+    }
+  };
+
+  const upgradeRemotePluginMarketplace = async () => {
+    if (pluginInventoryPending) return;
+    setPluginInventoryPending("refresh-remote");
+    try {
+      const result = await run(() => managerActions.maintenance.refreshRemotePluginMarketplace());
+      if (result) {
+        setRemotePluginMarketplace(result);
+        showResultNotice(t("刷新内置远端快照"), result, { silentSuccess: true });
+      }
+      await refreshPluginInventory(true);
+    } finally {
+      setPluginInventoryPending(null);
     }
   };
 
@@ -1171,6 +1273,7 @@ export function App() {
       await refreshProviderSyncTargets(true);
       await refreshPendingProviderImport(true);
       await refreshRemotePluginMarketplace(true);
+      await refreshPluginInventory(true);
     })();
   }, []);
 
@@ -1436,6 +1539,9 @@ export function App() {
     clearSessionSelection: () => executeSessionsAction({ type: "clearSelection" }),
     deleteSelectedSessions: () => executeSessionsAction({ type: "deleteSelection" }),
     deleteSession: (sessionId) => executeSessionsAction({ type: "deleteOne", sessionId }),
+    exportSession: (sessionId) => executeSessionsAction({ type: "export", sessionId }),
+    loadSessionUsage: (sessionId) => executeSessionsAction({ type: "loadUsage", sessionId }),
+    closeSessionDetail: () => executeSessionsAction({ type: "closeDetail" }),
     syncProvidersNow: actions.syncProvidersNow,
     selectProviderSyncTarget: actions.setProviderSyncTarget,
     setProviderSyncEnabled: (enabled) =>
@@ -1446,10 +1552,6 @@ export function App() {
     settings: {
       enhancementsEnabled: settingsForm.enhancementsEnabled,
       computerUseGuardEnabled: settingsForm.computerUseGuardEnabled,
-      codexAppPluginMarketplaceUnlock: settingsForm.codexAppPluginMarketplaceUnlock,
-      codexAppPluginAutoExpand: settingsForm.codexAppPluginAutoExpand,
-      codexAppModelWhitelistUnlock: settingsForm.codexAppModelWhitelistUnlock,
-      codexAppServiceTierControls: settingsForm.codexAppServiceTierControls,
       codexAppSessionDelete: settingsForm.codexAppSessionDelete,
       codexAppMarkdownExport: settingsForm.codexAppMarkdownExport,
       codexAppPasteFix: settingsForm.codexAppPasteFix,
@@ -1476,15 +1578,22 @@ export function App() {
         }
       : null,
     remotePluginMarketplaceProgress,
+    pluginInventory,
+    pluginInventoryPending,
   };
   const enhanceActions: EnhanceActions = {
     updateFlag: (key, value) => setSettingsForm((current) => ({ ...current, [key]: value })),
     setLaunchMode: actions.setLaunchMode,
     repairPluginMarketplace: actions.repairPluginMarketplace,
-    refreshRemotePluginMarketplace: async () => {
+    refreshRemotePluginMarketplaceStatus: async () => {
       await actions.refreshRemotePluginMarketplace();
     },
     repairRemotePluginMarketplace: actions.repairRemotePluginMarketplace,
+    refreshPluginInventory: async () => { await refreshPluginInventory(); },
+    mutatePlugin,
+    registerPluginMarketplace,
+    upgradePluginMarketplace,
+    upgradeRemotePluginMarketplace,
     saveSettings: actions.saveSettings,
   };
   const maintenanceView: MaintenanceView = {

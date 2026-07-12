@@ -25,6 +25,38 @@ export type DeleteLocalSessionResult = {
   backupPath: string | null;
 };
 
+export type ExportLocalSessionResult = {
+  status: string;
+  message: string;
+  sessionId: string;
+  filename: string | null;
+  markdown: string | null;
+};
+
+export type TokenUsagePoint = {
+  source: string;
+  conversationId: string;
+  turnId: string;
+  observedAt: string;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cachedTokens: number;
+    contextUsed: number;
+    contextLimit: number;
+    hasBreakdown: boolean;
+  };
+};
+
+export type LocalSessionUsageResult = {
+  status: string;
+  message: string;
+  sessionId: string;
+  rolloutPath: string | null;
+  history: TokenUsagePoint[];
+};
+
 export type ProviderSyncTargetSource = "config" | "rollout" | "sqlite" | "manual";
 
 export type ProviderSyncTargetOption = {

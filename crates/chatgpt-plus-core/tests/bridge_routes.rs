@@ -120,7 +120,7 @@ async fn settings_get_includes_runtime_codex_app_version() {
     let result = handle_bridge_request(ctx, "/settings/get", json!({})).await;
 
     assert_eq!(result["codexAppVersion"], json!("26.601.21317"));
-    assert_eq!(result["codexAppPluginMarketplaceUnlock"], json!(true));
+    assert_eq!(result["codexAppPluginMarketplaceUnlock"], json!(false));
     assert_eq!(result.get("codexAppForcePluginInstall"), None);
     assert_eq!(result["codexAppThreadIdBadge"], json!(false));
 }

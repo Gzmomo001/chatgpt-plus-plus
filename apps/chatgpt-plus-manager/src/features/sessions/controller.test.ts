@@ -57,6 +57,34 @@ function harness(initial: LocalSession[]) {
       deletedIds.push(item.id);
       return deleted(item.id, deleteStatuses.get(item.id) ?? "ok");
     },
+    exportSession: async (item) => ({
+      status: "ok",
+      message: "saved",
+      sessionId: item.id,
+      filename: `/exports/${item.id}.md`,
+      markdown: null,
+    }),
+    loadUsage: async (item) => ({
+      status: "ok",
+      message: "loaded",
+      sessionId: item.id,
+      rolloutPath: item.rolloutPath,
+      history: [{
+        source: "rollout-history",
+        conversationId: `local:${item.id}`,
+        turnId: "turn-1",
+        observedAt: "2026-07-12T00:00:00Z",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 20,
+          totalTokens: 120,
+          cachedTokens: 10,
+          contextUsed: 120,
+          contextLimit: 200000,
+          hasBreakdown: true,
+        },
+      }],
+    }),
     confirmDelete: async (request) => {
       confirmations.push({
         kind: request.kind,
@@ -157,6 +185,8 @@ test("one pending operation blocks every overlapping async operation", async () 
       return new Promise((resolve) => { releaseLoad = resolve; });
     },
     deleteSession: async (item) => { deletedIds.push(item.id); return deleted(item.id); },
+    exportSession: async () => null,
+    loadUsage: async () => null,
     confirmDelete: async () => true,
     reportDelete: () => {},
     viewChanged: (view) => views.push(view),
@@ -173,6 +203,24 @@ test("one pending operation blocks every overlapping async operation", async () 
   await refreshing;
   assert.equal(controller.view().pendingOperation, null);
   assert.ok(views.some((view) => view.pendingOperation === "refresh"));
+});
+
+test("export and usage intents publish processing and terminal states", async () => {
+  const fixture = harness([session("one", "First")]);
+  await fixture.controller.refresh(true);
+
+  await fixture.controller.execute({ type: "export", sessionId: "one" });
+  assert.equal(fixture.controller.view().exportResult?.filename, "/exports/one.md");
+  assert.ok(fixture.views.some((view) => view.pendingOperation === "export"));
+
+  await fixture.controller.execute({ type: "loadUsage", sessionId: "one" });
+  assert.equal(fixture.controller.view().activeSessionId, "one");
+  assert.equal(fixture.controller.view().usageResult?.history[0]?.usage.totalTokens, 120);
+  assert.ok(fixture.views.some((view) => view.pendingOperation === "usage"));
+
+  await fixture.controller.execute({ type: "closeDetail" });
+  assert.equal(fixture.controller.view().activeSessionId, null);
+  assert.equal(fixture.controller.view().usageResult, null);
 });
 
 test("reset restores the route-local selection lifecycle", async () => {

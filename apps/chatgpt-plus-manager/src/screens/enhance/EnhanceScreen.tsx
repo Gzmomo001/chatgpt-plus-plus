@@ -1,5 +1,5 @@
-import { Info, ShieldCheck, Wrench } from "lucide-react";
-import type { ReactNode } from "react";
+import { Download, Info, RefreshCw, ShieldCheck, Trash2, Wrench } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
@@ -7,14 +7,13 @@ import { t, tf } from "@/i18n";
 import { CardHead, Panel, Toolbar } from "@/shared/ui/layout";
 import { StatusBadge as Badge } from "@/shared/ui/status-badge";
 import { TaskProgressBox, type TaskProgress } from "@/shared/ui/task-progress";
+import { Input } from "@/shared/ui/input";
+import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
+import { projectPluginInventoryState } from "./presentation";
 
 export type EnhanceFlag =
   | "enhancementsEnabled"
   | "computerUseGuardEnabled"
-  | "codexAppPluginMarketplaceUnlock"
-  | "codexAppPluginAutoExpand"
-  | "codexAppModelWhitelistUnlock"
-  | "codexAppServiceTierControls"
   | "codexAppSessionDelete"
   | "codexAppMarkdownExport"
   | "codexAppPasteFix"
@@ -33,10 +32,6 @@ export type EnhanceFlag =
 export type EnhanceSettingsView = {
   enhancementsEnabled: boolean;
   computerUseGuardEnabled: boolean;
-  codexAppPluginMarketplaceUnlock: boolean;
-  codexAppPluginAutoExpand: boolean;
-  codexAppModelWhitelistUnlock: boolean;
-  codexAppServiceTierControls: boolean;
   codexAppSessionDelete: boolean;
   codexAppMarkdownExport: boolean;
   codexAppPasteFix: boolean;
@@ -66,14 +61,21 @@ export type EnhanceView = {
   pluginMarketplaceProgress: TaskProgress;
   remotePluginMarketplace: RemotePluginMarketplaceView | null;
   remotePluginMarketplaceProgress: TaskProgress;
+  pluginInventory: PluginMarketplaceInventoryResult | null;
+  pluginInventoryPending: string | null;
 };
 
 export type EnhanceActions = {
   updateFlag: (key: EnhanceFlag, value: boolean) => void;
   setLaunchMode: (launchMode: "patch" | "relay") => Promise<void>;
   repairPluginMarketplace: () => Promise<void>;
-  refreshRemotePluginMarketplace: () => Promise<void>;
+  refreshRemotePluginMarketplaceStatus: () => Promise<void>;
   repairRemotePluginMarketplace: () => Promise<void>;
+  refreshPluginInventory: () => Promise<void>;
+  mutatePlugin: (pluginId: string, action: "install" | "uninstall" | "enable" | "disable") => Promise<void>;
+  registerPluginMarketplace: (name: string) => Promise<void>;
+  upgradePluginMarketplace: () => Promise<void>;
+  upgradeRemotePluginMarketplace: () => Promise<void>;
   saveSettings: () => Promise<void>;
 };
 
@@ -83,9 +85,12 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
     pluginMarketplaceProgress,
     remotePluginMarketplace,
     remotePluginMarketplaceProgress,
+    pluginInventory,
+    pluginInventoryPending,
   } = view;
+  const [marketplaceName, setMarketplaceName] = useState("");
+  const pluginInventoryState = projectPluginInventoryState(pluginInventory, pluginInventoryPending);
   const masterEnabled = settings.enhancementsEnabled;
-  const patchMode = settings.launchMode === "patch";
   const remoteMarketplaceStatus = remotePluginMarketplace?.marketplaceRoot
     ? remotePluginMarketplace.configRegistered
       ? t("已注册")
@@ -132,11 +137,7 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
           </div>
         ) : null}
         <div className="enhance-feature-groups">
-          <FeatureGroup title={t("插件与模型")} detail={t("管理插件市场、模型列表和服务档位相关增强。")}>
-            <FeatureToggle title={t("插件市场解锁")} detail={t("API Key 模式下扩展插件市场请求，尽量显示完整插件列表；官方/混合模式通常不需要。")} checked={settings.codexAppPluginMarketplaceUnlock} disabled={!masterEnabled || !patchMode} onChange={(value) => actions.updateFlag("codexAppPluginMarketplaceUnlock", value)} />
-            <FeatureToggle title={t("插件列表全量展示")} detail={t("进入插件页后自动连续展开“更多”，尽量一次显示完整插件列表。")} checked={settings.codexAppPluginAutoExpand} disabled={!masterEnabled || !patchMode} onChange={(value) => actions.updateFlag("codexAppPluginAutoExpand", value)} />
-            <FeatureToggle title={t("模型白名单解锁")} detail={t("从环境变量和 config.toml 的 /v1/models 拉取模型并补进模型列表。")} checked={settings.codexAppModelWhitelistUnlock} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppModelWhitelistUnlock", value)} />
-            <FeatureToggle title={t("Fast 按钮")} detail={t("显示服务模式切换按钮；Fast 仅支持 gpt-5.4 / gpt-5.5，其他模型按 Standard 发送。")} checked={settings.codexAppServiceTierControls} disabled={!masterEnabled} onChange={(value) => actions.updateFlag("codexAppServiceTierControls", value)} />
+          <FeatureGroup title={t("插件市场")} detail={t("使用 Codex 官方配置管理市场来源和插件，不修改页面请求或 DOM。")}>
             <div className="feature-action-row">
               <div>
                 <strong>{t("官方远端插件缓存")}</strong>
@@ -147,7 +148,7 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
               <Button disabled={remotePluginMarketplaceProgress.active} onClick={() => void actions.repairRemotePluginMarketplace()} variant="secondary">
                 {remotePluginMarketplaceProgress.active ? t("正在处理…") : t("释放并注册内置缓存")}
               </Button>
-              <Button disabled={remotePluginMarketplaceProgress.active} onClick={() => void actions.refreshRemotePluginMarketplace()} variant="outline">
+              <Button disabled={remotePluginMarketplaceProgress.active} onClick={() => void actions.refreshRemotePluginMarketplaceStatus()} variant="outline">
                 {t("刷新")}
               </Button>
               <span className="feature-action-status">{remoteMarketplaceStatus}</span>
@@ -185,9 +186,72 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
         </div>
         <TaskProgressBox progress={pluginMarketplaceProgress} title={t("插件市场修复进度")} />
         <TaskProgressBox progress={remotePluginMarketplaceProgress} title={t("官方远端插件缓存进度")} />
+        <div className="plugin-inventory-panel">
+          <div className="relay-context-head">
+            <div>
+              <strong>{t("插件与技能库存")}</strong>
+              <span>{t("直接读取已注册 marketplace 和 config.toml，不依赖 Codex Renderer。")}</span>
+            </div>
+            <Toolbar>
+              <Button disabled={!!pluginInventoryPending} onClick={() => void actions.refreshPluginInventory()} size="sm" variant="outline">
+                <RefreshCw className="h-4 w-4" />{t("刷新库存")}
+              </Button>
+              <Button disabled={!!pluginInventoryPending} onClick={() => void actions.upgradePluginMarketplace()} size="sm" variant="outline">
+                {t("升级官方市场")}
+              </Button>
+              <Button disabled={!!pluginInventoryPending} onClick={() => void actions.upgradeRemotePluginMarketplace()} size="sm" variant="outline">
+                {t("刷新内置远端快照")}
+              </Button>
+            </Toolbar>
+          </div>
+          <div className="form-row">
+            <Input value={marketplaceName} onChange={(event) => setMarketplaceName(event.currentTarget.value)} placeholder={t("个人市场名称，例如 personal")} />
+            <Button disabled={!!pluginInventoryPending || !marketplaceName.trim()} onClick={async () => {
+              await actions.registerPluginMarketplace(marketplaceName.trim());
+              setMarketplaceName("");
+            }} variant="secondary">{t("选择目录并注册")}</Button>
+          </div>
+          {pluginInventoryState === "loading" ? <div className="empty">{t("正在更新插件市场…")}</div> : null}
+          {pluginInventoryState === "idle" ? <div className="empty">{t("尚未加载插件库存。")}</div> : null}
+          {pluginInventoryState === "error" ? <div className="empty error">{pluginInventory?.message}</div> : null}
+          {pluginInventoryState === "empty" ? <div className="empty">{t("已注册的市场中没有可用插件。")}</div> : null}
+          {pluginInventoryState === "ready" && pluginInventory ? (
+            <div className="plugin-inventory-list">
+              {pluginInventory.plugins.map((plugin) => (
+                <div className="script-market-card" key={plugin.id}>
+                  <div>
+                    <strong>{plugin.displayName || plugin.name}</strong>
+                    <small>{plugin.id} · {tf("{0} 个技能", [plugin.skillCount])}</small>
+                    {plugin.description ? <p>{plugin.description}</p> : null}
+                  </div>
+                  <Badge status={plugin.enabled ? "ok" : plugin.installed ? "disabled" : "not_checked"} />
+                  <div className="script-row-actions">
+                    {!plugin.installed ? (
+                      <Button disabled={!!pluginInventoryPending} onClick={() => void actions.mutatePlugin(plugin.id, "install")} size="sm">
+                        <Download className="h-4 w-4" />{t("安装")}
+                      </Button>
+                    ) : (
+                      <>
+                        <Button disabled={!!pluginInventoryPending} onClick={() => void actions.mutatePlugin(plugin.id, plugin.enabled ? "disable" : "enable")} size="sm" variant="outline">
+                          {plugin.enabled ? t("禁用") : t("启用")}
+                        </Button>
+                        <Button disabled={!!pluginInventoryPending} onClick={() => void actions.mutatePlugin(plugin.id, "uninstall")} size="sm" variant="outline">
+                          <Trash2 className="h-4 w-4" />{t("卸载")}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {pluginInventory?.marketplaces.length ? (
+            <small>{tf("已注册 {0} 个市场。", [pluginInventory.marketplaces.length])}</small>
+          ) : null}
+        </div>
         <div className="hint-line">
           <Info className="h-4 w-4" />
-          <span>{t("如果使用官方模式或官方混入 API 模式，通常不需要开启插件市场解锁。")}</span>
+          <span>{t("插件市场、模型发现和 Fast 档位均采用 Codex 官方配置或原生界面，不再通过页面补丁实现。")}</span>
         </div>
         <Toolbar>
           <Button onClick={() => void actions.saveSettings()}>{t("保存增强设置")}</Button>

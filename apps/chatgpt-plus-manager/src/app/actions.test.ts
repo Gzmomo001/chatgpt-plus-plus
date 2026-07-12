@@ -53,6 +53,10 @@ test("adapters own wire command names and nested payload shapes", async () => {
   await actions.relay.saveFile("config", "model = \"gpt-5\"\n");
   await actions.relay.fetchModels(profile);
   await actions.sessions.delete({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" });
+  await actions.sessions.exportMarkdown({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" }, "/tmp/hello.md");
+  await actions.sessions.loadUsage({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" });
+  await actions.maintenance.mutatePlugin("demo@personal", "disable");
+  await actions.maintenance.registerPluginMarketplace("personal", "/tmp/personal-market");
   await actions.maintenance.uninstallEntrypoints(true);
   await actions.app.updateTrayLabels({ showLabel: "Show", quitLabel: "Quit", windowTitle: "Manager" });
 
@@ -77,6 +81,22 @@ test("adapters own wire command names and nested payload shapes", async () => {
     {
       command: "delete_local_session",
       args: { request: { sessionId: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" } },
+    },
+    {
+      command: "export_local_session_markdown",
+      args: { request: { sessionId: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite", destinationPath: "/tmp/hello.md" } },
+    },
+    {
+      command: "load_local_session_usage",
+      args: { request: { sessionId: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" } },
+    },
+    {
+      command: "mutate_plugin",
+      args: { request: { pluginId: "demo@personal", action: "disable" } },
+    },
+    {
+      command: "register_plugin_marketplace",
+      args: { request: { name: "personal", source: "/tmp/personal-market" } },
     },
     { command: "uninstall_entrypoints", args: { options: { removeOwnedData: true } } },
     {

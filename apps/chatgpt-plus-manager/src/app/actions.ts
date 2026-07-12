@@ -19,11 +19,14 @@ import type { OverviewResult } from "@/shared/contracts/overview";
 import type { AdsResult } from "@/shared/contracts/recommendations";
 import type {
   DeleteLocalSessionResult,
+  ExportLocalSessionResult,
   LocalSession,
+  LocalSessionUsageResult,
   LocalSessionsResult,
   ProviderSyncTargetsResult,
 } from "@/shared/contracts/sessions";
 import type { ScriptMarketResult, UserScriptInventory } from "@/shared/contracts/user-scripts";
+import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 
 export const TAURI_COMMAND_NAMES = [
   "apply_pure_api_injection",
@@ -40,6 +43,7 @@ export const TAURI_COMMAND_NAMES = [
   "disable_watcher",
   "dismiss_pending_provider_import",
   "enable_watcher",
+  "export_local_session_markdown",
   "extract_relay_common_config",
   "fetch_relay_profile_models",
   "import_ccs_providers",
@@ -50,6 +54,7 @@ export const TAURI_COMMAND_NAMES = [
   "list_local_sessions",
   "load_ads",
   "load_ccs_providers",
+  "load_local_session_usage",
   "load_overview",
   "load_pending_provider_import",
   "load_provider_sync_targets",
@@ -57,12 +62,17 @@ export const TAURI_COMMAND_NAMES = [
   "load_watcher_state",
   "manager_exit_app",
   "manager_hide_to_tray",
+  "mutate_plugin",
   "open_external_url",
   "perform_update",
+  "plugin_marketplace_inventory",
   "read_latest_logs",
   "read_live_context_entries",
   "read_relay_files",
   "refresh_script_market",
+  "refresh_plugin_marketplace",
+  "refresh_remote_plugin_marketplace",
+  "register_plugin_marketplace",
   "relay_status",
   "remote_plugin_marketplace_status",
   "remove_env_conflicts",
@@ -399,6 +409,21 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<WireDeleteLocalSessionResult>("delete_local_session", {
           request: { sessionId: session.id, title: session.title, dbPath: session.dbPath },
         }).then(mapDeletedSession),
+      exportMarkdown: (
+        session: Pick<LocalSession, "id" | "title" | "dbPath">,
+        destinationPath?: string,
+      ) => call<ExportLocalSessionResult>("export_local_session_markdown", {
+        request: {
+          sessionId: session.id,
+          title: session.title,
+          dbPath: session.dbPath,
+          destinationPath,
+        },
+      }),
+      loadUsage: (session: Pick<LocalSession, "id" | "title" | "dbPath">) =>
+        call<LocalSessionUsageResult>("load_local_session_usage", {
+          request: { sessionId: session.id, title: session.title, dbPath: session.dbPath },
+        }),
       loadSyncTargets: () => call<ProviderSyncTargetsResult>("load_provider_sync_targets"),
       syncProviders: (targetProvider?: string) =>
         call<CommandResult<ProviderSyncPayload>>("sync_providers_now", { targetProvider }),
@@ -427,6 +452,16 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<RemotePluginMarketplaceResult>("remote_plugin_marketplace_status"),
       repairRemotePluginMarketplace: () =>
         call<RemotePluginMarketplaceResult>("repair_remote_plugin_marketplace"),
+      pluginInventory: () =>
+        call<PluginMarketplaceInventoryResult>("plugin_marketplace_inventory"),
+      mutatePlugin: (pluginId: string, action: "install" | "uninstall" | "enable" | "disable") =>
+        call<PluginMarketplaceInventoryResult>("mutate_plugin", { request: { pluginId, action } }),
+      registerPluginMarketplace: (name: string, source: string) =>
+        call<PluginMarketplaceInventoryResult>("register_plugin_marketplace", { request: { name, source } }),
+      refreshPluginMarketplace: () =>
+        call<PluginMarketplaceRepairResult>("refresh_plugin_marketplace"),
+      refreshRemotePluginMarketplace: () =>
+        call<RemotePluginMarketplaceResult>("refresh_remote_plugin_marketplace"),
       installEntrypoints: () =>
         call<WireInstallResult>("install_entrypoints").then(mapInstallResult),
       uninstallEntrypoints: (removeOwnedData: boolean) =>
