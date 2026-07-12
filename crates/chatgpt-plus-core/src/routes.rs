@@ -442,7 +442,7 @@ impl BridgeRuntimeService for CoreRuntimeService {
     async fn open_manager(&self) -> anyhow::Result<Value> {
         let manager_path = manager_exe_path();
         if !manager_path.exists() {
-            anyhow::bail!("未找到管理工具：{}", manager_path.display());
+            anyhow::bail!("未找到 ChatGPT++ 主应用：{}", manager_path.display());
         }
         spawn_manager(&manager_path)?;
         Ok(json!({
@@ -615,7 +615,7 @@ fn spawn_manager(manager_path: &Path) -> anyhow::Result<()> {
     command
         .spawn()
         .map(|_| ())
-        .map_err(|error| anyhow::anyhow!("启动管理工具失败：{error}"))
+        .map_err(|error| anyhow::anyhow!("打开 ChatGPT++ 主界面失败：{error}"))
 }
 
 fn settings_payload_value(

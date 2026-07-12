@@ -13,7 +13,6 @@ use crate::settings::{BackendSettings, RelayMode, RelayProfile, SettingsStore};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CodexHomeDisposition {
-    Unchanged,
     Applied,
     Cleared,
 }
@@ -147,7 +146,7 @@ fn read_optional_file(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
 
 fn restore_optional_file(path: &Path, contents: Option<&[u8]>) -> anyhow::Result<()> {
     match contents {
-        Some(contents) => crate::settings::atomic_write(path, contents),
+        Some(contents) => crate::atomic_file::write(path, contents),
         None => match std::fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
@@ -172,7 +171,7 @@ pub fn reconcile(
     home: &Path,
     intent: CodexHomeReconcileIntent<'_>,
 ) -> anyhow::Result<CodexHomeApplyOutcome> {
-    let (disposition, apply_result, requires_pure_api_postcondition) = match intent {
+    let (disposition, backup_path, requires_pure_api_postcondition) = match intent {
         CodexHomeReconcileIntent::ApplyActiveProfile { settings } => {
             if !settings.relay_profiles_enabled {
                 anyhow::bail!("供应商配置总开关已关闭，未写入 config.toml / auth.json。");
@@ -228,7 +227,7 @@ pub fn reconcile(
     Ok(CodexHomeApplyOutcome {
         disposition,
         status,
-        backup_path: apply_result.backup_path.map(PathBuf::from),
+        backup_path: backup_path.map(PathBuf::from),
     })
 }
 

@@ -1423,16 +1423,22 @@ fn manager_ui_exposes_pure_api_relay_mode_button() {
         .parent()
         .and_then(std::path::Path::parent)
         .expect("core crate should live under crates/chatgpt-plus-core");
-    let source =
-        std::fs::read_to_string(repo.join("apps/chatgpt-plus-manager/src/App.tsx")).unwrap();
+    let app =
+        std::fs::read_to_string(repo.join("apps/chatgpt-plus-manager/src/app/App.tsx")).unwrap();
+    let actions =
+        std::fs::read_to_string(repo.join("apps/chatgpt-plus-manager/src/app/actions.ts")).unwrap();
+    let editor = std::fs::read_to_string(repo.join(
+        "apps/chatgpt-plus-manager/src/features/relay-profiles/components/RelayProfileEditor.tsx",
+    ))
+    .unwrap();
     let commands =
         std::fs::read_to_string(repo.join("apps/chatgpt-plus-manager/src-tauri/src/lib.rs"))
             .unwrap();
 
-    assert!(source.contains("官方混入 API Key"));
-    assert!(source.contains("纯 API"));
-    assert!(source.contains("apply_pure_api_injection"));
-    assert!(commands.contains("commands::apply_pure_api_injection"));
+    assert!(app.contains("官方混入 API Key"));
+    assert!(editor.contains("纯 API"));
+    assert!(actions.contains("apply_pure_api_injection"));
+    assert!(commands.contains("commands::relay::apply_pure_api_injection"));
 }
 
 #[test]
@@ -1441,11 +1447,13 @@ fn manager_ui_disables_plugin_auto_expand_in_compatible_mode() {
         .parent()
         .and_then(std::path::Path::parent)
         .expect("core crate should live under crates/chatgpt-plus-core");
-    let source =
-        std::fs::read_to_string(repo.join("apps/chatgpt-plus-manager/src/App.tsx")).unwrap();
+    let source = std::fs::read_to_string(
+        repo.join("apps/chatgpt-plus-manager/src/screens/enhance/EnhanceScreen.tsx"),
+    )
+    .unwrap();
 
     assert!(source.contains(
-        "checked={form.codexAppPluginAutoExpand} disabled={!masterEnabled || !patchMode}"
+        "checked={settings.codexAppPluginAutoExpand} disabled={!masterEnabled || !patchMode}"
     ));
 }
 

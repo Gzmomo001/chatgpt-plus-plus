@@ -94,7 +94,7 @@ pub fn install_market_script_content(
             )
         })?;
     }
-    crate::settings::atomic_write(&path, content)
+    crate::atomic_file::write(&path, content)
         .with_context(|| format!("failed to write script {}", path.display()))?;
     manager.record_market_install(script)?;
     Ok(())

@@ -1,7 +1,7 @@
 import { ArrowLeft, Save } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ContextEntries } from "@/features/context/config";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 import { t } from "@/i18n";
 import { Toolbar } from "@/shared/ui/layout";
 import { RelayProfileEditor } from "./RelayProfileEditor";

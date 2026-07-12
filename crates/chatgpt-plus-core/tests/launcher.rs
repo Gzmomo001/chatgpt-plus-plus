@@ -27,6 +27,31 @@ use chatgpt_plus_core::settings::{BackendSettings, RelayProfile, RelayProtocol};
 use chatgpt_plus_core::status::StatusStore;
 
 #[test]
+fn launcher_delegates_protocol_ordering_to_one_transaction_seam() {
+    let source = include_str!("../src/launcher.rs");
+
+    assert!(source.contains("protocol_proxy_transaction"));
+    for leaked_protocol_step in [
+        "open_responses_proxy_request",
+        "open_chat_completions_proxy_request",
+        "open_models_proxy_request",
+        "ChatSseToResponsesConverter",
+        "UpstreamWireApi",
+        "responses_error_from_upstream",
+        "is_responses_proxy_path",
+        "is_chat_completions_proxy_path",
+        "is_models_proxy_path",
+    ] {
+        assert!(
+            !source.contains(leaked_protocol_step),
+            "launcher still owns protocol step {leaked_protocol_step}"
+        );
+    }
+    assert!(source.contains("response.is_success()"));
+    assert!(source.contains("helper.protocol_proxy_upstream_error"));
+}
+
+#[test]
 fn launcher_hook_surface_does_not_expose_relay_profile_application() {
     let launcher_source = include_str!("../src/launcher.rs");
     let removed_hook = ["apply_active_", "relay_profile"].concat();

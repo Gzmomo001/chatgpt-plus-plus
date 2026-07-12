@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { Label } from "@/components/ui/label";
+import { Label } from "@/shared/ui/label";
 
 export function Field({
   label,

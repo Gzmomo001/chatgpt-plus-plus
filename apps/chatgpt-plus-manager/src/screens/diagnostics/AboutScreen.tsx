@@ -1,8 +1,8 @@
 import { ExternalLink, MessageCircle } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/shared/ui/button";
+import { CardContent } from "@/shared/ui/card";
+import { Textarea } from "@/shared/ui/textarea";
 import { t, tf } from "@/i18n";
 import type {
   DiagnosticsResult,
@@ -44,11 +44,11 @@ export function AboutScreen({
   return (
     <>
       <Panel>
-        <CardHead title={t("关于 ChatGPT++")} detail={t("本地 Codex 增强、管理工具和安装包维护")} />
+        <CardHead title={t("关于 ChatGPT++")} detail={t("本地 Codex 增强、配置和安装包维护")} />
         <CardContent>
           <div className="metric-list">
-            <Metric label={t("ChatGPT++ 版本")} value={overview?.current_version ?? update?.currentVersion ?? "-"} />
-            <Metric label={t("Codex 版本")} value={overview?.codex_version ?? t("未检测到")} />
+            <Metric label={t("ChatGPT++ 版本")} value={overview?.currentVersion ?? update?.currentVersion ?? "-"} />
+            <Metric label={t("Codex 版本")} value={overview?.codexVersion ?? t("未检测到")} />
             <Metric label={t("项目地址")} value="github.com/Gzmomo001/chatgpt-plus-plus" />
           </div>
           <Toolbar>
@@ -72,7 +72,7 @@ export function AboutScreen({
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title={t("GitHub Release 更新")} detail={tf("当前版本 {0}", [overview?.current_version ?? update?.currentVersion ?? "-"])} />
+        <CardHead title={t("GitHub Release 更新")} detail={tf("当前版本 {0}", [overview?.currentVersion ?? update?.currentVersion ?? "-"])} />
         <CardContent>
           <div className="metric-list">
             <Metric label={t("状态")} value={update?.status ?? "not_checked"} />

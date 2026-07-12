@@ -1,7 +1,7 @@
 import { ExternalLink, RefreshCw } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { CardContent } from "@/components/ui/card";
+import { Button } from "@/shared/ui/button";
+import { CardContent } from "@/shared/ui/card";
 import { t, tf } from "@/i18n";
 import type { AdItem, AdsResult } from "@/shared/contracts/recommendations";
 import { CardHead, Panel } from "@/shared/ui/layout";

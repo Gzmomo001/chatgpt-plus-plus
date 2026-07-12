@@ -1,8 +1,8 @@
 import { Download } from "lucide-react";
 import { useEffect,useRef,useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/shared/ui/button";
+import { Textarea } from "@/shared/ui/textarea";
 import {
   projectRelayFiles,
   promoteRelayCommonConfig,

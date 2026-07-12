@@ -1,14 +1,14 @@
 import { Download, Plus, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/shared/ui/card";
 import type { ContextEntries } from "@/features/context/config";
 import { EnvConflictNotice } from "@/features/relay-profiles/components/RelayFeedback";
 import { RelayProfileDetail } from "@/features/relay-profiles/components/RelayProfileDetail";

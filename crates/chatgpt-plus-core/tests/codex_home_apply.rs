@@ -25,8 +25,32 @@ fn relay_config_exposes_no_superseded_mutation_functions() {
         );
     }
 
-    assert!(!source.contains("pub struct RelayApplyResult"));
+    for test_only_seam in [
+        "fn apply_relay_config_to_home(",
+        "fn apply_relay_config_to_home_with_protocol(",
+        "fn apply_pure_api_config_to_home(",
+        "fn apply_relay_files_to_home(",
+        "fn apply_relay_files_to_home_with_common(",
+        "fn apply_relay_files_to_home_with_context(",
+        "fn apply_relay_profile_files_to_home_with_context(",
+        "fn apply_relay_profile_to_home_with_switch_rules(",
+        "fn apply_relay_config_file_to_home(",
+        "fn apply_pure_api_config_to_home_with_protocol(",
+        "fn clear_relay_config_to_home(",
+        "fn clear_relay_config_to_home_with_auth(",
+    ] {
+        assert!(
+            !source.contains(test_only_seam),
+            "test-only legacy mutation seam remains: {test_only_seam}"
+        );
+    }
+
+    assert!(!source.contains("RelayApplyResult"));
     assert!(!source.contains("pub fn default_codex_home_dir"));
+    assert!(
+        !apply_module.contains("    Unchanged,"),
+        "CodexHomeDisposition must contain only observable mutation outcomes"
+    );
     assert!(
         !crate_root.contains("pub mod relay_config;"),
         "relay_config must be owned beneath the codex_home_apply seam"

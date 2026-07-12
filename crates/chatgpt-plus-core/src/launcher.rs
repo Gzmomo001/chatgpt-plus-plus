@@ -6,7 +6,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use async_trait::async_trait;
-use futures_util::StreamExt;
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
@@ -115,6 +114,21 @@ impl LaunchHandle {
             self.hooks.shutdown_helper(self.helper_port).await;
         }
         result
+    }
+
+    pub async fn shutdown_owned_resources(&self) {
+        if self.helper_started {
+            self.hooks.shutdown_helper(self.helper_port).await;
+        }
+        let stopped = launch_status(
+            "stopped",
+            "ChatGPT++ internal helper stopped by explicit app exit",
+            self.debug_port,
+            self.helper_port,
+            &self.app_dir,
+        );
+        let _ = self.status_store.save_latest(&stopped);
+        self.hooks.write_status("stopped").await;
     }
 }
 
@@ -910,37 +924,46 @@ async fn handle_helper_connection(
         }),
     );
 
-    if crate::protocol_proxy::is_responses_proxy_path(path) && method == "POST" {
-        return handle_protocol_proxy_connection(
-            &mut stream,
-            request_body,
-            request_user_agent.as_deref(),
-            method,
-            path,
-            remote_addr_text,
-        )
-        .await;
-    }
-    if crate::protocol_proxy::is_chat_completions_proxy_path(path) && method == "POST" {
-        return handle_chat_completions_proxy_connection(
-            &mut stream,
-            request_body,
-            request_user_agent.as_deref(),
-            method,
-            path,
-            remote_addr_text,
-        )
-        .await;
-    }
-    if crate::protocol_proxy::is_models_proxy_path(path) && matches!(method, "GET" | "OPTIONS") {
-        return handle_models_proxy_connection(
-            &mut stream,
-            request_user_agent.as_deref(),
-            method,
-            path,
-            remote_addr_text,
-        )
-        .await;
+    let proxy_request = crate::protocol_proxy::ProtocolProxyRequest::new(
+        method,
+        raw_path,
+        request_body.as_bytes().to_vec(),
+        request_user_agent,
+    );
+    match crate::protocol_proxy::protocol_proxy_transaction(proxy_request).await {
+        Ok(Some(response)) => {
+            return write_protocol_proxy_response(
+                &mut stream,
+                response,
+                method,
+                path,
+                remote_addr_text,
+            )
+            .await;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            let body = serde_json::to_vec(&serde_json::json!({
+                "status": "failed",
+                "message": error.to_string()
+            }))?;
+            write_http_response(
+                &mut stream,
+                "502 Bad Gateway",
+                "application/json; charset=utf-8",
+                &body,
+            )
+            .await?;
+            log_helper_response(
+                "helper.protocol_proxy_failed",
+                method,
+                path,
+                "502 Bad Gateway",
+                remote_addr_text,
+            );
+            stream.shutdown().await?;
+            return Ok(());
+        }
     }
 
     let (status, body, content_type, log_event) = if path == "/backend/status"
@@ -1083,303 +1106,32 @@ fn overlay_image_content_type(path: &Path) -> Option<&'static str> {
     }
 }
 
-async fn handle_models_proxy_connection(
+async fn write_protocol_proxy_response(
     stream: &mut tokio::net::TcpStream,
-    request_user_agent: Option<&str>,
+    mut response: crate::protocol_proxy::ProtocolProxyResponse,
     method: &str,
     path: &str,
     remote_addr_text: Option<String>,
 ) -> anyhow::Result<()> {
-    if method == "OPTIONS" {
-        write_http_response(
-            stream,
-            "204 No Content",
-            "application/json; charset=utf-8",
-            &[],
-        )
-        .await?;
-        stream.shutdown().await?;
-        return Ok(());
-    }
-    let upstream = match crate::protocol_proxy::open_models_proxy_request(request_user_agent).await
-    {
-        Ok(upstream) => upstream,
-        Err(error) => {
-            let body = serde_json::to_vec(
-                &serde_json::json!({                 "status": "failed",                 "message": error.to_string()             }),
-            )?;
-            write_http_response(
-                stream,
-                "502 Bad Gateway",
-                "application/json; charset=utf-8",
-                &body,
-            )
-            .await?;
-            log_helper_response(
-                "helper.models_proxy_failed",
-                method,
-                path,
-                "502 Bad Gateway",
-                remote_addr_text,
-            );
-            stream.shutdown().await?;
-            return Ok(());
-        }
-    };
-    let status = upstream.status();
-    let is_success = upstream.is_success();
-    let content_type = if upstream.content_type.is_empty() {
-        "application/json; charset=utf-8".to_string()
-    } else {
-        upstream.content_type.clone()
-    };
-    let body = upstream.response.bytes().await?.to_vec();
-    write_http_response(stream, &status, &content_type, &body).await?;
-    log_helper_response(
-        if is_success {
-            "helper.models_proxy_ok"
-        } else {
-            "helper.models_proxy_upstream_error"
-        },
-        method,
-        path,
-        &status,
-        remote_addr_text,
-    );
-    stream.shutdown().await?;
-    Ok(())
-}
-async fn handle_protocol_proxy_connection(
-    stream: &mut tokio::net::TcpStream,
-    request_body: &str,
-    request_user_agent: Option<&str>,
-    method: &str,
-    path: &str,
-    remote_addr_text: Option<String>,
-) -> anyhow::Result<()> {
-    let request_json = serde_json::from_str::<serde_json::Value>(request_body).ok();
-    let upstream = match crate::protocol_proxy::open_responses_proxy_request(
-        request_body,
-        request_user_agent,
-    )
-    .await
-    {
-        Ok(upstream) => upstream,
-        Err(error) => {
-            let body = serde_json::to_vec(
-                &serde_json::json!({                     "status": "failed",                     "message": error.to_string()                 }),
-            )?;
-            write_http_response(
-                stream,
-                "502 Bad Gateway",
-                "application/json; charset=utf-8",
-                &body,
-            )
-            .await?;
-            log_helper_response(
-                "helper.protocol_proxy_failed",
-                method,
-                path,
-                "502 Bad Gateway",
-                remote_addr_text,
-            );
-            stream.shutdown().await?;
-            return Ok(());
-        }
-    };
-    if !upstream.is_success() {
-        let status = upstream.status();
-        let upstream_content_type = upstream.content_type.clone();
-        let upstream_body = upstream.response.bytes().await?.to_vec();
-        let error = crate::protocol_proxy::responses_error_from_upstream(
-            upstream.status_code,
-            &upstream_content_type,
-            &upstream_body,
-        );
-        let body = serde_json::to_vec(&error)?;
-        write_http_response(stream, &status, "application/json; charset=utf-8", &body).await?;
-        log_helper_response(
-            "helper.protocol_proxy_upstream_error",
-            method,
-            path,
-            &status,
-            remote_addr_text,
-        );
-        stream.shutdown().await?;
-        return Ok(());
-    }
-    if upstream.is_stream {
-        write_http_stream_headers(stream, "200 OK", "text/event-stream; charset=utf-8").await?;
-        if upstream.wire_api == crate::protocol_proxy::UpstreamWireApi::Responses {
-            let mut bytes_stream = upstream.response.bytes_stream();
-            while let Some(chunk) = bytes_stream.next().await {
-                if let Ok(bytes) = chunk {
-                    stream.write_all(&bytes).await?;
-                } else {
-                    break;
-                }
-            }
-            log_helper_response(
-                "helper.protocol_proxy_stream_ok",
-                method,
-                path,
-                "200 OK",
-                remote_addr_text,
-            );
-            stream.shutdown().await?;
-            return Ok(());
-        }
-        let mut converter = request_json
-            .as_ref()
-            .map(crate::protocol_proxy::ChatSseToResponsesConverter::with_request)
-            .unwrap_or_default();
-        let mut bytes_stream = upstream.response.bytes_stream();
-        let mut stream_failed = false;
-        while let Some(chunk) = bytes_stream.next().await {
-            match chunk {
-                Ok(bytes) => {
-                    let converted = converter.push_bytes(&bytes);
-                    if !converted.is_empty() {
-                        stream.write_all(&converted).await?;
-                    }
-                }
-                Err(error) => {
-                    let failed = converter.fail(
-                        format!("Stream error: {error}"),
-                        Some("stream_error".to_string()),
-                    );
-                    if !failed.is_empty() {
-                        stream.write_all(&failed).await?;
-                    }
-                    stream_failed = true;
-                    break;
-                }
-            }
-        }
-        if !stream_failed {
-            let tail = converter.finish();
-            if !tail.is_empty() {
-                stream.write_all(&tail).await?;
-            }
-        }
-        log_helper_response(
-            "helper.protocol_proxy_stream_ok",
-            method,
-            path,
-            "200 OK",
-            remote_addr_text,
-        );
-        stream.shutdown().await?;
-        return Ok(());
-    }
-    let upstream_body = upstream.response.bytes().await?;
-    if upstream.wire_api == crate::protocol_proxy::UpstreamWireApi::Responses {
-        write_http_response(
-            stream,
-            "200 OK",
-            if upstream.content_type.is_empty() {
-                "application/json; charset=utf-8"
-            } else {
-                &upstream.content_type
-            },
-            &upstream_body,
-        )
-        .await?;
-        log_helper_response(
-            "helper.protocol_proxy_ok",
-            method,
-            path,
-            "200 OK",
-            remote_addr_text,
-        );
-        stream.shutdown().await?;
-        return Ok(());
-    }
-    let chat_json: serde_json::Value = serde_json::from_slice(&upstream_body)?;
-    let response_json = if let Some(request_json) = request_json.as_ref() {
-        crate::protocol_proxy::chat_completion_to_response_with_request(chat_json, request_json)?
-    } else {
-        crate::protocol_proxy::chat_completion_to_response(chat_json)?
-    };
-    let body = serde_json::to_vec(&response_json)?;
-    write_http_response(stream, "200 OK", "application/json; charset=utf-8", &body).await?;
-    log_helper_response(
-        "helper.protocol_proxy_ok",
-        method,
-        path,
-        "200 OK",
-        remote_addr_text,
-    );
-    stream.shutdown().await?;
-    Ok(())
-}
-async fn handle_chat_completions_proxy_connection(
-    stream: &mut tokio::net::TcpStream,
-    request_body: &str,
-    request_user_agent: Option<&str>,
-    method: &str,
-    path: &str,
-    remote_addr_text: Option<String>,
-) -> anyhow::Result<()> {
-    let upstream = match crate::protocol_proxy::open_chat_completions_proxy_request(
-        request_body,
-        request_user_agent,
-    )
-    .await
-    {
-        Ok(upstream) => upstream,
-        Err(error) => {
-            let body = serde_json::to_vec(
-                &serde_json::json!({                 "status": "failed",                 "message": error.to_string()             }),
-            )?;
-            write_http_response(
-                stream,
-                "502 Bad Gateway",
-                "application/json; charset=utf-8",
-                &body,
-            )
-            .await?;
-            log_helper_response(
-                "helper.chat_completions_proxy_failed",
-                method,
-                path,
-                "502 Bad Gateway",
-                remote_addr_text,
-            );
-            stream.shutdown().await?;
-            return Ok(());
-        }
-    };
-    let status = upstream.status();
-    let is_success = upstream.is_success();
-    let content_type = if upstream.content_type.is_empty() {
-        "application/json; charset=utf-8".to_string()
-    } else {
-        upstream.content_type.clone()
-    };
-    if upstream.is_stream && is_success {
+    let status = response.status().to_string();
+    let content_type = response.content_type().to_string();
+    if response.is_stream() {
         write_http_stream_headers(stream, &status, &content_type).await?;
-        let mut bytes_stream = upstream.response.bytes_stream();
-        while let Some(chunk) = bytes_stream.next().await {
-            stream.write_all(&chunk?).await?;
+        while let Some(chunk) = response.next_chunk().await? {
+            stream.write_all(&chunk).await?;
         }
-        log_helper_response(
-            "helper.chat_completions_proxy_stream_ok",
-            method,
-            path,
-            &status,
-            remote_addr_text,
-        );
-        stream.shutdown().await?;
-        return Ok(());
+    } else {
+        let mut body = Vec::new();
+        while let Some(chunk) = response.next_chunk().await? {
+            body.extend(chunk);
+        }
+        write_http_response(stream, &status, &content_type, &body).await?;
     }
-    let body = upstream.response.bytes().await?.to_vec();
-    write_http_response(stream, &status, &content_type, &body).await?;
     log_helper_response(
-        if is_success {
-            "helper.chat_completions_proxy_ok"
+        if response.is_success() {
+            "helper.protocol_proxy_ok"
         } else {
-            "helper.chat_completions_proxy_upstream_error"
+            "helper.protocol_proxy_upstream_error"
         },
         method,
         path,

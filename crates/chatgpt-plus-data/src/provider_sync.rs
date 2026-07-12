@@ -7,6 +7,8 @@ use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chatgpt_plus_core::settings::{BackendSettings, SettingsStore, normalize_settings_before_save};
+
 const DEFAULT_PROVIDER: &str = "openai";
 const SESSION_DIRS: [&str; 2] = ["sessions", "archived_sessions"];
 const BACKUP_KEEP_COUNT: usize = 5;
@@ -361,6 +363,88 @@ pub fn load_provider_sync_targets(codex_home: Option<&Path>) -> ProviderSyncTarg
         current_provider,
         targets,
     }
+}
+
+pub fn load_provider_sync_targets_with_settings(
+    codex_home: Option<&Path>,
+    settings: &BackendSettings,
+) -> ProviderSyncTargetList {
+    let mut targets = load_provider_sync_targets(codex_home);
+    let manual = settings
+        .provider_sync_manual_providers
+        .iter()
+        .chain(settings.provider_sync_saved_providers.iter())
+        .filter_map(|value| {
+            let trimmed = value.trim();
+            (!trimmed.is_empty()).then(|| trimmed.to_string())
+        })
+        .collect::<Vec<_>>();
+    merge_manual_provider_sync_targets(&mut targets, &manual, settings);
+    targets
+}
+
+pub fn run_provider_sync_with_settings(
+    codex_home: Option<&Path>,
+    target_provider: Option<&str>,
+    store: &SettingsStore,
+) -> ProviderSyncResult {
+    let sync = run_provider_sync_with_target(codex_home, target_provider);
+    if sync.status == ProviderSyncStatus::Synced {
+        let selected = target_provider.unwrap_or(&sync.target_provider);
+        persist_provider_sync_selection(store, selected);
+    }
+    sync
+}
+
+fn merge_manual_provider_sync_targets(
+    targets: &mut ProviderSyncTargetList,
+    manual: &[String],
+    settings: &BackendSettings,
+) {
+    for id in manual {
+        if let Some(existing) = targets.targets.iter_mut().find(|target| target.id == *id) {
+            if !existing.sources.contains(&ProviderSyncTargetSource::Manual) {
+                existing.sources.push(ProviderSyncTargetSource::Manual);
+                existing.sources.sort();
+            }
+            existing.is_manual = settings.provider_sync_manual_providers.contains(id);
+            existing.is_saved = settings.provider_sync_saved_providers.contains(id);
+        } else {
+            targets.targets.push(ProviderSyncTargetOption {
+                id: id.clone(),
+                sources: vec![ProviderSyncTargetSource::Manual],
+                is_current_provider: *id == targets.current_provider,
+                is_manual: settings.provider_sync_manual_providers.contains(id),
+                is_saved: settings.provider_sync_saved_providers.contains(id),
+            });
+        }
+    }
+    targets.targets.sort_by(|left, right| {
+        right
+            .is_current_provider
+            .cmp(&left.is_current_provider)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+}
+
+fn persist_provider_sync_selection(store: &SettingsStore, provider: &str) {
+    let trimmed = provider.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    let mut settings = store.load().unwrap_or_default();
+    settings.provider_sync_last_selected_provider = trimmed.to_string();
+    if !settings
+        .provider_sync_saved_providers
+        .iter()
+        .any(|item| item == trimmed)
+    {
+        settings
+            .provider_sync_saved_providers
+            .push(trimmed.to_string());
+    }
+    let settings = normalize_settings_before_save(settings);
+    let _ = store.save(&settings);
 }
 
 fn read_current_provider(path: &Path) -> String {

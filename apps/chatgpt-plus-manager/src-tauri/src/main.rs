@@ -1,6 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 fn main() {
+    focus_existing_manager_window();
     for arg in std::env::args() {
         if arg.starts_with("chatgptplusplus://") || arg.starts_with("codexplusplus://") {
             match chatgpt_plus_core::provider_import::save_pending_provider_import_from_url(&arg) {
@@ -12,7 +13,6 @@ fn main() {
                             "baseUrl": request.base_url
                         }),
                     );
-                    focus_existing_manager_window();
                 }
                 Err(error) => {
                     let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(

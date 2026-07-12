@@ -1,3 +1,4 @@
+use chatgpt_plus_core::settings::{BackendSettings, SettingsStore};
 use chatgpt_plus_data::{
     ProviderSyncStatus, ProviderSyncTargetSource, load_provider_sync_targets, run_provider_sync,
     run_provider_sync_with_target,
@@ -150,6 +151,64 @@ name = "apigather"
         .find(|target| target.id == "legacy-provider")
         .unwrap();
     assert_eq!(legacy.sources, vec![ProviderSyncTargetSource::Rollout]);
+}
+
+#[test]
+fn provider_sync_scenario_merges_manual_and_saved_targets_from_settings() {
+    let tmp = tempdir().unwrap();
+    let home = tmp.path().join(".codex");
+    fs::create_dir(&home).unwrap();
+    fs::write(home.join("config.toml"), "model_provider = \"current\"\n").unwrap();
+    let settings = BackendSettings {
+        provider_sync_manual_providers: vec!["manual".to_string()],
+        provider_sync_saved_providers: vec!["saved".to_string()],
+        ..BackendSettings::default()
+    };
+
+    let targets =
+        chatgpt_plus_data::load_provider_sync_targets_with_settings(Some(&home), &settings);
+
+    assert_eq!(targets.targets[0].id, "current");
+    let manual = targets
+        .targets
+        .iter()
+        .find(|target| target.id == "manual")
+        .unwrap();
+    assert!(manual.is_manual);
+    assert!(!manual.is_saved);
+    let saved = targets
+        .targets
+        .iter()
+        .find(|target| target.id == "saved")
+        .unwrap();
+    assert!(!saved.is_manual);
+    assert!(saved.is_saved);
+}
+
+#[test]
+fn provider_sync_scenario_persists_a_successful_explicit_selection() {
+    let tmp = tempdir().unwrap();
+    let home = tmp.path().join(".codex");
+    fs::create_dir(&home).unwrap();
+    fs::write(home.join("config.toml"), "model_provider = \"current\"\n").unwrap();
+    let previous = chatgpt_plus_core::paths::set_settings_path_for_tests(Some(
+        tmp.path().join("settings.json"),
+    ));
+    let store = SettingsStore::default();
+    store.save(&BackendSettings::default()).unwrap();
+
+    let result =
+        chatgpt_plus_data::run_provider_sync_with_settings(Some(&home), Some("selected"), &store);
+    let saved = store.load().unwrap();
+    chatgpt_plus_core::paths::set_settings_path_for_tests(previous);
+
+    assert_eq!(result.status, ProviderSyncStatus::Synced);
+    assert_eq!(saved.provider_sync_last_selected_provider, "selected");
+    assert!(
+        saved
+            .provider_sync_saved_providers
+            .contains(&"selected".to_string())
+    );
 }
 
 #[test]

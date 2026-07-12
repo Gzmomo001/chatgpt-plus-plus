@@ -54,7 +54,12 @@ async fn main() -> Result<()> {
     });
     let hooks = LauncherHooks::default();
     let handle = launch_and_inject_with_hooks(options, &hooks).await?;
-    handle.wait_for_codex_exit().await?;
+    tokio::select! {
+        result = handle.wait_for_codex_exit() => result?,
+        _ = chatgpt_plus_core::enhanced_launch::wait_for_enhanced_shutdown_request() => {
+            handle.shutdown_owned_resources().await;
+        }
+    }
     Ok(())
 }
 
@@ -221,7 +226,7 @@ fn open_manager_with_update_prompt() -> anyhow::Result<()> {
     command
         .spawn()
         .map(|_| ())
-        .map_err(|error| anyhow::anyhow!("启动管理工具失败：{error}"))
+        .map_err(|error| anyhow::anyhow!("打开 ChatGPT++ 主界面失败：{error}"))
 }
 
 fn parse_launch_options<I, S>(args: I) -> LaunchOptions
@@ -562,13 +567,13 @@ impl BridgeRuntimeService for LauncherRuntimeService {
             std::process::Command::new(&manager_path)
                 .creation_flags(chatgpt_plus_core::windows_create_no_window())
                 .spawn()
-                .map_err(|error| anyhow::anyhow!("启动管理工具失败：{error}"))?;
+                .map_err(|error| anyhow::anyhow!("打开 ChatGPT++ 主界面失败：{error}"))?;
         }
         #[cfg(not(windows))]
         {
             std::process::Command::new(&manager_path)
                 .spawn()
-                .map_err(|error| anyhow::anyhow!("启动管理工具失败：{error}"))?;
+                .map_err(|error| anyhow::anyhow!("打开 ChatGPT++ 主界面失败：{error}"))?;
         }
         Ok(json!({
             "status": "ok",
@@ -804,6 +809,12 @@ mod tests {
         let source = include_str!("main.rs");
 
         assert!(source.contains("acquire_single_instance_guard(options.debug_port)?"));
+        assert!(source.contains("activate_existing_codex_app(&options).await?"));
+        assert!(source.contains("hooks.start_helper(options.helper_port).await?"));
+        assert!(
+            source.contains(".ensure_injection(options.debug_port, options.helper_port, &app_dir)")
+        );
+        assert!(source.contains(".start_bridge_watchdog(options.debug_port, options.helper_port)"));
         assert!(source.contains("launcher_guard_port"));
         assert!(source.contains("launcher.already_running"));
     }

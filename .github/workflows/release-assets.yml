@@ -133,20 +133,18 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           VERSION="${VERSION#V}"
-          mkdir -p dist/macos/app-${{ matrix.arch }}
-          cp "target/${{ matrix.target }}/release/chatgpt-plus-plus" "dist/macos/app-${{ matrix.arch }}/"
-          cp "target/${{ matrix.target }}/release/chatgpt-plus-plus-manager" "dist/macos/app-${{ matrix.arch }}/"
-          (cd dist/macos && zip -r "ChatGPTPlusPlus-${VERSION}-macos-${{ matrix.arch }}.zip" "app-${{ matrix.arch }}")
+          (cd dist/macos/stage && zip -r "../ChatGPTPlusPlus-${VERSION}-macos-${{ matrix.arch }}.zip" "ChatGPT++.app")
 
       - name: Verify macOS bundle structure
         run: |
           set -euo pipefail
           test -L "dist/macos/stage/Applications"
           test "$(readlink "dist/macos/stage/Applications")" = "/Applications"
-          for app in "dist/macos/stage/ChatGPT++.app" "dist/macos/stage/ChatGPT++ 管理工具.app"; do
+          for app in "dist/macos/stage/ChatGPT++.app"; do
             test -f "$app/Contents/Info.plist"
             test -f "$app/Contents/PkgInfo"
             test -x "$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+            test -x "$app/Contents/Helpers/chatgpt-plus-plus"
             plutil -lint "$app/Contents/Info.plist" >/dev/null
             codesign -dv "$app" >/dev/null 2>&1
             echo "verified: $app"

@@ -1,19 +1,63 @@
+use chatgpt_plus_core::codex_home_apply::{
+    CodexHomeApplyOutcome, CodexHomeReconcileIntent, reconcile,
+};
 use chatgpt_plus_core::codex_sqlite::codex_session_db_path_from_home;
 use chatgpt_plus_core::relay_config::{
-    apply_pure_api_config_to_home, apply_relay_config_file_to_home, apply_relay_config_to_home,
-    apply_relay_files_to_home, apply_relay_files_to_home_with_common,
-    apply_relay_profile_files_to_home_with_context, apply_relay_profile_to_home_with_switch_rules,
-    apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard,
     backfill_relay_profile_from_home, backfill_relay_profile_from_home_with_common,
-    chatgpt_auth_status_from_home, clear_relay_config_to_home,
-    clear_relay_config_to_home_with_auth, delete_context_entry_from_common_config,
+    chatgpt_auth_status_from_home, delete_context_entry_from_common_config,
     extract_common_config_from_config, filter_common_config_for_selection,
-    list_context_entries_from_common_config, normalize_relay_profile_for_storage,
-    relay_config_status_from_home, sanitize_common_config_contents,
-    set_codex_goals_feature_in_home, strip_common_config_from_config,
-    sync_live_config_context_entries, upsert_context_entry_in_common_config,
+    list_context_entries_from_common_config, relay_config_status_from_home,
+    sanitize_common_config_contents, set_codex_goals_feature_in_home,
+    strip_common_config_from_config, sync_live_config_context_entries,
+    upsert_context_entry_in_common_config,
 };
-use chatgpt_plus_core::settings::{RelayContextSelection, RelayMode, RelayProfile, RelayProtocol};
+
+fn reconcile_profile(
+    home: &std::path::Path,
+    profile: &RelayProfile,
+    common_config_contents: &str,
+) -> anyhow::Result<CodexHomeApplyOutcome> {
+    reconcile_profile_with_guard(home, profile, common_config_contents, false)
+}
+
+fn reconcile_profile_with_guard(
+    home: &std::path::Path,
+    profile: &RelayProfile,
+    common_config_contents: &str,
+    computer_use_guard_enabled: bool,
+) -> anyhow::Result<CodexHomeApplyOutcome> {
+    let settings = BackendSettings {
+        relay_profiles: vec![profile.clone()],
+        active_relay_id: profile.id.clone(),
+        relay_common_config_contents: common_config_contents.to_string(),
+        computer_use_guard_enabled,
+        ..BackendSettings::default()
+    };
+    reconcile(
+        home,
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+}
+use chatgpt_plus_core::settings::{
+    BackendSettings, RelayContextSelection, RelayMode, RelayProfile, RelayProtocol,
+    normalize_settings_before_save,
+};
+
+fn normalize_relay_profile_for_storage(profile: &mut RelayProfile) -> anyhow::Result<()> {
+    let normalized = normalize_settings_before_save(BackendSettings {
+        relay_profiles: vec![profile.clone()],
+        active_relay_id: profile.id.clone(),
+        ..BackendSettings::default()
+    });
+    *profile = normalized
+        .relay_profiles
+        .into_iter()
+        .next()
+        .expect("normalization should preserve the supplied profile");
+    Ok(())
+}
 
 fn write_remote_plugin_marketplace_snapshot(home: &std::path::Path) {
     let root = home.join(".tmp").join("plugins-remote");
@@ -66,19 +110,27 @@ fn codex_session_db_path_prefers_new_sqlite_directory_threads_db() {
 }
 
 #[test]
-fn apply_relay_config_preserves_cached_remote_plugin_marketplace() {
+fn reconcile_preserves_cached_remote_plugin_marketplace() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();
     write_remote_plugin_marketplace_snapshot(home);
+    let profile = RelayProfile {
+        id: "relay".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model_provider = "custom"
 
-    apply_relay_files_to_home(
-        home,
-        r#"model = "gpt-5"
-model_provider = "chatgpt"
-"#,
-        r#"{"auth_mode":"chatgpt"}"#,
-    )
-    .unwrap();
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "https://relay.example/v1"
+"#
+        .to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-test"}"#.to_string(),
+        ..RelayProfile::default()
+    };
+
+    reconcile_profile(home, &profile, "").unwrap();
 
     let config = std::fs::read_to_string(home.join("config.toml")).unwrap();
     assert!(config.contains("[marketplaces.openai-curated-remote]"));
@@ -283,70 +335,7 @@ base_url = "http://127.0.0.1:57321/v1"
 }
 
 #[test]
-fn apply_relay_config_writes_isolated_provider_without_live_config_carryover() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("config.toml"),
-        r#"model = "gpt-5"
-model_catalog_json = 'C:\Users\Administrator\.codex\model-catalogs\relay-mpgm24lf.json'
-model_provider = "custom1"
-[model_providers.custom1]
-name = "custom1"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "http://192.168.188.245:3001/v1"
-[profiles.default]
-model = "gpt-5-mini"
-"#,
-    )
-    .unwrap();
-
-    let result = apply_relay_config_to_home(
-        temp.path(),
-        "https://relay.example.test/v1",
-        "sk-test-redacted",
-    )
-    .unwrap();
-    let updated = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-
-    assert!(result.configured);
-    assert!(!updated.contains(r#"model = "gpt-5""#));
-    assert!(!updated.contains("model_catalog_json"));
-    assert!(!updated.contains(r#"model_provider = "custom1""#));
-    assert!(!updated.contains("[model_providers.custom1]"));
-    assert!(!updated.contains("[profiles.default]"));
-    assert!(updated.contains(r#"model_provider = "custom""#));
-    assert!(updated.contains("[model_providers.custom]"));
-    assert!(updated.contains(r#"name = "custom""#));
-    assert!(updated.contains(r#"wire_api = "responses""#));
-    assert!(updated.contains("requires_openai_auth = true"));
-    assert!(updated.contains(r#"base_url = "https://relay.example.test/v1""#));
-    assert!(updated.contains(r#"experimental_bearer_token = "sk-test-redacted""#));
-}
-
-#[test]
-fn apply_chat_protocol_relay_points_codex_to_local_responses_proxy() {
-    let temp = tempfile::tempdir().unwrap();
-
-    let result = chatgpt_plus_core::relay_config::apply_relay_config_to_home_with_protocol(
-        temp.path(),
-        "https://chat-only.example.test/v1",
-        "sk-test-redacted",
-        RelayProtocol::ChatCompletions,
-        57321,
-    )
-    .unwrap();
-    let updated = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-
-    assert!(result.configured);
-    assert!(updated.contains(r#"wire_api = "responses""#));
-    assert!(updated.contains(r#"base_url = "http://127.0.0.1:57321/v1""#));
-    assert!(updated.contains(r#"experimental_bearer_token = "sk-test-redacted""#));
-    assert!(!updated.contains("chatgpt_plus_chat_base_url"));
-}
-
-#[test]
-fn apply_aggregate_relay_points_codex_to_local_responses_proxy_without_snapshot() {
+fn reconcile_aggregate_relay_points_codex_to_local_responses_proxy_without_snapshot() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "agg".to_string(),
@@ -357,10 +346,10 @@ fn apply_aggregate_relay_points_codex_to_local_responses_proxy_without_snapshot(
         ..RelayProfile::default()
     };
 
-    let result = apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+    let result = reconcile_profile(temp.path(), &profile, "").unwrap();
     let updated = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
 
-    assert!(result.configured);
+    assert!(result.status.configured);
     assert!(updated.contains(r#"wire_api = "responses""#));
     assert!(updated.contains(r#"base_url = "http://127.0.0.1:57321/v1""#));
     assert!(updated.contains(r#"experimental_bearer_token = "chatgpt-plus-aggregate""#));
@@ -405,7 +394,7 @@ base_url = "http://127.0.0.1:57321/v1"
             .contains(r#"base_url = "http://127.0.0.1:57321/v1""#)
     );
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
     let live = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(!live.contains("chatgpt_plus_chat_base_url"));
     assert!(live.contains(r#"base_url = "http://127.0.0.1:57321/v1""#));
@@ -485,100 +474,6 @@ fn official_mix_api_profile_removes_auth_api_key_on_storage() {
     assert!(auth.get("OPENAI_API_KEY").is_none());
     assert_eq!(auth["auth_mode"], "chatgpt");
     assert_eq!(auth["tokens"]["access_token"], "official");
-}
-
-#[test]
-fn apply_pure_api_config_switches_auth_json_and_writes_provider_token() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("auth.json"),
-        r#"{"auth_mode":"chatgpt","tokens":{"access_token":"old"}}"#,
-    )
-    .unwrap();
-    std::fs::write(temp.path().join("config.toml"), r#"model = "gpt-5""#).unwrap();
-
-    let result = apply_pure_api_config_to_home(
-        temp.path(),
-        "http://192.168.188.245:3001/v1",
-        "sk-test-redacted",
-    )
-    .unwrap();
-
-    let auth: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(temp.path().join("auth.json")).unwrap())
-            .unwrap();
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(result.configured);
-    assert!(!config.contains(r#"model = "gpt-5""#));
-    assert_eq!(
-        auth,
-        serde_json::json!({"OPENAI_API_KEY":"sk-test-redacted"})
-    );
-    assert!(config.contains(r#"model_provider = "custom""#));
-    assert!(config.contains("[model_providers.custom]"));
-    assert!(config.contains(r#"name = "custom""#));
-    assert!(config.contains(r#"wire_api = "responses""#));
-    assert!(config.contains("requires_openai_auth = true"));
-    assert!(config.contains(r#"base_url = "http://192.168.188.245:3001/v1""#));
-    assert!(config.contains(r#"experimental_bearer_token = "sk-test-redacted""#));
-}
-
-#[test]
-fn apply_relay_files_switches_complete_config_and_auth_json() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(temp.path().join("config.toml"), r#"model = "old""#).unwrap();
-    std::fs::write(temp.path().join("auth.json"), r#"{"old":true}"#).unwrap();
-
-    let result = apply_relay_files_to_home(
-        temp.path(),
-        r#"model_provider = "custom"
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "https://relay-a.example/v1"
-experimental_bearer_token = "sk-a"
-"#,
-        r#"{"OPENAI_API_KEY":"sk-a"}"#,
-    )
-    .unwrap();
-
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    let auth = std::fs::read_to_string(temp.path().join("auth.json")).unwrap();
-
-    assert!(result.configured);
-    let backup_path = result.backup_path.as_ref().expect("backup path");
-    assert!(backup_path.contains("chatgpt-plus-live-"));
-    assert_eq!(
-        std::fs::read_to_string(std::path::Path::new(backup_path).join("config.toml")).unwrap(),
-        r#"model = "old""#
-    );
-    assert_eq!(
-        std::fs::read_to_string(std::path::Path::new(backup_path).join("auth.json")).unwrap(),
-        r#"{"old":true}"#
-    );
-    assert!(config.contains(r#"base_url = "https://relay-a.example/v1""#));
-    assert_eq!(auth, r#"{"OPENAI_API_KEY":"sk-a"}"#);
-}
-
-#[test]
-fn apply_relay_files_allows_empty_isolated_auth_json() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(temp.path().join("auth.json"), r#"{"OPENAI_API_KEY":"old"}"#).unwrap();
-
-    let result = apply_relay_files_to_home(
-        temp.path(),
-        r#"model_provider = "chatgpt"
-"#,
-        "",
-    )
-    .unwrap();
-
-    assert!(!result.configured);
-    assert_eq!(
-        std::fs::read_to_string(temp.path().join("auth.json")).unwrap(),
-        ""
-    );
 }
 
 #[test]
@@ -882,52 +777,7 @@ enabled = false
 }
 
 #[test]
-fn apply_relay_files_with_common_preserves_mcp_skills_and_plugins() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("config.toml"),
-        r#"model = "old"
-[mcp_servers.old]
-command = "old"
-"#,
-    )
-    .unwrap();
-
-    apply_relay_files_to_home_with_common(
-        temp.path(),
-        r#"model = "gpt-5"
-model_provider = "custom"
-model_catalog_json = 'C:\Users\Administrator\.codex\model-catalogs\relay-mpgm24lf.json'
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "https://relay.example/v1"
-experimental_bearer_token = "sk-new"
-"#,
-        r#"{"OPENAI_API_KEY":"sk-new"}"#,
-        r#"[mcp_servers.context7]
-command = "npx"
-
-[skills.writer]
-enabled = true
-
-[plugins.local]
-path = "plugin.js"
-"#,
-    )
-    .unwrap();
-
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(config.contains(r#"model = "gpt-5""#));
-    assert!(config.contains(r#"base_url = "https://relay.example/v1""#));
-    assert!(config.contains("[mcp_servers.context7]"));
-    assert!(config.contains("[skills.writer]"));
-    assert!(config.contains("[plugins.local]"));
-}
-
-#[test]
-fn apply_relay_files_with_context_selection_writes_only_selected_global_context() {
+fn reconcile_profile_with_context_selection_writes_only_selected_global_context() {
     let temp = tempfile::tempdir().unwrap();
     let selection = RelayContextSelection {
         mcp_servers: vec!["memory".to_string()],
@@ -935,18 +785,26 @@ fn apply_relay_files_with_context_selection_writes_only_selected_global_context(
         plugins: vec!["local".to_string()],
     };
 
-    chatgpt_plus_core::relay_config::apply_relay_files_to_home_with_context(
-        temp.path(),
-        r#"model_provider = "custom"
+    let profile = RelayProfile {
+        id: "selected-context".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model_provider = "custom"
 [model_providers.custom]
 name = "custom"
 wire_api = "responses"
 requires_openai_auth = true
 base_url = "https://relay.example/v1"
 experimental_bearer_token = "sk-new"
-"#,
-        r#"{"OPENAI_API_KEY":"sk-new"}"#,
-        r#"[mcp_servers.context7]
+"#
+        .to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
+        context_selection: selection,
+        context_selection_initialized: true,
+        context_window: "200000".to_string(),
+        auto_compact_limit: "160000".to_string(),
+        ..RelayProfile::default()
+    };
+    let common = r#"[mcp_servers.context7]
 command = "npx"
 
 [mcp_servers.memory]
@@ -957,12 +815,9 @@ enabled = true
 
 [plugins.local]
 path = "plugin.js"
-"#,
-        &selection,
-        "200000",
-        "160000",
-    )
-    .unwrap();
+"#;
+
+    reconcile_profile(temp.path(), &profile, common).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains("[mcp_servers.memory]"));
@@ -974,7 +829,7 @@ path = "plugin.js"
 }
 
 #[test]
-fn apply_relay_files_with_context_skips_disabled_global_context() {
+fn reconcile_profile_with_context_skips_disabled_global_context() {
     let temp = tempfile::tempdir().unwrap();
     let selection = RelayContextSelection {
         mcp_servers: vec!["enabled_one".to_string()],
@@ -982,18 +837,24 @@ fn apply_relay_files_with_context_skips_disabled_global_context() {
         plugins: vec!["disabled_one".to_string(), "enabled_two".to_string()],
     };
 
-    chatgpt_plus_core::relay_config::apply_relay_files_to_home_with_context(
-        temp.path(),
-        r#"model_provider = "custom"
+    let profile = RelayProfile {
+        id: "disabled-context".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model_provider = "custom"
 [model_providers.custom]
 name = "custom"
 wire_api = "responses"
 requires_openai_auth = true
 base_url = "https://relay.example/v1"
 experimental_bearer_token = "sk-new"
-"#,
-        r#"{"OPENAI_API_KEY":"sk-new"}"#,
-        r#"[mcp_servers.enabled_one]
+"#
+        .to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
+        context_selection: selection,
+        context_selection_initialized: true,
+        ..RelayProfile::default()
+    };
+    let common = r#"[mcp_servers.enabled_one]
 command = "npx"
 
 [plugins.disabled_one]
@@ -1004,12 +865,9 @@ enabled = false
 
 [plugins.enabled_two]
 enabled = true
-"#,
-        &selection,
-        "",
-        "",
-    )
-    .unwrap();
+"#;
+
+    reconcile_profile(temp.path(), &profile, common).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains("[mcp_servers.enabled_one]"));
@@ -1019,7 +877,7 @@ enabled = true
 }
 
 #[test]
-fn apply_relay_profile_does_not_write_model_catalog_json_for_selected_models() {
+fn reconcile_profile_does_not_write_model_catalog_json_for_selected_models() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -1045,7 +903,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_files_to_home_with_context(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(!config.contains("model_catalog_json"));
@@ -1055,7 +913,7 @@ experimental_bearer_token = "sk-new"
 }
 
 #[test]
-fn apply_relay_profile_preserves_user_model_catalog_json() {
+fn reconcile_profile_preserves_user_model_catalog_json() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -1078,7 +936,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_files_to_home_with_context(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains(r#"model_catalog_json = "C:\\old\\catalog.json""#));
@@ -1092,7 +950,7 @@ experimental_bearer_token = "sk-new"
 }
 
 #[test]
-fn apply_relay_profile_skips_common_config_when_disabled() {
+fn reconcile_profile_skips_common_config_when_disabled() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -1118,7 +976,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_files_to_home_with_context(
+    reconcile_profile(
         temp.path(),
         &profile,
         r#"disable_response_storage = true
@@ -1184,61 +1042,20 @@ last_updated = "2026-05-25T11:52:46Z"
 }
 
 #[test]
-fn apply_relay_files_with_context_rejects_invalid_context_token_values() {
+fn reconcile_profile_with_context_rejects_invalid_context_token_values() {
     let temp = tempfile::tempdir().unwrap();
-    let selection = RelayContextSelection::default();
+    let profile = RelayProfile {
+        id: "invalid-context-limit".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model_provider = "custom""#.to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
+        context_window: "abc".to_string(),
+        ..RelayProfile::default()
+    };
 
-    let error = chatgpt_plus_core::relay_config::apply_relay_files_to_home_with_context(
-        temp.path(),
-        r#"model_provider = "custom""#,
-        r#"{"OPENAI_API_KEY":"sk-new"}"#,
-        "",
-        &selection,
-        "abc",
-        "",
-    )
-    .unwrap_err();
+    let error = reconcile_profile(temp.path(), &profile, "").unwrap_err();
 
     assert!(error.to_string().contains("上下文大小"));
-}
-
-#[test]
-fn apply_relay_files_uses_custom_provider_id_and_updates_profile_refs() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("config.toml"),
-        r#"model_provider = "stable-live"
-[model_providers.stable-live]
-name = "stable-live"
-base_url = "https://old.example/v1"
-"#,
-    )
-    .unwrap();
-
-    apply_relay_files_to_home(
-        temp.path(),
-        r#"model_provider = "custom"
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "https://new.example/v1"
-experimental_bearer_token = "sk-new"
-
-[profiles.default]
-model_provider = "custom"
-"#,
-        r#"{"OPENAI_API_KEY":"sk-new"}"#,
-    )
-    .unwrap();
-
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(config.contains(r#"model_provider = "custom""#));
-    assert!(config.contains("[model_providers.custom]"));
-    assert!(config.contains(r#"base_url = "https://new.example/v1""#));
-    assert!(config.contains("[profiles.default]"));
-    assert!(config.contains(r#"model_provider = "custom""#));
-    assert!(!config.contains("[model_providers.stable-live]"));
 }
 
 #[test]
@@ -1301,14 +1118,19 @@ model_provider = "vendor_alpha"
 }
 
 #[test]
-fn apply_relay_files_rejects_invalid_toml_before_auth_write() {
+fn reconcile_rejects_invalid_toml_before_auth_write() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.toml"), "model = \"old\"\n").unwrap();
     std::fs::write(temp.path().join("auth.json"), r#"{"old":true}"#).unwrap();
 
-    let error =
-        apply_relay_files_to_home(temp.path(), "model = [", r#"{"OPENAI_API_KEY":"sk-new"}"#)
-            .unwrap_err();
+    let profile = RelayProfile {
+        id: "invalid-toml".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: "model = [".to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
+        ..RelayProfile::default()
+    };
+    let error = reconcile_profile(temp.path(), &profile, "").unwrap_err();
 
     assert!(error.to_string().contains("TOML"));
     assert_eq!(
@@ -1322,24 +1144,27 @@ fn apply_relay_files_rejects_invalid_toml_before_auth_write() {
 }
 
 #[test]
-fn apply_relay_files_rejects_invalid_auth_json_before_config_write() {
+fn reconcile_rejects_invalid_auth_json_before_config_write() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(temp.path().join("config.toml"), "model = \"old\"\n").unwrap();
     std::fs::write(temp.path().join("auth.json"), r#"{"old":true}"#).unwrap();
 
-    let error = apply_relay_files_to_home(
-        temp.path(),
-        r#"model_provider = "custom"
+    let profile = RelayProfile {
+        id: "invalid-auth".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model_provider = "custom"
 [model_providers.custom]
 name = "custom"
 wire_api = "responses"
 requires_openai_auth = true
 base_url = "https://relay.example/v1"
 experimental_bearer_token = "sk-new"
-"#,
-        "{",
-    )
-    .unwrap_err();
+"#
+        .to_string(),
+        auth_contents: "{".to_string(),
+        ..RelayProfile::default()
+    };
+    let error = reconcile_profile(temp.path(), &profile, "").unwrap_err();
 
     assert!(error.to_string().contains("JSON"));
     assert_eq!(
@@ -1350,243 +1175,6 @@ experimental_bearer_token = "sk-new"
         std::fs::read_to_string(temp.path().join("auth.json")).unwrap(),
         r#"{"old":true}"#
     );
-}
-
-#[test]
-fn apply_relay_config_file_switches_config_without_touching_auth_json() {
-    let temp = tempfile::tempdir().unwrap();
-    let home = temp.path();
-    std::fs::write(
-        home.join("config.toml"),
-        "model_provider = \"ChatGPTPlusPlus\"\nbase_url = \"old\"\n",
-    )
-    .unwrap();
-    std::fs::write(home.join("auth.json"), "{\"auth_mode\":\"chatgpt\"}\n").unwrap();
-
-    let result = apply_relay_config_file_to_home(
-        home,
-        "model_provider = \"custom\"\n\n[model_providers.custom]\nname = \"custom\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nbase_url = \"http://127.0.0.1:57321/v1\"\nexperimental_bearer_token = \"sk-new\"\n",
-    )
-    .unwrap();
-
-    assert!(result.configured);
-    assert!(
-        std::fs::read_to_string(home.join("config.toml"))
-            .unwrap()
-            .contains("http://127.0.0.1:57321/v1")
-    );
-    assert_eq!(
-        std::fs::read_to_string(home.join("auth.json")).unwrap(),
-        "{\"auth_mode\":\"chatgpt\"}\n"
-    );
-}
-
-#[test]
-fn apply_relay_config_file_accepts_utf8_bom_config() {
-    let temp = tempfile::tempdir().unwrap();
-    let home = temp.path();
-    std::fs::write(home.join("config.toml"), "\u{feff}model = \"old\"\n").unwrap();
-    std::fs::write(home.join("auth.json"), "{\"auth_mode\":\"chatgpt\"}\n").unwrap();
-
-    let result = apply_relay_config_file_to_home(
-        home,
-        "\u{feff}model_provider = \"custom\"\n\n[model_providers.custom]\nname = \"custom\"\nwire_api = \"responses\"\nrequires_openai_auth = true\nbase_url = \"http://127.0.0.1:57321/v1\"\nexperimental_bearer_token = \"sk-new\"\n",
-    )
-    .unwrap();
-
-    let config = std::fs::read_to_string(home.join("config.toml")).unwrap();
-    assert!(result.configured);
-    assert!(config.contains(r#"model_provider = "custom""#));
-    assert!(config.contains("http://127.0.0.1:57321/v1"));
-}
-
-#[test]
-fn apply_relay_config_does_not_carry_profiles_from_live_config() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("config.toml"),
-        r#"model = "gpt-5"
-[profiles.default]
-model = "gpt-5-mini"
-"#,
-    )
-    .unwrap();
-
-    apply_relay_config_to_home(
-        temp.path(),
-        "https://relay.example.test/v1",
-        "sk-test-redacted",
-    )
-    .unwrap();
-    let updated = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    let provider_index = updated.find(r#"model_provider = "custom""#).unwrap();
-    let codexpp_index = updated.find("[model_providers.custom]").unwrap();
-
-    assert!(provider_index < codexpp_index);
-    assert!(!updated.contains("[profiles.default]"));
-    assert!(!updated.contains(r#"model = "gpt-5""#));
-}
-
-#[test]
-fn apply_relay_config_removes_legacy_codexpp_provider_table() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("config.toml"),
-        r#"model_provider = "CodexPP"
-[model_providers.CodexPP]
-name = "CodexPP"
-base_url = "https://old.example.test/v1"
-"#,
-    )
-    .unwrap();
-
-    apply_relay_config_to_home(
-        temp.path(),
-        "https://relay.example.test/v1",
-        "sk-test-redacted",
-    )
-    .unwrap();
-    let updated = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-
-    assert!(updated.contains(r#"model_provider = "custom""#));
-    assert!(updated.contains("[model_providers.custom]"));
-    assert!(!updated.contains("[model_providers.CodexPP]"));
-}
-
-#[test]
-fn clear_relay_config_removes_model_provider_and_preserves_other_config() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("config.toml"),
-        r#"model = "gpt-5"
-model_provider = "custom"
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "https://relay.example.test/v1"
-experimental_bearer_token = "sk-test-redacted"
-
-[model_providers.CodexPP]
-name = "CodexPP"
-base_url = "https://old.example.test/v1"
-
-[model_providers.custom1]
-name = "custom1"
-wire_api = "responses"
-base_url = "https://keep.example.test/v1"
-
-[profiles.default]
-model = "gpt-5-mini"
-"#,
-    )
-    .unwrap();
-
-    let result = clear_relay_config_to_home(temp.path()).unwrap();
-    let updated = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-
-    assert!(!result.configured);
-    assert!(
-        result
-            .backup_path
-            .as_ref()
-            .is_some_and(|path| path.contains("chatgpt-plus-live-"))
-    );
-    assert!(updated.contains(r#"model = "gpt-5""#));
-    assert!(!updated.contains("model_provider ="));
-    assert!(!updated.contains("model_catalog_json"));
-    assert!(!updated.contains("OPENAI_API_KEY"));
-    assert!(!updated.contains("[model_providers.custom]"));
-    assert!(!updated.contains("[model_providers.CodexPP]"));
-    assert!(!updated.contains("[model_providers]\n"));
-    assert!(!updated.contains("experimental_bearer_token"));
-    assert!(updated.contains("[model_providers.custom1]"));
-    assert!(updated.contains(r#"base_url = "https://keep.example.test/v1""#));
-    assert!(updated.contains("[profiles.default]"));
-}
-
-#[test]
-fn clear_relay_config_removes_pure_api_auth_json_key_and_preserves_other_auth_fields() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("auth.json"),
-        r#"{"OPENAI_API_KEY":"sk-test-redacted","auth_mode":"chatgpt","tokens":{"access_token":"keep"}}"#,
-    )
-    .unwrap();
-    std::fs::write(
-        temp.path().join("config.toml"),
-        r#"model = "gpt-5"
-model_provider = "custom"
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "https://relay.example.test/v1"
-experimental_bearer_token = "sk-test-redacted"
-"#,
-    )
-    .unwrap();
-
-    clear_relay_config_to_home(temp.path()).unwrap();
-
-    let auth: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(temp.path().join("auth.json")).unwrap())
-            .unwrap();
-    let auth_object = auth.as_object().unwrap();
-    assert!(!auth_object.contains_key("OPENAI_API_KEY"));
-    assert_eq!(auth["auth_mode"], "chatgpt");
-    assert_eq!(auth["tokens"]["access_token"], "keep");
-}
-
-#[test]
-fn clear_relay_config_removes_openai_api_key_when_auth_json_only_contains_pure_api_key() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("auth.json"),
-        r#"{"OPENAI_API_KEY":"sk-test-redacted"}"#,
-    )
-    .unwrap();
-
-    clear_relay_config_to_home(temp.path()).unwrap();
-
-    let auth: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(temp.path().join("auth.json")).unwrap())
-            .unwrap();
-    let auth_object = auth.as_object().unwrap();
-    assert!(!auth_object.contains_key("OPENAI_API_KEY"));
-    assert!(auth_object.is_empty());
-}
-
-#[test]
-fn clear_relay_config_with_auth_restores_official_profile_auth_json() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("auth.json"),
-        r#"{"OPENAI_API_KEY":"sk-relay"}"#,
-    )
-    .unwrap();
-    std::fs::write(
-        temp.path().join("config.toml"),
-        r#"model_provider = "custom"
-[model_providers.custom]
-base_url = "https://relay.example.test/v1"
-experimental_bearer_token = "sk-relay"
-"#,
-    )
-    .unwrap();
-
-    clear_relay_config_to_home_with_auth(
-        temp.path(),
-        Some(r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official-edited"}}"#),
-    )
-    .unwrap();
-
-    let auth: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(temp.path().join("auth.json")).unwrap())
-            .unwrap();
-    assert_eq!(auth["auth_mode"], "chatgpt");
-    assert_eq!(auth["tokens"]["access_token"], "official-edited");
-    assert!(auth.get("OPENAI_API_KEY").is_none());
 }
 
 #[test]
@@ -1711,7 +1299,7 @@ command = "npx"
     .to_string();
 
     backfill_relay_profile_from_home_with_common(temp.path(), &mut profile, &mut common).unwrap();
-    apply_relay_profile_files_to_home_with_context(temp.path(), &profile, &common).unwrap();
+    reconcile_profile(temp.path(), &profile, &common).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert_eq!(profile.context_window, "1000000");
@@ -1849,7 +1437,7 @@ experimental_bearer_token = "sk-old"
 }
 
 #[test]
-fn apply_relay_profile_preserves_provider_specific_id_in_live_config() {
+fn reconcile_profile_preserves_provider_specific_id_in_live_config() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("auth.json"),
@@ -1878,7 +1466,7 @@ model = "gpt-5.4"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &provider_b, "").unwrap();
+    reconcile_profile(temp.path(), &provider_b, "").unwrap();
     let live_config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(live_config.contains(r#"model_provider = "aihubmix""#));
     assert!(live_config.contains("[model_providers.aihubmix]"));
@@ -2257,7 +1845,7 @@ experimental_bearer_token = "22222222222222222222222222222222222"
 }
 
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_switches_auth_and_writes_provider_token() {
+fn reconcile_profile_switches_auth_and_writes_provider_token() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("auth.json"),
@@ -2281,7 +1869,7 @@ base_url = "https://relay.example/v1"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let auth = std::fs::read_to_string(temp.path().join("auth.json")).unwrap();
     let auth: serde_json::Value = serde_json::from_str(&auth).unwrap();
@@ -2295,7 +1883,7 @@ base_url = "https://relay.example/v1"
 }
 
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_repairs_incomplete_provider_config() {
+fn reconcile_profile_repairs_incomplete_provider_config() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("config.toml"),
@@ -2322,7 +1910,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains(r#"model = "qwen3-coder""#));
@@ -2338,7 +1926,7 @@ experimental_bearer_token = "sk-new"
 }
 
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_uses_config_contents_as_source() {
+fn reconcile_profile_uses_config_contents_as_source() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -2358,7 +1946,7 @@ requires_openai_auth = true
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains(r#"model = "gpt-5.4""#));
@@ -2373,8 +1961,7 @@ requires_openai_auth = true
 
 #[cfg(windows)]
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_does_not_preserve_computer_use_guard_config_by_default()
- {
+fn reconcile_profile_does_not_preserve_computer_use_guard_config_by_default() {
     let temp = tempfile::tempdir().unwrap();
     let helper = temp
         .path()
@@ -2411,7 +1998,7 @@ requires_openai_auth = true
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains("js_repl = false"));
@@ -2424,8 +2011,7 @@ requires_openai_auth = true
 
 #[cfg(windows)]
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_preserves_computer_use_guard_config_when_enabled()
-{
+fn reconcile_profile_preserves_computer_use_guard_config_when_enabled() {
     let temp = tempfile::tempdir().unwrap();
     let helper = temp
         .path()
@@ -2462,13 +2048,7 @@ requires_openai_auth = true
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-        temp.path(),
-        &profile,
-        "",
-        true,
-    )
-    .unwrap();
+    reconcile_profile_with_guard(temp.path(), &profile, "", true).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains("js_repl = true"));
@@ -2480,7 +2060,7 @@ requires_openai_auth = true
 }
 
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_preserves_unmanaged_live_context_entries() {
+fn reconcile_profile_preserves_unmanaged_live_context_entries() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("config.toml"),
@@ -2518,7 +2098,7 @@ base_url = "https://relay.example/v1"
 command = "managed-command"
 "#;
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, common).unwrap();
+    reconcile_profile(temp.path(), &profile, common).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains("[mcp_servers.manual]"));
@@ -2532,8 +2112,7 @@ command = "managed-command"
 }
 
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_does_not_preserve_unselected_managed_context_entries()
- {
+fn reconcile_profile_does_not_preserve_unselected_managed_context_entries() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("config.toml"),
@@ -2569,7 +2148,7 @@ base_url = "https://relay.example/v1"
 command = "managed-command"
 "#;
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, common).unwrap();
+    reconcile_profile(temp.path(), &profile, common).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains("[mcp_servers.manual]"));
@@ -2656,74 +2235,7 @@ command = "old"
 }
 
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_writes_provider_even_when_auth_has_no_api_key() {
-    let temp = tempfile::tempdir().unwrap();
-    let profile = RelayProfile {
-        id: "relay-empty-auth".to_string(),
-        relay_mode: RelayMode::PureApi,
-        config_contents: r#"model = "gpt-5.5"
-model_provider = "custom"
-
-[model_providers]
-
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "http://192.168.188.245:3001/v1"
-"#
-        .to_string(),
-        auth_contents: "{}".to_string(),
-        ..RelayProfile::default()
-    };
-
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
-
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(config.contains(r#"model = "gpt-5.5""#));
-    assert!(config.contains(r#"model_provider = "custom""#));
-    assert!(config.contains("[model_providers.custom]"));
-    assert!(config.contains(r#"base_url = "http://192.168.188.245:3001/v1""#));
-}
-
-#[test]
-fn apply_relay_profile_to_home_with_switch_rules_switches_auth_even_when_provider_token_exists() {
-    let temp = tempfile::tempdir().unwrap();
-    std::fs::write(
-        temp.path().join("auth.json"),
-        r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official"}}"#,
-    )
-    .unwrap();
-    let profile = RelayProfile {
-        id: "relay-provider-token".to_string(),
-        relay_mode: RelayMode::PureApi,
-        config_contents: r#"model = "gpt-5.5"
-model_provider = "custom"
-
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "http://192.168.188.245:3001/v1"
-experimental_bearer_token = "sk-provider-token"
-"#
-        .to_string(),
-        auth_contents: "{}".to_string(),
-        ..RelayProfile::default()
-    };
-
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
-
-    let auth = std::fs::read_to_string(temp.path().join("auth.json")).unwrap();
-    let auth: serde_json::Value = serde_json::from_str(&auth).unwrap();
-    assert!(auth.as_object().is_some_and(|object| object.is_empty()));
-
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(!config.contains("experimental_bearer_token"));
-}
-
-#[test]
-fn apply_official_mix_profile_clears_live_auth_api_key_and_keeps_login() {
+fn reconcile_official_mix_profile_clears_live_auth_api_key_and_keeps_login() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("auth.json"),
@@ -2750,7 +2262,7 @@ experimental_bearer_token = "sk-official-mix"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let auth = std::fs::read_to_string(temp.path().join("auth.json")).unwrap();
     let auth: serde_json::Value = serde_json::from_str(&auth).unwrap();
@@ -2764,7 +2276,7 @@ experimental_bearer_token = "sk-official-mix"
 }
 
 #[test]
-fn apply_official_mix_profile_keeps_config_token_when_api_key_field_is_empty() {
+fn reconcile_official_mix_profile_keeps_config_token_when_api_key_field_is_empty() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "official-mix".to_string(),
@@ -2786,7 +2298,7 @@ experimental_bearer_token = "sk-from-config"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains(r#"experimental_bearer_token = "sk-from-config""#));
@@ -2827,7 +2339,7 @@ command = "python"
 }
 
 #[test]
-fn apply_relay_profile_to_home_with_switch_rules_survives_official_roundtrip() {
+fn reconcile_profile_survives_official_roundtrip() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("config.toml"),
@@ -2849,12 +2361,13 @@ experimental_bearer_token = "sk-old"
     )
     .unwrap();
 
-    clear_relay_config_to_home(temp.path()).unwrap();
     let mut official = RelayProfile {
+        id: "official".to_string(),
         relay_mode: RelayMode::Official,
         use_common_config: true,
         ..RelayProfile::default()
     };
+    reconcile_profile(temp.path(), &official, "").unwrap();
     let mut common = String::new();
     backfill_relay_profile_from_home_with_common(temp.path(), &mut official, &mut common).unwrap();
 
@@ -2872,7 +2385,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
     normalize_relay_profile_for_storage(&mut relay).unwrap();
-    apply_relay_profile_to_home_with_switch_rules(temp.path(), &relay, "").unwrap();
+    reconcile_profile(temp.path(), &relay, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains(r#"model = "gpt-5.4""#));
@@ -2917,7 +2430,7 @@ fn base64_url_no_pad(value: &str) -> String {
 }
 
 #[test]
-fn apply_relay_profile_generates_model_catalog_for_suffixed_models() {
+fn reconcile_profile_generates_model_catalog_for_suffixed_models() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -2943,7 +2456,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_files_to_home_with_context(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains(r#"model_catalog_json = "model-catalogs/relay-a.json""#));
@@ -2960,7 +2473,7 @@ experimental_bearer_token = "sk-new"
 }
 
 #[test]
-fn apply_relay_profile_no_catalog_when_model_list_has_no_suffix() {
+fn reconcile_profile_no_catalog_when_model_list_has_no_suffix() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -2986,7 +2499,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_files_to_home_with_context(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(!config.contains("model_catalog_json"));
@@ -2995,7 +2508,7 @@ experimental_bearer_token = "sk-new"
 }
 
 #[test]
-fn apply_relay_profile_does_not_overwrite_user_model_catalog_json() {
+fn reconcile_profile_does_not_overwrite_user_model_catalog_json() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -3021,7 +2534,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_files_to_home_with_context(temp.path(), &profile, "").unwrap();
+    reconcile_profile(temp.path(), &profile, "").unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains(r#"model_catalog_json = "/old/catalog.json""#));
@@ -3030,7 +2543,7 @@ experimental_bearer_token = "sk-new"
 }
 
 #[test]
-fn apply_relay_profile_strips_model_suffix_and_generates_catalog() {
+fn reconcile_profile_strips_model_suffix_and_generates_catalog() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-ark".to_string(),
@@ -3056,13 +2569,7 @@ experimental_bearer_token = "sk-ark"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-        temp.path(),
-        &profile,
-        "",
-        false,
-    )
-    .unwrap();
+    reconcile_profile_with_guard(temp.path(), &profile, "", false).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     // 后缀不得进入 config.toml 的 model 字段，否则 codex 无法匹配 catalog
@@ -3081,7 +2588,7 @@ experimental_bearer_token = "sk-ark"
 }
 
 #[test]
-fn apply_relay_profile_strips_suffix_from_config_contents_model() {
+fn reconcile_profile_strips_suffix_from_config_contents_model() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-ark".to_string(),
@@ -3108,13 +2615,7 @@ experimental_bearer_token = "sk-ark"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-        temp.path(),
-        &profile,
-        "",
-        false,
-    )
-    .unwrap();
+    reconcile_profile_with_guard(temp.path(), &profile, "", false).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(!config.contains("[1M]"));
@@ -3130,7 +2631,7 @@ experimental_bearer_token = "sk-ark"
 }
 
 #[test]
-fn apply_relay_profile_regenerates_existing_self_generated_catalog() {
+fn reconcile_profile_regenerates_existing_self_generated_catalog() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -3164,13 +2665,7 @@ experimental_bearer_token = "sk-new"
     )
     .unwrap();
 
-    apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-        temp.path(),
-        &profile,
-        "",
-        false,
-    )
-    .unwrap();
+    reconcile_profile_with_guard(temp.path(), &profile, "", false).unwrap();
 
     let catalog =
         std::fs::read_to_string(temp.path().join("model-catalogs").join("relay-a.json")).unwrap();
@@ -3179,7 +2674,7 @@ experimental_bearer_token = "sk-new"
 }
 
 #[test]
-fn apply_relay_profile_uses_first_model_list_entry_when_model_empty() {
+fn reconcile_profile_uses_first_model_list_entry_when_model_empty() {
     let temp = tempfile::tempdir().unwrap();
     let profile = RelayProfile {
         id: "relay-a".to_string(),
@@ -3202,13 +2697,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-        temp.path(),
-        &profile,
-        "",
-        false,
-    )
-    .unwrap();
+    reconcile_profile_with_guard(temp.path(), &profile, "", false).unwrap();
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     // model 为空时，应取 model_list 第一条的 slug（剥离后缀）写入 config.toml
@@ -3237,7 +2726,7 @@ fn sanitize(value: &str) -> String {
 }
 
 #[test]
-fn apply_model_catalog_uses_model_windows_map() {
+fn reconcile_model_catalog_uses_model_windows_map() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join(".codex");
     std::fs::create_dir_all(&home).unwrap();
@@ -3262,10 +2751,7 @@ experimental_bearer_token = "sk-new"
         ..RelayProfile::default()
     };
 
-    apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-        &home, &profile, "", false,
-    )
-    .unwrap();
+    reconcile_profile_with_guard(&home, &profile, "", false).unwrap();
 
     let catalog_path = home
         .join("model-catalogs")

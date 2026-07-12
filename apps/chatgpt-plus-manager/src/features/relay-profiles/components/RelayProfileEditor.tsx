@@ -1,8 +1,8 @@
 import { Download, MessageCircle, Plus, Settings, ShieldCheck, Stethoscope, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Badge as UiBadge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Badge as UiBadge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
 import { t, tf } from "@/i18n";
 import { Field } from "@/shared/ui/field";
 import { Metric } from "@/shared/ui/metric";

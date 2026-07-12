@@ -1,7 +1,7 @@
 import { Bell, CheckCircle2, ExternalLink, Network, RefreshCw, Rocket, Wrench } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { CardContent } from "@/components/ui/card";
+import { Button } from "@/shared/ui/button";
+import { CardContent } from "@/shared/ui/card";
 import { t } from "@/i18n";
 import type { LaunchStatus, OverviewResult } from "@/shared/contracts/overview";
 import { formatTime } from "@/shared/lib/time";
@@ -102,9 +102,9 @@ export function OverviewScreen({
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title={t("最近启动")} detail={overview?.logs_path ?? t("暂无状态文件")} />
+        <CardHead title={t("最近启动")} detail={overview?.logsPath ?? t("暂无状态文件")} />
         <CardContent>
-          <LatestLaunch status={overview?.latest_launch ?? null} />
+          <LatestLaunch status={overview?.latestLaunch ?? null} />
           <Toolbar>
             <Button onClick={() => void actions.launch()}>
               <Rocket className="h-4 w-4" />
@@ -126,15 +126,10 @@ function healthCopy(item: HealthItem) {
       return { title: t("Codex 版本"), missingDetail: t("未检测到 Codex 应用版本。") };
     case "codex-app":
       return { title: t("Codex 应用"), missingDetail: t("尚未检查 Codex 应用路径。") };
-    case "silent-shortcut":
+    case "app-shortcut":
       return {
-        title: t("静默启动入口"),
-        missingDetail: t("缺少 ChatGPT++ 静默启动快捷方式时可在安装维护页修复。"),
-      };
-    case "management-shortcut":
-      return {
-        title: t("管理工具入口"),
-        missingDetail: t("缺少管理工具快捷方式时可在安装维护页修复。"),
+        title: t("ChatGPT++ 应用入口"),
+        missingDetail: t("缺少 ChatGPT++ 应用快捷方式时可在安装维护页修复。"),
       };
     default:
       return assertNever(item.id);
@@ -151,9 +146,9 @@ function LatestLaunch({ status }: { status: LaunchStatus | null }) {
     <div className="metric-list">
       <Metric label={t("状态")} value={status.status} />
       <Metric label={t("消息")} value={status.message} />
-      <Metric label="Debug" value={String(status.debug_port ?? "-")} />
-      <Metric label="Helper" value={String(status.helper_port ?? "-")} />
-      <Metric label={t("时间")} value={formatTime(status.started_at_ms)} />
+      <Metric label="Debug" value={String(status.debugPort ?? "-")} />
+      <Metric label="Helper" value={String(status.helperPort ?? "-")} />
+      <Metric label={t("时间")} value={formatTime(status.startedAtMs)} />
     </div>
   );
 }

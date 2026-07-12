@@ -6,9 +6,10 @@ pub mod macos;
 pub mod windows;
 
 pub const SILENT_NAME: &str = "ChatGPT++";
-pub const MANAGER_NAME: &str = "ChatGPT++ 管理工具";
+pub const LEGACY_MANAGER_NAME: &str = "ChatGPT++ 管理工具";
 pub const SILENT_BINARY: &str = "chatgpt-plus-plus";
 pub const MANAGER_BINARY: &str = "chatgpt-plus-plus-manager";
+pub const MACOS_MAIN_EXECUTABLE: &str = "ChatGPTPlusPlus";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -31,25 +32,26 @@ pub struct ShortcutState {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct EntryPointState {
-    pub silent_shortcut: ShortcutState,
-    pub management_shortcut: ShortcutState,
+    pub app_shortcut: ShortcutState,
+    pub legacy_management_shortcut: ShortcutState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InstallActionResult {
     pub status: String,
     pub message: String,
-    pub silent_shortcut: ShortcutState,
-    pub management_shortcut: ShortcutState,
+    pub app_shortcut: ShortcutState,
+    pub legacy_management_shortcut: ShortcutState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MacosAppBundle {
     pub app_path: PathBuf,
     pub info_plist: String,
-    pub launch_script: String,
-    pub binary_source: Option<PathBuf>,
-    pub binary_target_name: Option<String>,
+    pub main_binary_source: Option<PathBuf>,
+    pub main_binary_target_name: Option<String>,
+    pub helper_binary_source: Option<PathBuf>,
+    pub helper_binary_target_name: Option<String>,
 }
 
 impl ShortcutState {
@@ -82,8 +84,10 @@ pub fn app_bundle_names() -> (&'static str, &'static str) {
 pub fn inspect_entrypoints() -> EntryPointState {
     let root = default_install_root();
     EntryPointState {
-        silent_shortcut: ShortcutState::from_candidates(entrypoint_candidates(&root, false)),
-        management_shortcut: ShortcutState::from_candidates(entrypoint_candidates(&root, true)),
+        app_shortcut: ShortcutState::from_candidates(entrypoint_candidates(&root, false)),
+        legacy_management_shortcut: ShortcutState::from_candidates(entrypoint_candidates(
+            &root, true,
+        )),
     }
 }
 
@@ -109,8 +113,8 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> windows::Windo
     windows::build_windows_entrypoint_plan(options)
 }
 
-pub fn build_macos_app_bundle(options: &InstallOptions, manager: bool) -> MacosAppBundle {
-    macos::build_app_bundle(options, manager)
+pub fn build_macos_app_bundle(options: &InstallOptions) -> MacosAppBundle {
+    macos::build_app_bundle(options)
 }
 
 pub fn remove_owned_data() -> std::io::Result<()> {
@@ -133,7 +137,7 @@ pub fn default_install_root() -> Option<PathBuf> {
     {
         let sys_apps = PathBuf::from("/Applications");
         if sys_apps.join(format!("{SILENT_NAME}.app")).exists()
-            || sys_apps.join(format!("{MANAGER_NAME}.app")).exists()
+            || sys_apps.join(format!("{LEGACY_MANAGER_NAME}.app")).exists()
         {
             return Some(sys_apps);
         }
@@ -205,14 +209,14 @@ fn action_result(result: anyhow::Result<()>, success_message: &str) -> InstallAc
         Ok(()) => InstallActionResult {
             status: "ok".to_string(),
             message: success_message.to_string(),
-            silent_shortcut: state.silent_shortcut,
-            management_shortcut: state.management_shortcut,
+            app_shortcut: state.app_shortcut,
+            legacy_management_shortcut: state.legacy_management_shortcut,
         },
         Err(error) => InstallActionResult {
             status: "failed".to_string(),
             message: error.to_string(),
-            silent_shortcut: state.silent_shortcut,
-            management_shortcut: state.management_shortcut,
+            app_shortcut: state.app_shortcut,
+            legacy_management_shortcut: state.legacy_management_shortcut,
         },
     }
 }
@@ -221,7 +225,11 @@ fn entrypoint_candidates(root: &Option<PathBuf>, manager: bool) -> Vec<PathBuf> 
     let Some(root) = root else {
         return Vec::new();
     };
-    let name = if manager { MANAGER_NAME } else { SILENT_NAME };
+    let name = if manager {
+        LEGACY_MANAGER_NAME
+    } else {
+        SILENT_NAME
+    };
     if cfg!(windows) {
         vec![root.join(format!("{name}.lnk"))]
     } else if cfg!(target_os = "macos") {
@@ -259,13 +267,15 @@ pub fn companion_binary_path_from_exe(exe: &Path, binary: &str) -> PathBuf {
 
 fn macos_companion_binary_from_exe(exe: &Path, binary: &str) -> Option<PathBuf> {
     let (applications_dir, app_name) = macos_applications_dir_and_app_name_from_exe(exe)?;
+    let app_root = applications_dir.join(&app_name);
+    let contents = app_root.join("Contents");
+    let executable_dir = exe.parent().unwrap_or_else(|| Path::new("."));
+    let is_embedded_helper =
+        executable_dir.file_name().and_then(|name| name.to_str()) == Some("Helpers");
+
     if binary == SILENT_BINARY {
         if app_name == format!("{SILENT_NAME}.app") {
-            return Some(macos_preferred_bundle_binary(
-                exe,
-                SILENT_BINARY,
-                "ChatGPTPlusPlus",
-            ));
+            return Some(contents.join("Helpers").join(SILENT_BINARY));
         }
         let macos = applications_dir
             .join(format!("{SILENT_NAME}.app"))
@@ -280,7 +290,12 @@ fn macos_companion_binary_from_exe(exe: &Path, binary: &str) -> Option<PathBuf> 
         );
     }
     if binary == MANAGER_BINARY {
-        if app_name == format!("{MANAGER_NAME}.app") {
+        if app_name == format!("{SILENT_NAME}.app")
+            && (is_embedded_helper || contents.join("Helpers").join(SILENT_BINARY).exists())
+        {
+            return Some(contents.join("MacOS").join(MACOS_MAIN_EXECUTABLE));
+        }
+        if app_name == format!("{LEGACY_MANAGER_NAME}.app") {
             return Some(macos_preferred_bundle_binary(
                 exe,
                 MANAGER_BINARY,
@@ -288,7 +303,7 @@ fn macos_companion_binary_from_exe(exe: &Path, binary: &str) -> Option<PathBuf> 
             ));
         }
         let macos = applications_dir
-            .join(format!("{MANAGER_NAME}.app"))
+            .join(format!("{LEGACY_MANAGER_NAME}.app"))
             .join("Contents")
             .join("MacOS");
         return Some(
@@ -300,6 +315,65 @@ fn macos_companion_binary_from_exe(exe: &Path, binary: &str) -> Option<PathBuf> 
         );
     }
     None
+}
+
+pub fn legacy_entrypoint_paths(root: &Path, windows: bool) -> Vec<PathBuf> {
+    let extension = if windows { "lnk" } else { "app" };
+    vec![root.join(format!("{LEGACY_MANAGER_NAME}.{extension}"))]
+}
+
+pub fn cleanup_legacy_user_entrypoints() -> anyhow::Result<Vec<PathBuf>> {
+    let mut removed = Vec::new();
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(exe) = std::env::current_exe()
+            && let Some((applications_dir, app_name)) =
+                macos_applications_dir_and_app_name_from_exe(&exe)
+            && app_name == format!("{SILENT_NAME}.app")
+        {
+            removed.extend(cleanup_legacy_entrypoints_at(&applications_dir, false)?);
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let mut roots = Vec::new();
+        if let Some(desktop) = crate::windows_integration::desktop_dir() {
+            roots.push(desktop);
+        }
+        if let Some(app_data) = std::env::var_os("APPDATA") {
+            roots.push(
+                PathBuf::from(app_data)
+                    .join("Microsoft")
+                    .join("Windows")
+                    .join("Start Menu")
+                    .join("Programs")
+                    .join(SILENT_NAME),
+            );
+        }
+        for root in roots {
+            removed.extend(cleanup_legacy_entrypoints_at(&root, true)?);
+        }
+    }
+
+    Ok(removed)
+}
+
+fn cleanup_legacy_entrypoints_at(root: &Path, windows: bool) -> anyhow::Result<Vec<PathBuf>> {
+    let mut removed = Vec::new();
+    for path in legacy_entrypoint_paths(root, windows) {
+        if !path.exists() {
+            continue;
+        }
+        if windows {
+            std::fs::remove_file(&path)?;
+        } else {
+            std::fs::remove_dir_all(&path)?;
+        }
+        removed.push(path);
+    }
+    Ok(removed)
 }
 
 fn macos_preferred_bundle_binary(
@@ -352,4 +426,28 @@ pub(crate) fn install_root_or_default(options: &InstallOptions) -> PathBuf {
         .clone()
         .or_else(default_install_root)
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_cleanup_removes_only_the_old_entrypoint_and_preserves_user_data() {
+        let root = tempfile::tempdir().unwrap();
+        let legacy = root.path().join("ChatGPT++ 管理工具.app");
+        let user_data = root.path().join(".chatgpt-plus-plus");
+        std::fs::create_dir_all(&legacy).unwrap();
+        std::fs::create_dir_all(&user_data).unwrap();
+        std::fs::write(user_data.join("settings.json"), "keep").unwrap();
+
+        let removed = cleanup_legacy_entrypoints_at(root.path(), false).unwrap();
+
+        assert_eq!(removed, vec![legacy.clone()]);
+        assert!(!legacy.exists());
+        assert_eq!(
+            std::fs::read_to_string(user_data.join("settings.json")).unwrap(),
+            "keep"
+        );
+    }
 }

@@ -16,7 +16,7 @@
   <img alt="Tauri" src="https://img.shields.io/badge/tauri-2.x-24C8DB">
 </p>
 
-ChatGPT++ is an external enhancement launcher and manager for the Codex App. It does not modify the original Codex installation. Instead, it starts Codex externally and injects enhancements through the Chromium DevTools Protocol.
+ChatGPT++ is a unified enhancement app for the Codex App. It does not modify the original Codex installation. Its main UI starts Codex through an internal launcher helper and injects enhancements through the Chromium DevTools Protocol.
 
 ## Quick Start
 
@@ -26,12 +26,13 @@ Download the latest installer from [GitHub Releases](https://github.com/Gzmomo00
 - macOS Intel: `ChatGPTPlusPlus-*-macos-x64.dmg`
 - macOS Apple Silicon: `ChatGPTPlusPlus-*-macos-arm64.dmg`
 
-After installation, two entry points are available:
+Quick use:
 
-- `ChatGPT++`: a silent launcher. It does not show the manager UI and only starts Codex with ChatGPT++ injection.
-- `ChatGPT++ Manager`: a Tauri control panel for launch, diagnostics, repair, updates, relay injection, enhancements, and user scripts.
+1. Install `ChatGPT++`.
+2. Open `ChatGPT++` to enter the unified main interface.
+3. Start Codex from the app, or configure relay injection, enhancements, and user scripts first.
 
-The Windows installer creates desktop and Start Menu shortcuts. The macOS DMG installs `/Applications/ChatGPT++.app` and `/Applications/ChatGPT++ 管理工具.app`.
+Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. macOS installs only `/Applications/ChatGPT++.app`. The complete enhanced launch flow still runs through an internal launcher helper inside the app bundle or install directory; it is not a separate user application and has no shortcut.
 
 ## Sponsors
 
@@ -114,21 +115,21 @@ The Windows installer creates desktop and Start Menu shortcuts. The macOS DMG in
 
 ## Highlights
 
-- Rust backend and silent launcher with no extra runtime requirement.
-- Tauri + React manager with dark/light theme support.
+- Rust backend and internal launcher helper with no extra runtime requirement.
+- Tauri + React main interface with dark/light theme support.
 - External CDP injection. No `app.asar` patching and no DLL writes into the Codex installation.
 - Relay injection mode with multiple relay profiles, `ChatGPTPlusPlus` provider configuration, and a one-click switch back to official ChatGPT login mode.
 - Traditional enhancement mode with plugin marketplace unlock, session delete, Markdown export, project move, and more.
 - Paste fix: when pasting from Word or other rich-text sources into the Codex composer, only keep the plain text so Codex does not treat the clipboard content as an image or file attachment. Off by default; requires a Codex relaunch to take effect.
-  - **Usage note**: after toggling in the manager, click the "保存增强设置" / "Save enhancement settings" button to persist, then restart ChatGPT++ for the change to take effect.
+  - **Usage note**: after toggling in ChatGPT++, click the "保存增强设置" / "Save enhancement settings" button to persist, then restart Codex for the change to take effect.
 - Independent user script management with startup injection.
 - Provider Sync to keep historical sessions visible after switching providers.
 - Zed open entry detects remote SSH context and opens the matching remote file in Zed Remote Development from Codex.
 - Per-model context window configuration: the "Model list" is split into two columns, model name on the left and context window (e.g. `1M`, `200K`, or `1000000`) on the right. ChatGPT++ auto-generates `model_catalog_json` and injects it into `config.toml`; the matching window is applied when you switch models. Leave the window empty to use Codex's default length.
 - Upstream worktree creation: create new worktrees from `upstream/<base-branch>` after fetching the remote branch, reducing conflicts caused by stale local HEAD state.
-- GitHub Release updates. Both the manager and silent launcher can detect available updates.
+- GitHub Release updates from the unified ChatGPT++ UI; the internal helper can ask the main app to show the update page.
 - Windows single instance, no console window, administrator manifest, and system Desktop path detection.
-- Separate macOS x64 and arm64 DMGs. The silent launcher hides its Dock icon.
+- Separate macOS x64 and arm64 DMGs. The internal launcher lives under `ChatGPT++.app/Contents/Helpers/` and is not a separate Dock app.
 
 ## Relay Injection
 
@@ -149,7 +150,7 @@ Before applying relay injection, run a minimal preflight:
 4. Only record whether the key exists and whether auth passed. Do not paste real keys into logs, screenshots, or issues.
 5. Make sure `~/.codex/config.toml` has a backup so clearing API mode can safely roll back.
 
-In the manager's Relay Injection page:
+In ChatGPT++'s Relay Injection page:
 
 1. Make sure ChatGPT login status is detected.
 2. Add one or more relay profiles with Base URL and Key.
@@ -173,7 +174,7 @@ To return to the official login mode, use the clear API mode button in the Relay
 
 ## Enhancements
 
-Enhancements are controlled in the manager. Enhancement injection is enabled by default. When disabled, ChatGPT++ will not inject its menu or scripts.
+Enhancements are controlled in ChatGPT++. Enhancement injection is enabled by default. When disabled, ChatGPT++ will not inject its menu or scripts.
 
 When relay injection mode is active, plugin marketplace unlock is unnecessary, and the UI will say so. Other enhancements, including session delete, export, move, paste fix, recommendations, and user scripts, can still be used.
 
@@ -192,7 +193,7 @@ Requests automatically append a `?v=timestamp` cache buster to avoid stale CDN c
 
 ChatGPT++ publishes installers through GitHub Releases. Windows builds an NSIS installer, while macOS builds separate Intel x64 and Apple Silicon arm64 DMGs.
 
-The manager's About page can check and start updates. When the silent launcher finds a new version, it opens the manager directly on the update prompt.
+ChatGPT++'s About page can check and start updates. When the internal launcher helper finds a new version, it opens the ChatGPT++ main interface directly on the update prompt.
 
 ## Data Locations
 
@@ -256,8 +257,8 @@ Project structure:
 
 ```text
 apps/
-  chatgpt-plus-launcher/          Silent launcher
-  chatgpt-plus-manager/           Tauri manager
+  chatgpt-plus-launcher/          Internal launcher helper
+  chatgpt-plus-manager/           ChatGPT++ Tauri main app
 assets/inject/
   renderer-inject.js            Enhancement script injected into Codex
 crates/

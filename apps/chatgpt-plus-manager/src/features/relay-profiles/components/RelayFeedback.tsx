@@ -1,7 +1,7 @@
 import { CheckCircle2, Info, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
 
-import { Badge as UiBadge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge as UiBadge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
 import { t } from "@/i18n";
 import type {
   EnvConflictsResult,

@@ -627,7 +627,7 @@ fn ensure_marketplace_configs_with_plugins(
     if updated.as_bytes() == without_bom.as_bytes() {
         return Ok(false);
     }
-    crate::settings::atomic_write(&config_path, updated.as_bytes())?;
+    crate::atomic_file::write(&config_path, updated.as_bytes())?;
     Ok(true)
 }
 

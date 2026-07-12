@@ -47,7 +47,11 @@ if (false) {
   edit(opened, { type: "setMode", mode: "mixedApi" });
 }
 
-function profile(patch: Partial<RelayProfile> = {}): RelayProfile {
+type RelayProfileFixturePatch = {
+  [Key in keyof RelayProfile]?: RelayProfile[Key];
+};
+
+function profile(patch: RelayProfileFixturePatch = {}): RelayProfile {
   return {
     id: "relay-a",
     name: "Relay A",
@@ -110,7 +114,7 @@ describe("Relay profile editor", () => {
     }));
     assert.equal(activated.ok, true);
 
-    const app = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    const app = readFileSync(new URL("../../app/App.tsx", import.meta.url), "utf8");
     const relayScreen = readFileSync(
       new URL("../../screens/relay-profiles/RelayProfilesScreen.tsx", import.meta.url),
       "utf8",
@@ -151,9 +155,9 @@ describe("Relay profile editor", () => {
     }
     assert.match(relayDetail, /RelayProfileEditorState/);
     assert.doesNotMatch(app, /from ["']\.\/model-windows["']/);
-    assert.doesNotMatch(app, /patch as unknown as Partial<RelayProfile>/);
+    assert.doesNotMatch(app, /patch as unknown as /);
     assert.doesNotMatch(app, /type: "setAggregate", aggregate: next\.aggregate/);
-    assert.doesNotMatch(app, /modelList: _modelList|modelWindows: _modelWindows/);
+    assert.doesNotMatch(app, /model(List|Windows):\s+_[A-Za-z]+/);
     assert.equal(app.includes(removedCollectionEditor), false);
     assert.match(
       relayDetail,

@@ -2299,9 +2299,9 @@
   async function openManagerFromCodex() {
     const result = await postJson("/manager/open", {});
     if (result.status === "ok") {
-      showToast("管理工具已打开", null);
+      showToast("ChatGPT++ 主界面已打开", null);
     } else {
-      showToast(result.message || "打开管理工具失败", null);
+      showToast(result.message || "打开 ChatGPT++ 主界面失败", null);
     }
   }
 
@@ -2572,7 +2572,7 @@
             </div>
             <div class="chatgpt-plus-row">
               <div><div class="chatgpt-plus-row-title">页面增强模式</div><div class="chatgpt-plus-row-description">${chatgptPlusBackendSettings.launchMode === "relay" ? "兼容增强：保留会话删除、导出、项目移动和用户脚本，仅关闭插件市场相关增强。" : "完整增强：加载插件市场、项目路径移动等全部页面能力。"}</div></div>
-              <button type="button" class="chatgpt-plus-action-button" data-codex-open-manager="true">打开管理工具</button>
+              <button type="button" class="chatgpt-plus-action-button" data-codex-open-manager="true">打开 ChatGPT++</button>
             </div>
             <div class="chatgpt-plus-row">
               <div><div class="chatgpt-plus-row-title">原生菜单栏位置</div><div class="chatgpt-plus-row-description">把 ChatGPT++ 菜单插入顶部原生菜单栏；默认关闭以避免页面重渲染冲突。</div></div>

@@ -17,7 +17,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { CheckCircle2, Copy, Edit3, GripVertical, TestTube, Trash2 } from "lucide-react";
 import type { CSSProperties } from "react";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/ui/button";
 import { t, tf } from "@/i18n";
 import { commitRelayChanges } from "../controller";
 import { edit, open as openProfileEditor } from "../editor";

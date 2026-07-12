@@ -8,20 +8,19 @@ export type PathState = {
 export type LaunchStatus = {
   status: string;
   message: string;
-  started_at_ms: number;
-  debug_port: number | null;
-  helper_port: number | null;
-  codex_app: string | null;
+  startedAtMs: number;
+  debugPort: number | null;
+  helperPort: number | null;
+  codexApp: string | null;
 };
 
 export type OverviewResult = CommandResult<{
-  codex_app: PathState;
-  codex_version: string | null;
-  silent_shortcut: PathState;
-  management_shortcut: PathState;
-  latest_launch: LaunchStatus | null;
-  current_version: string;
-  update_status: string;
-  settings_path: string;
-  logs_path: string;
+  codexApp: PathState;
+  codexVersion: string | null;
+  appShortcut: PathState;
+  latestLaunch: LaunchStatus | null;
+  currentVersion: string;
+  updateStatus: string;
+  settingsPath: string;
+  logsPath: string;
 }>;

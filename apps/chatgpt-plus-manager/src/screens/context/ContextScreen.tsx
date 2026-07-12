@@ -1,10 +1,10 @@
 import { Edit3, Plus, Save, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/shared/ui/button";
+import { CardContent } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Textarea } from "@/shared/ui/textarea";
 import {
   readContextCatalog,
   type ContextCatalogSettings,

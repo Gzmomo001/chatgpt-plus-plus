@@ -51,14 +51,6 @@ pub struct RelayStatus {
     pub has_bearer_token: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct RelayApplyResult {
-    pub(super) config_path: String,
-    pub(super) backup_path: Option<String>,
-    pub(super) configured: bool,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayProfileTestResult {
     pub http_status: u16,
@@ -108,7 +100,7 @@ pub fn set_codex_goals_feature_in_home(home: &Path, enabled: bool) -> anyhow::Re
         }
         Err(_) => set_codex_goals_feature_text_fallback(&existing, enabled),
     };
-    crate::settings::atomic_write(&config_path, updated.as_bytes())
+    crate::atomic_file::write(&config_path, updated.as_bytes())
 }
 
 fn set_codex_goals_feature_text_fallback(existing: &str, enabled: bool) -> String {
@@ -223,82 +215,12 @@ pub fn relay_config_status_from_home(home: &Path) -> RelayConfigStatus {
     }
 }
 
-#[cfg(test)]
-fn apply_relay_config_to_home(
-    home: &Path,
-    base_url: &str,
-    bearer_token: &str,
-) -> anyhow::Result<RelayApplyResult> {
-    apply_relay_config_to_home_with_protocol(
-        home,
-        base_url,
-        bearer_token,
-        RelayProtocol::Responses,
-        crate::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
-    )
-}
-
-#[cfg(test)]
-fn apply_relay_config_to_home_with_protocol(
-    home: &Path,
-    base_url: &str,
-    bearer_token: &str,
-    protocol: RelayProtocol,
-    proxy_port: u16,
-) -> anyhow::Result<RelayApplyResult> {
-    let base_url = base_url.trim();
-    if base_url.is_empty() {
-        anyhow::bail!("中转 Base URL 不能为空");
-    }
-    let bearer_token = bearer_token.trim();
-    if bearer_token.is_empty() {
-        anyhow::bail!("中转 Key 不能为空");
-    }
-    let codex_base_url = codex_base_url_for_protocol(base_url, protocol, proxy_port);
-    let updated = upsert_model_provider_config("", &codex_base_url, bearer_token)?;
-    let auth_contents = serde_json::to_string_pretty(&json!({
-        "OPENAI_API_KEY": bearer_token
-    }))?;
-    let backup_path =
-        write_codex_live_atomic(home, Some(&updated), Some(auth_contents.as_bytes()), false)?;
-    let status = relay_config_status_from_home(home);
-    Ok(RelayApplyResult {
-        config_path: status.config_path,
-        backup_path,
-        configured: status.configured,
-    })
-}
-
-#[cfg(test)]
-fn apply_pure_api_config_to_home(
-    home: &Path,
-    base_url: &str,
-    bearer_token: &str,
-) -> anyhow::Result<RelayApplyResult> {
-    apply_pure_api_config_to_home_with_protocol(
-        home,
-        base_url,
-        bearer_token,
-        RelayProtocol::Responses,
-        crate::protocol_proxy::DEFAULT_PROTOCOL_PROXY_PORT,
-    )
-}
-
-#[cfg(test)]
-fn apply_relay_files_to_home(
-    home: &Path,
-    config_contents: &str,
-    auth_contents: &str,
-) -> anyhow::Result<RelayApplyResult> {
-    apply_relay_files_to_home_with_computer_use_guard(home, config_contents, auth_contents, false)
-}
-
 fn apply_relay_files_to_home_with_computer_use_guard(
     home: &Path,
     config_contents: &str,
     auth_contents: &str,
     preserve_computer_use_guard: bool,
-) -> anyhow::Result<RelayApplyResult> {
+) -> anyhow::Result<Option<String>> {
     if config_contents.trim().is_empty() {
         anyhow::bail!("config.toml 内容不能为空");
     }
@@ -311,80 +233,7 @@ fn apply_relay_files_to_home_with_computer_use_guard(
         preserve_computer_use_guard,
     )?;
 
-    let status = relay_config_status_from_home(home);
-    Ok(RelayApplyResult {
-        config_path: status.config_path,
-        backup_path,
-        configured: status.configured,
-    })
-}
-
-#[cfg(test)]
-fn apply_relay_files_to_home_with_common(
-    home: &Path,
-    config_contents: &str,
-    auth_contents: &str,
-    common_config_contents: &str,
-) -> anyhow::Result<RelayApplyResult> {
-    let config_contents = merge_common_config_into_config(config_contents, common_config_contents)?;
-    apply_relay_files_to_home(home, &config_contents, auth_contents)
-}
-
-#[cfg(test)]
-fn apply_relay_files_to_home_with_context(
-    home: &Path,
-    config_contents: &str,
-    auth_contents: &str,
-    common_config_contents: &str,
-    selection: &RelayContextSelection,
-    context_window: &str,
-    auto_compact_limit: &str,
-) -> anyhow::Result<RelayApplyResult> {
-    let selected_common = filter_common_config_for_selection(common_config_contents, selection)?;
-    let config_with_common = merge_common_config_into_config(config_contents, &selected_common)?;
-    let config_with_common =
-        preserve_unmanaged_live_context_entries(home, &config_with_common, common_config_contents)?;
-    let config_with_limits =
-        apply_context_limits_to_config(&config_with_common, context_window, auto_compact_limit)?;
-    apply_relay_files_to_home(home, &config_with_limits, auth_contents)
-}
-
-#[cfg(test)]
-fn apply_relay_profile_files_to_home_with_context(
-    home: &Path,
-    profile: &RelayProfile,
-    common_config_contents: &str,
-) -> anyhow::Result<RelayApplyResult> {
-    let selected_common = if profile.use_common_config {
-        filter_common_config_for_profile(common_config_contents, profile)?
-    } else {
-        String::new()
-    };
-    let profile_config = complete_relay_profile_config(profile)?;
-    let config_with_common = merge_common_config_into_config(&profile_config, &selected_common)?;
-    let config_with_common =
-        preserve_unmanaged_live_context_entries(home, &config_with_common, common_config_contents)?;
-    let config_with_limits = apply_context_limits_to_config(
-        &config_with_common,
-        &profile.context_window,
-        &profile.auto_compact_limit,
-    )?;
-    let config_with_catalog = apply_model_catalog_to_config(home, profile, &config_with_limits)?;
-    apply_relay_files_to_home(home, &config_with_catalog, &profile.auth_contents)
-}
-
-#[cfg(test)]
-fn apply_relay_profile_to_home_with_switch_rules(
-    home: &Path,
-    profile: &RelayProfile,
-    common_config_contents: &str,
-) -> anyhow::Result<RelayApplyResult> {
-    apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
-        home,
-        profile,
-        common_config_contents,
-        false,
-    )
+    Ok(backup_path)
 }
 
 pub(super) fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_guard(
@@ -392,7 +241,7 @@ pub(super) fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_gua
     profile: &RelayProfile,
     common_config_contents: &str,
     preserve_computer_use_guard: bool,
-) -> anyhow::Result<RelayApplyResult> {
+) -> anyhow::Result<Option<String>> {
     let selected_common = if profile.use_common_config {
         filter_common_config_for_profile(common_config_contents, profile)?
     } else {
@@ -425,60 +274,6 @@ pub(super) fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_gua
             preserve_computer_use_guard,
         )
     }
-}
-
-#[cfg(test)]
-fn apply_relay_config_file_to_home(
-    home: &Path,
-    config_contents: &str,
-) -> anyhow::Result<RelayApplyResult> {
-    let config_contents = config_contents
-        .strip_prefix('\u{feff}')
-        .unwrap_or(config_contents);
-    if config_contents.trim().is_empty() {
-        anyhow::bail!("config.toml 内容不能为空");
-    }
-    std::fs::create_dir_all(home)?;
-
-    let backup_path = write_codex_live_atomic(home, Some(config_contents), None, false)?;
-
-    let status = relay_config_status_from_home(home);
-    Ok(RelayApplyResult {
-        config_path: status.config_path,
-        backup_path,
-        configured: status.configured,
-    })
-}
-
-#[cfg(test)]
-fn apply_pure_api_config_to_home_with_protocol(
-    home: &Path,
-    base_url: &str,
-    bearer_token: &str,
-    protocol: RelayProtocol,
-    proxy_port: u16,
-) -> anyhow::Result<RelayApplyResult> {
-    let base_url = base_url.trim();
-    if base_url.is_empty() {
-        anyhow::bail!("中转 Base URL 不能为空");
-    }
-    let bearer_token = bearer_token.trim();
-    if bearer_token.is_empty() {
-        anyhow::bail!("中转 Key 不能为空");
-    }
-    let codex_base_url = codex_base_url_for_protocol(base_url, protocol, proxy_port);
-    let updated = upsert_model_provider_config("", &codex_base_url, bearer_token)?;
-    let auth_contents = serde_json::to_string_pretty(&json!({
-        "OPENAI_API_KEY": bearer_token
-    }))?;
-    let backup_path =
-        write_codex_live_atomic(home, Some(&updated), Some(auth_contents.as_bytes()), false)?;
-    let status = relay_config_status_from_home(home);
-    Ok(RelayApplyResult {
-        config_path: status.config_path,
-        backup_path,
-        configured: status.configured,
-    })
 }
 
 pub async fn test_relay_profile(
@@ -580,24 +375,11 @@ fn codex_base_url_for_protocol(base_url: &str, protocol: RelayProtocol, proxy_po
     }
 }
 
-#[cfg(test)]
-fn clear_relay_config_to_home(home: &Path) -> anyhow::Result<RelayApplyResult> {
-    clear_relay_config_to_home_with_auth(home, None)
-}
-
-#[cfg(test)]
-fn clear_relay_config_to_home_with_auth(
-    home: &Path,
-    auth_contents: Option<&str>,
-) -> anyhow::Result<RelayApplyResult> {
-    clear_relay_config_to_home_with_auth_and_computer_use_guard(home, auth_contents, false)
-}
-
 pub(super) fn clear_relay_config_to_home_with_auth_and_computer_use_guard(
     home: &Path,
     auth_contents: Option<&str>,
     preserve_computer_use_guard: bool,
-) -> anyhow::Result<RelayApplyResult> {
+) -> anyhow::Result<Option<String>> {
     std::fs::create_dir_all(home)?;
     let auth_bytes = match auth_contents {
         Some(contents) if !contents.trim().is_empty() => Some(contents.as_bytes().to_vec()),
@@ -627,12 +409,7 @@ pub(super) fn clear_relay_config_to_home_with_auth_and_computer_use_guard(
         auth_bytes.as_deref(),
         preserve_computer_use_guard,
     )?;
-    let status = relay_config_status_from_home(home);
-    Ok(RelayApplyResult {
-        config_path: status.config_path,
-        backup_path,
-        configured: status.configured,
-    })
+    Ok(backup_path)
 }
 
 fn pure_api_auth_json_removed(home: &Path) -> anyhow::Result<Option<Vec<u8>>> {
@@ -1096,14 +873,14 @@ fn write_codex_live_atomic(
     let mut auth_written = false;
 
     if let Some(auth_bytes) = auth_bytes {
-        if let Err(error) = crate::settings::atomic_write(&auth_path, auth_bytes) {
+        if let Err(error) = crate::atomic_file::write(&auth_path, auth_bytes) {
             return Err(error.context("写入 auth.json 失败"));
         }
         auth_written = true;
     }
 
     if let Some(config_text) = config_text {
-        if let Err(error) = crate::settings::atomic_write(&config_path, config_text.as_bytes()) {
+        if let Err(error) = crate::atomic_file::write(&config_path, config_text.as_bytes()) {
             if auth_written {
                 let _ = restore_optional_file(&auth_path, old_auth.as_deref());
             }
@@ -1385,6 +1162,7 @@ fn validate_toml_config(config_text: &str, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[cfg(windows)]
 fn normalize_config_text_for_write(config_text: &str) -> String {
     config_text.trim_start_matches('\u{feff}').to_string()
 }
@@ -2013,63 +1791,6 @@ fn complete_relay_profile_config(profile: &RelayProfile) -> anyhow::Result<Strin
     ))
 }
 
-pub fn normalize_relay_profile_for_storage(profile: &mut RelayProfile) -> anyhow::Result<()> {
-    if profile.model_windows.trim().is_empty() && profile.model_list.contains('[') {
-        let (clean_list, windows) =
-            crate::model_suffix::migrate_model_list_with_suffixes(&profile.model_list);
-        profile.model_list = clean_list;
-        profile.model_windows = serde_json::to_string(&windows).unwrap_or_default();
-    }
-    if profile.relay_mode == crate::settings::RelayMode::Official && !profile.official_mix_api_key {
-        let has_api_config = !profile.base_url.trim().is_empty()
-            || !profile.api_key.trim().is_empty()
-            || codex_auth_api_key(&profile.auth_contents).is_some()
-            || config_has_model_provider(profile.config_contents.as_str());
-        if has_api_config {
-            profile.config_contents.clear();
-        }
-        if !profile.model_list.trim().is_empty() {
-            profile.model_list = merge_model_into_model_list(&profile.model, &profile.model_list);
-        }
-        profile.model.clear();
-        profile.base_url.clear();
-        profile.upstream_base_url.clear();
-        profile.api_key.clear();
-        if auth_contents_looks_like_chatgpt_auth(&profile.auth_contents) {
-            profile.auth_contents =
-                remove_openai_api_key_from_auth_contents(&profile.auth_contents)?;
-        } else {
-            profile.auth_contents.clear();
-        }
-        return Ok(());
-    }
-    let source_base_url = relay_profile_base_url(profile);
-    let source_api_key = relay_profile_api_key(profile);
-    if !profile.config_contents.trim().is_empty()
-        || profile.relay_mode == crate::settings::RelayMode::PureApi
-        || profile.official_mix_api_key
-    {
-        profile.config_contents = complete_relay_profile_config(profile)?;
-    }
-    if profile.relay_mode == crate::settings::RelayMode::PureApi
-        && profile.auth_contents.trim().is_empty()
-        && !source_api_key.trim().is_empty()
-    {
-        profile.auth_contents = serde_json::to_string_pretty(&json!({
-            "OPENAI_API_KEY": source_api_key.trim()
-        }))?;
-    }
-    if profile.relay_mode == crate::settings::RelayMode::Official {
-        profile.auth_contents = remove_openai_api_key_from_auth_contents(&profile.auth_contents)?;
-    }
-    profile.model = relay_profile_model(profile);
-    profile.model_list = merge_model_into_model_list(&profile.model, &profile.model_list);
-    profile.upstream_base_url = source_base_url.clone();
-    profile.base_url = source_base_url;
-    profile.api_key = relay_profile_api_key(profile);
-    Ok(())
-}
-
 fn remove_openai_api_key_from_auth_contents(auth_contents: &str) -> anyhow::Result<String> {
     if auth_contents.trim().is_empty() {
         return Ok(String::new());
@@ -2084,48 +1805,6 @@ fn remove_openai_api_key_from_auth_contents(auth_contents: &str) -> anyhow::Resu
         return Ok(String::new());
     }
     Ok(format!("{}\n", serde_json::to_string_pretty(&value)?))
-}
-
-fn merge_model_into_model_list(model: &str, model_list: &str) -> String {
-    let model = model.trim();
-    let mut models = Vec::new();
-    if !model.is_empty() {
-        models.push(model.to_string());
-    }
-    for item in model_list.split(['\r', '\n', ',']).map(str::trim) {
-        if !item.is_empty() && !models.iter().any(|existing| existing == item) {
-            models.push(item.to_string());
-        }
-    }
-    models.join("\n")
-}
-
-fn config_has_model_provider(config_contents: &str) -> bool {
-    parse_toml_document(config_contents)
-        .ok()
-        .and_then(|doc| {
-            doc.get("model_provider")
-                .and_then(Item::as_str)
-                .map(str::to_string)
-        })
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
-}
-
-fn auth_contents_looks_like_chatgpt_auth(contents: &str) -> bool {
-    let Ok(value) = serde_json::from_str::<Value>(contents) else {
-        return false;
-    };
-    let is_chatgpt = value
-        .get("auth_mode")
-        .and_then(Value::as_str)
-        .map(|mode| mode.eq_ignore_ascii_case("chatgpt"))
-        .unwrap_or(false);
-    is_chatgpt
-        && value
-            .get("tokens")
-            .map(tokens_have_login_secret)
-            .unwrap_or(false)
 }
 
 fn provider_string_from_config(config_contents: &str, key: &str) -> Option<String> {
@@ -2286,7 +1965,7 @@ fn read_optional_bytes(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
 
 fn restore_optional_file(path: &Path, contents: Option<&[u8]>) -> anyhow::Result<()> {
     match contents {
-        Some(contents) => crate::settings::atomic_write(path, contents),
+        Some(contents) => crate::atomic_file::write(path, contents),
         None => match std::fs::remove_file(path) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -2514,33 +2193,6 @@ fn root_key_value<'a>(contents: &'a str, key: &str) -> Option<&'a str> {
         }
     }
     None
-}
-
-fn upsert_model_provider_config(
-    contents: &str,
-    base_url: &str,
-    bearer_token: &str,
-) -> anyhow::Result<String> {
-    let mut doc = parse_toml_document(contents)?;
-    let provider_id = active_or_default_provider_id(&doc);
-    set_provider_id(&mut doc, &provider_id);
-    for legacy_provider in LEGACY_RELAY_PROVIDERS {
-        remove_provider_table(&mut doc, legacy_provider);
-    }
-    if provider_id != RELAY_PROVIDER {
-        remove_provider_table(&mut doc, RELAY_PROVIDER);
-    }
-
-    let provider = ensure_provider_table(&mut doc, &provider_id)?;
-    provider["name"] = toml_edit::value(provider_id.as_str());
-    provider["wire_api"] = toml_edit::value("responses");
-    provider["requires_openai_auth"] = toml_edit::value(true);
-    provider["base_url"] = toml_edit::value(base_url);
-    provider["experimental_bearer_token"] = toml_edit::value(bearer_token);
-
-    Ok(move_model_providers_before_profiles(
-        &ensure_trailing_newline(doc.to_string()),
-    ))
 }
 
 fn remove_table(contents: &str, table: &str) -> String {

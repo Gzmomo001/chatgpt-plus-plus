@@ -102,7 +102,7 @@ fn ensure_computer_use_config_with_artifacts_windows(
     };
     let changed = updated.as_bytes() != existing.as_bytes();
     if changed {
-        crate::settings::atomic_write(&config_path, updated.as_bytes())?;
+        crate::atomic_file::write(&config_path, updated.as_bytes())?;
     }
     let runtime_compat = ensure_computer_use_runtime_exports_compat_windows(
         home,

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/shared/ui/card";
 
 export function Panel({ children, fill = false, className = "" }: { children: ReactNode; fill?: boolean; className?: string }) {
   return (

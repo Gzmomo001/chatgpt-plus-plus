@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod install;
+mod overview;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -15,6 +16,12 @@ const TRAY_MENU_QUIT: &str = "tray_quit_app";
 
 pub fn run() {
     install_panic_logger();
+    if let Err(error) = chatgpt_plus_core::install::cleanup_legacy_user_entrypoints() {
+        let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
+            "app.legacy_entrypoint_cleanup_failed",
+            serde_json::json!({ "error": error.to_string() }),
+        );
+    }
     let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
         "manager.start",
         serde_json::json!({
@@ -24,7 +31,7 @@ pub fn run() {
     let Some(_guard) = acquire_single_instance_guard() else {
         return;
     };
-    let show_update = commands::startup_should_show_update();
+    let show_update = commands::settings::startup_should_show_update();
     let run_result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
@@ -35,7 +42,7 @@ pub fn run() {
             };
             let mut main_window_builder =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                    .title("ChatGPT++ 管理工具")
+                    .title("ChatGPT++")
                     .inner_size(1180.0, 820.0)
                     .min_inner_size(960.0, 720.0);
             if let Some(icon) = app.default_window_icon().cloned() {
@@ -47,70 +54,67 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::backend_version,
-            commands::startup_options,
-            commands::load_overview,
-            commands::launch_chatgpt_plus,
-            commands::restart_chatgpt_plus,
-            commands::load_settings,
-            commands::save_settings,
-            commands::load_ccs_providers,
-            commands::import_ccs_providers,
-            commands::load_pending_provider_import,
-            commands::confirm_pending_provider_import,
-            commands::dismiss_pending_provider_import,
-            commands::list_local_sessions,
-            commands::list_zed_remote_projects,
-            commands::open_zed_remote,
-            commands::forget_zed_remote_project,
-            commands::delete_local_session,
-            commands::load_provider_sync_targets,
-            commands::sync_providers_now,
-            commands::load_ads,
-            commands::refresh_script_market,
-            commands::install_market_script,
-            commands::set_user_script_enabled,
-            commands::delete_user_script,
-            commands::open_external_url,
-            commands::install_entrypoints,
-            commands::uninstall_entrypoints,
-            commands::repair_shortcuts,
-            commands::plugin_marketplace_status,
-            commands::repair_plugin_marketplace,
-            commands::remote_plugin_marketplace_status,
-            commands::repair_remote_plugin_marketplace,
-            commands::check_update,
-            commands::perform_update,
-            commands::load_watcher_state,
-            commands::install_watcher,
-            commands::uninstall_watcher,
-            commands::enable_watcher,
-            commands::disable_watcher,
-            commands::read_latest_logs,
-            commands::copy_diagnostics,
-            commands::reset_settings,
-            commands::reset_image_overlay_settings,
-            commands::relay_status,
-            commands::read_relay_files,
-            commands::check_env_conflicts,
-            commands::remove_env_conflicts,
-            commands::save_relay_file,
-            commands::write_diagnostic_event,
-            commands::backfill_relay_profile_from_live,
-            commands::list_context_entries,
-            commands::read_live_context_entries,
-            commands::sync_live_context_entries,
-            commands::upsert_context_entry,
-            commands::delete_context_entry,
-            commands::extract_relay_common_config,
-            commands::test_relay_profile,
-            commands::diagnose_relay_profile,
-            commands::test_stepwise_settings,
-            commands::fetch_relay_profile_models,
-            commands::switch_relay_profile,
-            commands::apply_relay_injection,
-            commands::apply_pure_api_injection,
-            commands::clear_relay_injection,
+            commands::settings::backend_version,
+            commands::settings::startup_options,
+            commands::settings::load_overview,
+            commands::settings::launch_chatgpt_plus,
+            commands::settings::restart_chatgpt_plus,
+            commands::settings::load_settings,
+            commands::settings::save_settings,
+            commands::settings::load_ccs_providers,
+            commands::settings::import_ccs_providers,
+            commands::settings::load_pending_provider_import,
+            commands::settings::confirm_pending_provider_import,
+            commands::settings::dismiss_pending_provider_import,
+            commands::sessions::list_local_sessions,
+            commands::sessions::delete_local_session,
+            commands::sessions::load_provider_sync_targets,
+            commands::sessions::sync_providers_now,
+            commands::install::load_ads,
+            commands::install::refresh_script_market,
+            commands::install::install_market_script,
+            commands::install::set_user_script_enabled,
+            commands::install::delete_user_script,
+            commands::install::open_external_url,
+            commands::install::install_entrypoints,
+            commands::install::uninstall_entrypoints,
+            commands::install::repair_shortcuts,
+            commands::install::plugin_marketplace_status,
+            commands::install::repair_plugin_marketplace,
+            commands::install::remote_plugin_marketplace_status,
+            commands::install::repair_remote_plugin_marketplace,
+            commands::install::check_update,
+            commands::install::perform_update,
+            commands::install::load_watcher_state,
+            commands::install::install_watcher,
+            commands::install::uninstall_watcher,
+            commands::install::enable_watcher,
+            commands::install::disable_watcher,
+            commands::diagnostics::read_latest_logs,
+            commands::diagnostics::copy_diagnostics,
+            commands::settings::reset_settings,
+            commands::settings::reset_image_overlay_settings,
+            commands::relay::relay_status,
+            commands::relay::read_relay_files,
+            commands::diagnostics::check_env_conflicts,
+            commands::diagnostics::remove_env_conflicts,
+            commands::relay::save_relay_file,
+            commands::diagnostics::write_diagnostic_event,
+            commands::relay::backfill_relay_profile_from_live,
+            commands::context::list_context_entries,
+            commands::context::read_live_context_entries,
+            commands::context::sync_live_context_entries,
+            commands::context::upsert_context_entry,
+            commands::context::delete_context_entry,
+            commands::context::extract_relay_common_config,
+            commands::relay::test_relay_profile,
+            commands::relay::diagnose_relay_profile,
+            commands::relay::test_stepwise_settings,
+            commands::relay::fetch_relay_profile_models,
+            commands::relay::switch_relay_profile,
+            commands::relay::apply_relay_injection,
+            commands::relay::apply_pure_api_injection,
+            commands::relay::clear_relay_injection,
             manager_exit_app,
             manager_hide_to_tray,
             update_tray_labels
@@ -139,7 +143,7 @@ fn install_tray<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
                 show_main_window(app);
             }
             TRAY_MENU_QUIT => {
-                APP_EXITING.store(true, Ordering::SeqCst);
+                prepare_app_exit();
                 app.exit(0);
             }
             _ => {}
@@ -192,8 +196,18 @@ fn register_main_window_events<R: tauri::Runtime>(window: tauri::WebviewWindow<R
 
 #[tauri::command]
 fn manager_exit_app<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
-    APP_EXITING.store(true, Ordering::SeqCst);
+    prepare_app_exit();
     app.exit(0);
+}
+
+fn prepare_app_exit() {
+    APP_EXITING.store(true, Ordering::SeqCst);
+    if let Err(error) = chatgpt_plus_core::enhanced_launch::request_enhanced_shutdown() {
+        let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
+            "app.enhanced_shutdown_request_failed",
+            serde_json::json!({ "error": error.to_string() }),
+        );
+    }
 }
 
 #[tauri::command]

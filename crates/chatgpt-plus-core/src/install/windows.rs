@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::{
-    InstallOptions, MANAGER_BINARY, MANAGER_NAME, SILENT_BINARY, SILENT_NAME,
+    InstallOptions, LEGACY_MANAGER_NAME, MANAGER_BINARY, SILENT_BINARY, SILENT_NAME,
     install_root_or_default, option_or_current_exe,
 };
 
@@ -17,13 +17,13 @@ const LEGACY_URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\codexplusplus";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsEntrypointPlan {
     pub install_root: String,
-    pub silent_shortcut: String,
-    pub manager_shortcut: String,
+    pub app_shortcut: String,
+    pub legacy_management_shortcut: String,
+    pub app_shortcut_target: String,
     pub launcher_path: String,
-    pub manager_path: String,
+    pub app_path: String,
     pub icon_path: String,
-    pub silent_icon_path: String,
-    pub manager_icon_path: String,
+    pub app_icon_path: String,
     pub uninstaller_path: String,
     pub uninstall_command: String,
     pub quiet_uninstall_command: String,
@@ -45,20 +45,20 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypo
     let uninstall_command = format!("\"{}\"", uninstaller_path.to_string_lossy());
     let quiet_uninstall_command = format!("{uninstall_command} /S");
     WindowsEntrypointPlan {
-        silent_shortcut: install_root
+        app_shortcut: install_root
             .join("ChatGPT++.lnk")
             .to_string_lossy()
             .to_string(),
-        manager_shortcut: install_root
+        legacy_management_shortcut: install_root
             .join("ChatGPT++ 管理工具.lnk")
             .to_string_lossy()
             .to_string(),
+        app_shortcut_target: manager_path.to_string_lossy().to_string(),
         install_root: install_root.to_string_lossy().to_string(),
         launcher_path: launcher_path.to_string_lossy().to_string(),
-        manager_path: manager_path.to_string_lossy().to_string(),
+        app_path: manager_path.to_string_lossy().to_string(),
         icon_path: icon_path.to_string_lossy().to_string(),
-        silent_icon_path: launcher_path.to_string_lossy().to_string(),
-        manager_icon_path: manager_path.to_string_lossy().to_string(),
+        app_icon_path: manager_path.to_string_lossy().to_string(),
         uninstaller_path: uninstaller_path.to_string_lossy().to_string(),
         uninstall_command,
         quiet_uninstall_command,
@@ -73,19 +73,14 @@ pub fn install_shortcuts(options: &InstallOptions) -> anyhow::Result<()> {
     let plan = build_windows_entrypoint_plan(options);
     let install_root = PathBuf::from(&plan.install_root);
     std::fs::create_dir_all(&install_root)?;
+    let _ = std::fs::remove_file(&plan.legacy_management_shortcut);
     create_entrypoint_shortcut(
-        PathBuf::from(&plan.silent_shortcut),
-        PathBuf::from(&plan.launcher_path),
-        "Launch ChatGPT++ silently",
-        PathBuf::from(&plan.silent_icon_path),
+        PathBuf::from(&plan.app_shortcut),
+        PathBuf::from(&plan.app_shortcut_target),
+        "Open ChatGPT++",
+        PathBuf::from(&plan.app_icon_path),
     )?;
-    create_entrypoint_shortcut(
-        PathBuf::from(&plan.manager_shortcut),
-        PathBuf::from(&plan.manager_path),
-        "Open ChatGPT++ management tool",
-        PathBuf::from(&plan.manager_icon_path),
-    )?;
-    register_url_protocol(&plan.manager_path)?;
+    register_url_protocol(&plan.app_path)?;
     write_uninstall_registration(&plan)?;
     Ok(())
 }
@@ -93,8 +88,8 @@ pub fn install_shortcuts(options: &InstallOptions) -> anyhow::Result<()> {
 #[cfg(windows)]
 pub fn uninstall_shortcuts(options: &InstallOptions) -> anyhow::Result<()> {
     let plan = build_windows_entrypoint_plan(options);
-    let _ = std::fs::remove_file(&plan.silent_shortcut);
-    let _ = std::fs::remove_file(&plan.manager_shortcut);
+    let _ = std::fs::remove_file(&plan.app_shortcut);
+    let _ = std::fs::remove_file(&plan.legacy_management_shortcut);
     let _ = crate::windows_integration::delete_current_user_key(&format!(
         r"{URL_PROTOCOL_SUBKEY}\shell\open\command"
     ));
@@ -153,7 +148,7 @@ fn create_entrypoint_shortcut(
 fn write_uninstall_registration(plan: &WindowsEntrypointPlan) -> anyhow::Result<()> {
     let _ = crate::windows_integration::delete_current_user_key(LEGACY_UNINSTALL_SUBKEY);
     let _ = crate::windows_integration::delete_current_user_key(LEGACY_UNINSTALL_SUBKEY_DISPLAY);
-    let install_location = Path::new(&plan.manager_path)
+    let install_location = Path::new(&plan.app_path)
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| PathBuf::from(&plan.install_root))
@@ -163,7 +158,7 @@ fn write_uninstall_registration(plan: &WindowsEntrypointPlan) -> anyhow::Result<
         ("DisplayName", "ChatGPT++".to_string()),
         ("DisplayVersion", crate::version::VERSION.to_string()),
         ("Publisher", "Gzmomo001".to_string()),
-        ("DisplayIcon", plan.manager_icon_path.clone()),
+        ("DisplayIcon", plan.app_icon_path.clone()),
         ("InstallLocation", install_location),
         ("UninstallString", plan.uninstall_command.clone()),
         ("QuietUninstallString", plan.quiet_uninstall_command.clone()),
@@ -209,5 +204,5 @@ fn default_icon_path() -> PathBuf {
 
 #[allow(dead_code)]
 fn _entrypoint_names() -> (&'static str, &'static str) {
-    (SILENT_NAME, MANAGER_NAME)
+    (SILENT_NAME, LEGACY_MANAGER_NAME)
 }

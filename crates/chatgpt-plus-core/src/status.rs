@@ -31,7 +31,7 @@ impl StatusStore {
 
     pub fn save_latest(&self, status: &LaunchStatus) -> anyhow::Result<()> {
         let bytes = serde_json::to_vec_pretty(status)?;
-        crate::settings::atomic_write(&self.path, &bytes)
+        crate::atomic_file::write(&self.path, &bytes)
     }
 
     pub fn load_latest(&self) -> anyhow::Result<Option<LaunchStatus>> {

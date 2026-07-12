@@ -1,7 +1,7 @@
-import { Button } from "@/components/ui/button";
-import { CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/shared/ui/button";
+import { CardContent } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Textarea } from "@/shared/ui/textarea";
 import { t, tf } from "@/i18n";
 import type { ImageOverlayFitMode } from "@/shared/contracts/settings";
 import { Field } from "@/shared/ui/field";

@@ -1,4 +1,4 @@
-import { Badge as UiBadge } from "@/components/ui/badge";
+import { Badge as UiBadge } from "@/shared/ui/badge";
 import { t } from "@/i18n";
 
 function statusLabel(status: string) {

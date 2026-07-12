@@ -93,7 +93,7 @@ function seedRelayProfile(
 
 function canonicalizeRelayProfile(profile: RelayProfile, profiles: RelayProfile[] = []): RelayProfile {
   if (profile.relayMode === "aggregate") {
-    const { modelList: _modelList, modelWindows: _modelWindows, ...draft } = profile;
+    const { modelList: _storedModelList, modelWindows: _storedModelWindows, ...draft } = profile;
     const projected = projectDraft({
       ...draft,
       models: [{ model: "", window: "" }],
@@ -186,8 +186,8 @@ export function open(
     semantic.contextSelectionInitialized = true;
   }
   const {
-    modelList: _modelList,
-    modelWindows: _modelWindows,
+    modelList: _storedModelList,
+    modelWindows: _storedModelWindows,
     ...semanticDraft
   } = semantic;
   const draft: RelayProfileDraft = {
@@ -307,8 +307,8 @@ export function edit(
       modelWindows: serialized.modelWindows,
     });
     const {
-      modelList: _modelList,
-      modelWindows: _modelWindows,
+      modelList: _storedModelList,
+      modelWindows: _storedModelWindows,
       ...derivedDraft
     } = derived;
     const draft: RelayProfileDraft = { ...derivedDraft, models: structuredClone(models) };
@@ -316,8 +316,8 @@ export function edit(
   }
   if (intent.type !== "patch") return state;
   const {
-    modelList: _modelList,
-    modelWindows: _modelWindows,
+    modelList: _storedModelList,
+    modelWindows: _storedModelWindows,
     models: _models,
     aggregate: _aggregate,
     relayMode: _relayMode,

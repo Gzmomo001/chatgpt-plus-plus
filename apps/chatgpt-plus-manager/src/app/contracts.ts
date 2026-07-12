@@ -6,6 +6,7 @@ import type {
 import type { EnvConflictsResult } from "@/features/relay-profiles/contracts";
 import type { CommandResult } from "@/shared/contracts/command";
 import type { ImageOverlayFitMode } from "@/shared/contracts/settings";
+import type { UserScriptInventory } from "@/shared/contracts/user-scripts";
 
 export type {
   CcsProvidersResult,
@@ -22,9 +23,9 @@ export type {
   ContextKind,
 };
 
-export type ZedOpenStrategy = "addToFocusedWorkspace" | "reuseWindow" | "newWindow" | "default";
 export type LaunchMode = "patch" | "relay";
 export type { ImageOverlayFitMode } from "@/shared/contracts/settings";
+export type { UserScriptInventory } from "@/shared/contracts/user-scripts";
 export type BackendSettings = {
   codexAppPath: string;
   codexExtraArgs: string[];
@@ -47,10 +48,6 @@ export type BackendSettings = {
   codexAppThreadIdBadge: boolean;
   codexAppConversationView: boolean;
   codexAppThreadScrollRestore: boolean;
-  codexAppZedRemoteOpen: boolean;
-  zedRemoteOpenStrategy: ZedOpenStrategy;
-  zedRemoteProjectRegistryEnabled: boolean;
-  zedRemoteSyncToZedSettings: boolean;
   codexAppUpstreamWorktreeCreate: boolean;
   codexAppNativeMenuPlacement: boolean;
   codexAppNativeMenuLocalization: boolean;
@@ -81,27 +78,10 @@ export type BackendSettings = {
   activeRelayId: string;
   relayTestModel: string;
 };
-export type UserScriptInventory = {
-  enabled?: boolean;
-  scripts?: Array<{
-    key: string;
-    name: string;
-    source: string;
-    enabled: boolean;
-    status: string;
-    error: string;
-    market_id?: string;
-    version?: string;
-    installed?: boolean;
-    source_url?: string;
-    homepage?: string;
-  }>;
-};
-
 export type SettingsResult = CommandResult<{
   settings: BackendSettings;
-  settings_path: string;
-  user_scripts: UserScriptInventory;
+  settingsPath: string;
+  userScripts: UserScriptInventory;
 }>;
 
 export type EnvConflict = EnvConflictsResult["conflicts"][number];
