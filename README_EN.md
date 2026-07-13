@@ -209,6 +209,11 @@ Yes. Releases provide both `macos-x64.dmg` and `macos-arm64.dmg`. Intel Macs sho
 
 ## Development
 
+Development builds use `127.0.0.1:57320` for the manager single-instance
+guard, separate from `127.0.0.1:57319` used by production builds. This allows
+the installed production app and `pnpm dev` to stay open at the same time. It
+does not change the Relay protocol proxy default at `127.0.0.1:57321`.
+
 ```bash
 # Frontend checks
 cd apps/chatgpt-plus-manager

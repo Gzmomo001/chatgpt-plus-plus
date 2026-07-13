@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use fs2::FileExt;
 
 pub const MANAGER_GUARD_PORT_BASE: u16 = 57319;
+pub const DEVELOPMENT_MANAGER_GUARD_PORT_OFFSET: u16 = 1;
 
 /// Offset applied to guard port base to avoid conflicts in multi-user
 /// environments (Windows RDP, shared servers, etc.).
@@ -13,7 +14,8 @@ pub const MANAGER_GUARD_PORT_BASE: u16 = 57319;
 /// 1. `CHATGPT_PLUS_GUARD_PORT` env var — exact port override
 /// 2. `CHATGPT_PLUS_GUARD_PORT_OFFSET` env var — explicit numeric offset
 /// 3. Windows: hash of `USERNAME` (mod 1000) for per-user isolation
-/// 4. Other platforms: 0 (backward-compatible default)
+/// 4. Debug builds: an additional offset keeps `pnpm dev` separate from the
+///    installed release application
 fn guard_port_offset() -> u16 {
     // env var exact port takes priority (caller handles it via override functions below)
     #[cfg(windows)]
@@ -50,7 +52,12 @@ pub fn manager_guard_port() -> u16 {
     {
         return MANAGER_GUARD_PORT_BASE + offset;
     }
-    MANAGER_GUARD_PORT_BASE + guard_port_offset()
+    let build_offset = if cfg!(debug_assertions) {
+        DEVELOPMENT_MANAGER_GUARD_PORT_OFFSET
+    } else {
+        0
+    };
+    MANAGER_GUARD_PORT_BASE + guard_port_offset() + build_offset
 }
 
 pub fn select_platform_loopback_port(requested: u16) -> u16 {
@@ -295,12 +302,19 @@ mod tests {
     }
 
     #[test]
-    fn manager_guard_port_returns_base_when_no_env_override() {
+    fn manager_guard_port_uses_build_specific_port_when_no_env_override() {
         let _guard = guard_port_env_lock();
         _clear_guard_port_env_vars();
         let port = manager_guard_port();
-        assert!(port >= MANAGER_GUARD_PORT_BASE);
-        assert!(port < MANAGER_GUARD_PORT_BASE + 1000);
+        let build_offset = if cfg!(debug_assertions) {
+            DEVELOPMENT_MANAGER_GUARD_PORT_OFFSET
+        } else {
+            0
+        };
+        assert_eq!(
+            port,
+            MANAGER_GUARD_PORT_BASE + guard_port_offset() + build_offset
+        );
     }
 
     #[test]

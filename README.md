@@ -237,6 +237,10 @@ sudo xattr -rd com.apple.quarantine /Applications/ChatGPT++.app
 
 ## 开发
 
+开发构建使用 `127.0.0.1:57320` 作为管理器单实例端口，与生产构建使用的
+`127.0.0.1:57319` 分离，因此已安装的生产版可以和 `pnpm dev` 同时打开。
+这不改变 Relay protocol proxy 默认使用的 `127.0.0.1:57321`。
+
 ```bash
 # 前端检查
 cd apps/chatgpt-plus-manager
