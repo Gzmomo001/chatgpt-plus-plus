@@ -3199,6 +3199,15 @@ body {
   padding-right: 0;
 }
 
+.nav-group {
+  display: grid;
+  gap: 2px;
+}
+
+.nav-group:first-child .nav-section-label {
+  padding-top: 6px;
+}
+
 .nav-item {
   grid-template-columns: 22px minmax(0, 1fr) auto;
   gap: 8px;

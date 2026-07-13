@@ -35,32 +35,28 @@ export function SettingsScreen({
   actions: SettingsActions;
 }) {
   return (
-    <>
-      <Panel>
-        <CardHead title={t("基础设置")} detail={settingsPath} />
-        <CardContent>
-          <div className="theme-row">
-            <div>
-              <strong>{t("界面主题")}</strong>
-              <span>{t("当前为")}{theme === "dark" ? t("深色") : t("浅色")}{t("模式。")}</span>
-            </div>
-            <Button variant="secondary" onClick={actions.toggleTheme}>{t("切换主题")}</Button>
+    <Panel>
+      <CardHead title={t("偏好设置")} detail={settingsPath} />
+      <CardContent>
+        <div className="theme-row">
+          <div>
+            <strong>{t("界面主题")}</strong>
+            <span>{t("当前为")}{theme === "dark" ? t("深色") : t("浅色")}{t("模式。")}</span>
           </div>
-          <Field label={t("供应商测试模型")}>
-            <Input
-              value={form.relayTestModel}
-              onChange={(event) => onFormChange({ ...form, relayTestModel: event.currentTarget.value })}
-              placeholder={t("例如 gpt-5.4-mini")}
-            />
-          </Field>
-          <Toolbar>
-            <Button onClick={() => void actions.saveSettings()}>{t("保存设置")}</Button>
-          </Toolbar>
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title={t("Codex 启动参数")} detail={t("启动官方 Codex App 时追加这些参数；留空则保持官方默认启动行为。")} />
-        <CardContent>
+          <Button variant="secondary" onClick={actions.toggleTheme}>{t("切换主题")}</Button>
+        </div>
+        <Field label={t("供应商测试模型")}>
+          <Input
+            value={form.relayTestModel}
+            onChange={(event) => onFormChange({ ...form, relayTestModel: event.currentTarget.value })}
+            placeholder={t("例如 gpt-5.4-mini")}
+          />
+        </Field>
+        <section className="feature-group">
+          <div className="feature-group-head">
+            <strong>{t("Codex 启动参数")}</strong>
+            <small>{t("启动官方 Codex App 时追加这些参数；留空则保持官方默认启动行为。")}</small>
+          </div>
           <Field label={t("额外参数")}>
             <Textarea
               className="launch-args-input"
@@ -76,11 +72,11 @@ export function SettingsScreen({
             />
           </Field>
           <p className="field-hint">{t("每行一个参数，例如 --force_high_performance_gpu。不需要填写 open 或 --args。")}</p>
-          <Toolbar>
-            <Button onClick={() => void actions.saveSettings()}>{t("保存设置")}</Button>
-          </Toolbar>
-        </CardContent>
-      </Panel>
-    </>
+        </section>
+        <Toolbar>
+          <Button onClick={() => void actions.saveSettings()}>{t("保存设置")}</Button>
+        </Toolbar>
+      </CardContent>
+    </Panel>
   );
 }

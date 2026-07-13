@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   isSuccessStatus,
   loadInitialTheme,
+  navigationGroups,
   navigationRoutes,
   routeSubtitle,
   routeTitle,
@@ -27,6 +28,17 @@ test("projects every application route and its shell copy through one interface"
   );
   assert.equal(routeTitle("context"), "工具与插件");
   assert.equal(routeSubtitle("context"), "独立管理 MCP、Skills、Plugins");
+  assert.deepEqual(
+    navigationGroups.map(({ label, routes }) => ({
+      label,
+      routes: routes.map(({ id }) => id),
+    })),
+    [
+      { label: "日常使用", routes: ["overview", "relay", "sessions"] },
+      { label: "Codex 配置", routes: ["context", "enhance"] },
+      { label: "系统管理", routes: ["maintenance", "about", "settings"] },
+    ],
+  );
 });
 
 test("owns application theme, status, and error presentation policy", () => {

@@ -1,5 +1,5 @@
 import { Download, Info, RefreshCw, Trash2, Wrench } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
@@ -73,22 +73,33 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
     : t("未发现本地缓存；点击按钮会从 ChatGPT++ 内置快照释放并注册，无需官方账号预缓存。");
 
   return (
-    <Panel>
-      <CardHead title={t("Codex增强")} detail={t("管理不依赖 Codex Renderer 的启动维护与插件能力")} />
-      <CardContent>
-        <label className="switch-row">
-          <input
-            checked={settings.computerUseGuardEnabled}
-            onChange={(event) => actions.updateFlag("computerUseGuardEnabled", event.currentTarget.checked)}
-            type="checkbox"
-          />
-          <span>
-            <strong>{t("启用 Windows Computer Use Guard")}</strong>
-            <small>{t("默认关闭；开启后启动 Codex 时会自动保留官方 Computer Use 插件所需的 config.toml、bundled 插件和 notify 配置。")}</small>
-          </span>
-        </label>
-        <div className="enhance-feature-groups">
-          <FeatureGroup title={t("插件市场")} detail={t("使用 Codex 官方配置管理市场来源和插件，不修改页面请求或 DOM。")}>
+    <>
+      <Panel>
+        <CardHead title={t("启动增强")} detail={t("只影响 ChatGPT++ 启动 Codex 时的本地行为")} />
+        <CardContent>
+          <div className="feature-switch-grid">
+            <FeatureToggle
+              title={t("Windows Computer Use Guard")}
+              detail={t("默认关闭；开启后启动 Codex 时会自动保留官方 Computer Use 插件所需的 config.toml、bundled 插件和 notify 配置。")}
+              checked={settings.computerUseGuardEnabled}
+              onChange={(value) => actions.updateFlag("computerUseGuardEnabled", value)}
+            />
+            <FeatureToggle
+              title={t("快速启动")}
+              detail={t("默认关闭；无 VPN 时可开启，让 Statsig 初始化快速失败，减少启动时长。需重启 Codex 才生效。")}
+              checked={settings.codexAppFastStartup}
+              onChange={(value) => actions.updateFlag("codexAppFastStartup", value)}
+            />
+          </div>
+          <Toolbar>
+            <Button onClick={() => void actions.saveSettings()}>{t("保存增强设置")}</Button>
+          </Toolbar>
+        </CardContent>
+      </Panel>
+      <Panel>
+        <CardHead title={t("插件市场")} detail={t("管理市场来源、插件安装状态和本地缓存")} />
+        <CardContent>
+          <div className="feature-group">
             <div className="feature-action-row">
               <div>
                 <strong>{t("官方远端插件缓存")}</strong>
@@ -104,21 +115,17 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
               </Button>
               <span className="feature-action-status">{remoteMarketplaceStatus}</span>
             </div>
-          </FeatureGroup>
-          <FeatureGroup title={t("启动维护")} detail={t("这些能力不读取或修改 Codex Renderer。")}>
-            <FeatureToggle title={t("快速启动")} detail={t("默认关闭；无 VPN 时可开启，让 Statsig 初始化快速失败，减少启动时长。需重启 Codex 才生效。")} checked={settings.codexAppFastStartup} onChange={(value) => actions.updateFlag("codexAppFastStartup", value)} />
-          </FeatureGroup>
-        </div>
-        <div className="hint-line">
-          <Wrench className="h-4 w-4" />
-          <span>{t("新机器没有本地插件市场时，可从 openai/plugins 初始化到当前 CODEX_HOME。")}</span>
-          <Button disabled={pluginMarketplaceProgress.active} variant="secondary" onClick={() => void actions.repairPluginMarketplace()}>
-            {pluginMarketplaceProgress.active ? t("正在修复…") : t("修复插件市场")}
-          </Button>
-        </div>
-        <TaskProgressBox progress={pluginMarketplaceProgress} title={t("插件市场修复进度")} />
-        <TaskProgressBox progress={remotePluginMarketplaceProgress} title={t("官方远端插件缓存进度")} />
-        <div className="plugin-inventory-panel">
+          </div>
+          <div className="hint-line">
+            <Wrench className="h-4 w-4" />
+            <span>{t("新机器没有本地插件市场时，可从 openai/plugins 初始化到当前 CODEX_HOME。")}</span>
+            <Button disabled={pluginMarketplaceProgress.active} variant="secondary" onClick={() => void actions.repairPluginMarketplace()}>
+              {pluginMarketplaceProgress.active ? t("正在修复…") : t("修复插件市场")}
+            </Button>
+          </div>
+          <TaskProgressBox progress={pluginMarketplaceProgress} title={t("插件市场修复进度")} />
+          <TaskProgressBox progress={remotePluginMarketplaceProgress} title={t("官方远端插件缓存进度")} />
+          <div className="plugin-inventory-panel">
           <div className="relay-context-head">
             <div>
               <strong>{t("插件与技能库存")}</strong>
@@ -180,21 +187,15 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
           {pluginInventory?.marketplaces.length ? (
             <small>{tf("已注册 {0} 个市场。", [pluginInventory.marketplaces.length])}</small>
           ) : null}
-        </div>
-        <div className="hint-line">
-          <Info className="h-4 w-4" />
-          <span>{t("插件市场、模型发现和 Fast 档位均采用 Codex 官方配置或原生界面，不再通过页面补丁实现。")}</span>
-        </div>
-        <Toolbar>
-          <Button onClick={() => void actions.saveSettings()}>{t("保存增强设置")}</Button>
-        </Toolbar>
-      </CardContent>
-    </Panel>
+          </div>
+          <div className="hint-line">
+            <Info className="h-4 w-4" />
+            <span>{t("插件市场、模型发现和 Fast 档位均采用 Codex 官方配置或原生界面，不再通过页面补丁实现。")}</span>
+          </div>
+        </CardContent>
+      </Panel>
+    </>
   );
-}
-
-function FeatureGroup({ title, detail, children }: { title: string; detail: string; children: ReactNode }) {
-  return <section className="feature-group"><div className="feature-group-head"><strong>{title}</strong><small>{detail}</small></div><div className="feature-switch-grid">{children}</div></section>;
 }
 
 function FeatureToggle({ title, detail, checked, disabled = false, onChange }: { title: string; detail: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {

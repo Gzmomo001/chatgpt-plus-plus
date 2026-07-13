@@ -83,7 +83,7 @@ import {
 import {
   isSuccessStatus,
   loadInitialTheme,
-  navigationRoutes,
+  navigationGroups,
   routeSubtitle,
   routeTitle,
   stringifyError,
@@ -1456,26 +1456,31 @@ export function App() {
             <div className="brand-subtitle">{t("管理控制台")}</div>
           </div>
         </div>
-        <div className="nav-section-label">{t("工作区")}</div>
         <nav className="nav">
-          {navigationRoutes.map((item) => {
-            const Icon = item.icon;
-            return (
-            <button
-              className={`nav-item ${route === item.id ? "active" : ""}`}
-              key={item.id}
-              onClick={() => void navigate(item.id)}
-              title={item.label}
-              type="button"
-            >
-              <span className="nav-icon">
-                <Icon className="h-4 w-4" aria-hidden="true" />
-              </span>
-              <span className="nav-label">{item.label}</span>
-              {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
-            </button>
-          );
-          })}
+          {navigationGroups.map((group) => (
+            <div className="nav-group" key={group.label}>
+              <div className="nav-section-label">{group.label}</div>
+              {group.routes.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    aria-current={route === item.id ? "page" : undefined}
+                    className={`nav-item ${route === item.id ? "active" : ""}`}
+                    key={item.id}
+                    onClick={() => void navigate(item.id)}
+                    title={`${item.label} · ${item.subtitle}`}
+                    type="button"
+                  >
+                    <span className="nav-icon">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <span className="nav-label">{item.label}</span>
+                    {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="sidebar-footer">
           <span className="connection-dot" aria-hidden="true" />

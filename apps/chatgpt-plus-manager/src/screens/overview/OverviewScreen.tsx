@@ -32,6 +32,21 @@ export function OverviewScreen({
   return (
     <>
       <Panel>
+        <CardHead title={t("最近启动")} detail={overview?.logsPath ?? t("暂无状态文件")} />
+        <CardContent>
+          <LatestLaunch status={overview?.latestLaunch ?? null} />
+          <Toolbar>
+            <Button onClick={() => void actions.launch()}>
+              <Rocket className="h-4 w-4" />
+              {t("启动 ChatGPT++")}
+            </Button>
+            <Button variant="secondary" onClick={() => void actions.goAbout()}>
+              {t("查看更新与诊断")}
+            </Button>
+          </Toolbar>
+        </CardContent>
+      </Panel>
+      <Panel>
         <CardHead title={t("健康检查")} detail={t("概览只展示关键问题，具体配置在对应页面处理")} />
         <CardContent>
           <div className="health-grid">
@@ -59,21 +74,6 @@ export function OverviewScreen({
             </Button>
           </Toolbar>
           <TaskProgressBox progress={pluginMarketplaceProgress} title={t("插件市场修复进度")} />
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title={t("最近启动")} detail={overview?.logsPath ?? t("暂无状态文件")} />
-        <CardContent>
-          <LatestLaunch status={overview?.latestLaunch ?? null} />
-          <Toolbar>
-            <Button onClick={() => void actions.launch()}>
-              <Rocket className="h-4 w-4" />
-              {t("启动 ChatGPT++")}
-            </Button>
-            <Button variant="secondary" onClick={() => void actions.goAbout()}>
-              {t("打开关于")}
-            </Button>
-          </Toolbar>
         </CardContent>
       </Panel>
     </>

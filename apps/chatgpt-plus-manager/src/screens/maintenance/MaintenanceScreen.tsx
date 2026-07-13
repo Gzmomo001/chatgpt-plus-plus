@@ -56,41 +56,11 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
           </div>
           <Toolbar>
             <Button onClick={() => void actions.checkHealth()}>{t("检查")}</Button>
-            <Button variant="secondary" onClick={() => void actions.repairShortcuts()}>{t("修复快捷方式")}</Button>
           </Toolbar>
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title={t("入口管理")} detail={t("快捷方式写入系统实际桌面位置，不使用写死桌面路径")} />
-        <CardContent>
-          <label className="check-row">
-            <input
-              checked={view.removeOwnedData}
-              onChange={(event) => actions.setRemoveOwnedData(event.currentTarget.checked)}
-              type="checkbox"
-            />
-            <span>{t("卸载时移除 ChatGPT++ 托管数据")}</span>
-          </label>
-          <Toolbar>
-            <Button onClick={() => void actions.installEntrypoints()}>{t("安装入口")}</Button>
-            <Button variant="secondary" onClick={() => void actions.uninstallEntrypoints()}>{t("卸载入口")}</Button>
-            <Button variant="secondary" onClick={() => void actions.repairShortcuts()}>{t("修复入口")}</Button>
-          </Toolbar>
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title={t("自动接管")} detail={t("Watcher 用于保持 ChatGPT++ 接管状态")} />
-        <CardContent>
-          <Toolbar>
-            <Button variant="secondary" onClick={() => void actions.installWatcher()}>{t("安装 watcher")}</Button>
-            <Button variant="secondary" onClick={() => void actions.uninstallWatcher()}>{t("移除 watcher")}</Button>
-            <Button variant="secondary" onClick={() => void actions.enableWatcher()}>{t("启用")}</Button>
-            <Button variant="secondary" onClick={() => void actions.disableWatcher()}>{t("禁用")}</Button>
-          </Toolbar>
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title={t("Codex 应用路径")} detail={t("免安装版或解包版只需要选择一次，之后增强启动会自动复用")} />
+        <CardHead title={t("Codex 应用路径")} detail={t("设置一次默认路径，也可以临时覆盖后启动")} />
         <CardContent>
           <div className="status-table">
             <StatusRow title={t("保存路径")} status={savedCodexAppPath ? "ok" : "not_checked"} path={savedCodexAppPath || null} />
@@ -108,24 +78,61 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
             <Button variant="secondary" onClick={() => void actions.chooseCodexAppPath("file")}>{t("选择 Codex.exe")}</Button>
             <Button variant="secondary" onClick={() => void actions.clearCodexAppPath()}>{t("清除保存路径")}</Button>
           </Toolbar>
+          <section className="feature-group">
+            <div className="feature-group-head">
+              <strong>{t("手动启动")}</strong>
+              <small>{t("应用路径留空时使用已保存路径；没有保存路径时使用自动探测")}</small>
+            </div>
+            <Field label={t("应用路径覆盖")}>
+              <Input
+                value={launchForm.appPath}
+                onChange={(event) => actions.updateLaunchForm({ ...launchForm, appPath: event.currentTarget.value })}
+                placeholder={savedCodexAppPath || t("例如 C:\\Program Files\\WindowsApps\\OpenAI.Codex...\\app")}
+              />
+            </Field>
+            <Toolbar>
+              <Button onClick={() => void actions.launch()}>{t("启动 ChatGPT++")}</Button>
+              <Button variant="secondary" onClick={() => void actions.saveManualCodexAppPath()}>
+                {t("保存为默认路径")}
+              </Button>
+            </Toolbar>
+          </section>
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title={t("手动启动")} detail={t("应用路径留空时使用已保存路径；没有保存路径时使用自动探测")} />
+        <CardHead title={t("入口与自动接管")} detail={t("安装入口后，可用 Watcher 持续保持 ChatGPT++ 接管状态")} />
         <CardContent>
-          <Field label={t("应用路径覆盖")}>
-            <Input
-              value={launchForm.appPath}
-              onChange={(event) => actions.updateLaunchForm({ ...launchForm, appPath: event.currentTarget.value })}
-              placeholder={savedCodexAppPath || t("例如 C:\\Program Files\\WindowsApps\\OpenAI.Codex...\\app")}
-            />
-          </Field>
-          <Toolbar>
-            <Button onClick={() => void actions.launch()}>{t("启动 ChatGPT++")}</Button>
-            <Button variant="secondary" onClick={() => void actions.saveManualCodexAppPath()}>
-              {t("保存为默认路径")}
-            </Button>
-          </Toolbar>
+          <section className="feature-group">
+            <div className="feature-group-head">
+              <strong>{t("入口管理")}</strong>
+              <small>{t("快捷方式写入系统实际桌面位置，不使用写死桌面路径")}</small>
+            </div>
+            <label className="check-row">
+              <input
+                checked={view.removeOwnedData}
+                onChange={(event) => actions.setRemoveOwnedData(event.currentTarget.checked)}
+                type="checkbox"
+              />
+              <span>{t("卸载时移除 ChatGPT++ 托管数据")}</span>
+            </label>
+            <Toolbar>
+              <Button onClick={() => void actions.installEntrypoints()}>{t("安装入口")}</Button>
+              <Button variant="secondary" onClick={() => void actions.uninstallEntrypoints()}>{t("卸载入口")}</Button>
+              <Button variant="secondary" onClick={() => void actions.repairShortcuts()}>{t("修复入口")}</Button>
+            </Toolbar>
+          </section>
+          <section className="feature-group">
+            <div className="feature-group-head">
+              <strong>{t("自动接管")}</strong>
+              <small>{t("Watcher 用于保持 ChatGPT++ 接管状态")}</small>
+            </div>
+            <Toolbar>
+              <Button variant="secondary" onClick={() => void actions.installWatcher()}>{t("安装 watcher")}</Button>
+              <Button variant="secondary" onClick={() => void actions.uninstallWatcher()}>{t("移除 watcher")}</Button>
+              <Button variant="secondary" onClick={() => void actions.enableWatcher()}>{t("启用")}</Button>
+              <Button variant="secondary" onClick={() => void actions.disableWatcher()}>{t("禁用")}</Button>
+            </Toolbar>
+          </section>
         </CardContent>
       </Panel>
     </>
