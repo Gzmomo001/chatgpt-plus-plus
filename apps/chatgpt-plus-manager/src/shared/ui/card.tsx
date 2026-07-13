@@ -4,21 +4,21 @@ import { cn } from "@/shared/lib/utils";
 
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div className={cn("rounded-lg border bg-card text-card-foreground", className)} ref={ref} {...props} />
+    <div className={cn("rounded-xl border bg-card text-card-foreground", className)} ref={ref} {...props} />
   ),
 );
 Card.displayName = "Card";
 
 const CardHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
-    <div className={cn("flex flex-col space-y-1.5 p-4", className)} ref={ref} {...props} />
+    <div className={cn("flex flex-col space-y-1 p-4", className)} ref={ref} {...props} />
   ),
 );
 CardHeader.displayName = "CardHeader";
 
 const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTMLHeadingElement>>(
   ({ className, ...props }, ref) => (
-    <h3 className={cn("text-base font-semibold leading-none tracking-normal", className)} ref={ref} {...props} />
+    <h3 className={cn("text-sm font-semibold leading-none tracking-normal", className)} ref={ref} {...props} />
   ),
 );
 CardTitle.displayName = "CardTitle";

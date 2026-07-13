@@ -1,8 +1,8 @@
 export function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div>
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="metric-row">
+      <span className="metric-label">{label}</span>
+      <strong className="metric-value">{value}</strong>
     </div>
   );
 }

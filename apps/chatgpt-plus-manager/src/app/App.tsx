@@ -2,6 +2,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   CircleArrowUp,
+  Command,
   Languages,
   Moon,
   RefreshCw,
@@ -1436,6 +1437,9 @@ export function App() {
     <div className={`shell ${theme}`}>
       <aside className="sidebar">
         <div className="brand">
+          <div className="app-symbol" aria-hidden="true">
+            <Command className="h-4 w-4" />
+          </div>
           <div className="brand-copy">
             <div className="brand-title-row">
               <div className="brand-title">ChatGPT++</div>
@@ -1456,6 +1460,7 @@ export function App() {
             <div className="brand-subtitle">{t("管理控制台")}</div>
           </div>
         </div>
+        <div className="nav-section-label">{t("工作区")}</div>
         <nav className="nav">
           {navigationRoutes.map((item) => {
             const Icon = item.icon;
@@ -1476,10 +1481,16 @@ export function App() {
           );
           })}
         </nav>
+        <div className="sidebar-footer">
+          <span className="connection-dot" aria-hidden="true" />
+          <span>{t("本地工作区")}</span>
+          <kbd>⌘ K</kbd>
+        </div>
       </aside>
       <main className="workspace">
         <header className="topbar" key={`topbar-${route}`}>
-          <div>
+          <div className="page-heading">
+            <span className="page-kicker">ChatGPT++</span>
             <h1>{routeTitle(route)}</h1>
             <p>{routeSubtitle(route)}</p>
           </div>
@@ -1502,7 +1513,7 @@ export function App() {
             </Button>
             <Button onClick={() => void actions.restart()} title={t("重启 ChatGPT++")} variant="outline">
               <Rocket className="h-4 w-4" />
-              {t("重启 ChatGPT++")}
+              <span className="restart-label">{t("重启 ChatGPT++")}</span>
             </Button>
             <Button onClick={() => void actions.refreshCurrent()} size="icon" title={t("刷新当前页面")} variant="outline">
               <RefreshCw className="h-4 w-4" />

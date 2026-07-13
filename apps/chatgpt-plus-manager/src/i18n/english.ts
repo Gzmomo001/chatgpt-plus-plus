@@ -57,6 +57,8 @@ export const EN_PLAIN: Record<string, string> = {
   "Watcher 状态": "Watcher status",
   "Watcher 用于保持 ChatGPT++ 接管状态": "The watcher keeps ChatGPT++ in control",
   "Watcher 自动接管": "Watcher auto-takeover",
+  "工作区": "Workspace",
+  "本地工作区": "Local workspace",
   "cc-switch 导入": "cc-switch import",
   "config.toml 预览": "config.toml preview",
   "provider 未记录": "provider not recorded",
