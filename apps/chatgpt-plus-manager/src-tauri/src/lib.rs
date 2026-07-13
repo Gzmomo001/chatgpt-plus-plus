@@ -33,7 +33,7 @@ pub fn run() {
         return;
     };
     let show_update = commands::settings::startup_should_show_update();
-    let run_result = tauri::Builder::default()
+    let app_result = tauri::Builder::default()
         .manage(launch_runtime::ManagedLaunchRuntime::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
@@ -122,15 +122,24 @@ pub fn run() {
             manager_hide_to_tray,
             update_tray_labels
         ])
-        .run(tauri::generate_context!());
-    if let Err(error) = run_result {
-        let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
-            "manager.run_failed",
-            serde_json::json!({
-                "error": error.to_string()
-            }),
-        );
-    }
+        .build(tauri::generate_context!());
+    let app = match app_result {
+        Ok(app) => app,
+        Err(error) => {
+            let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
+                "manager.run_failed",
+                serde_json::json!({
+                    "error": error.to_string()
+                }),
+            );
+            return;
+        }
+    };
+    app.run(|app_handle, event| {
+        if matches!(event, tauri::RunEvent::ExitRequested { .. }) {
+            prepare_app_exit(app_handle);
+        }
+    });
 }
 
 fn install_tray<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
@@ -204,7 +213,9 @@ fn manager_exit_app<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
 }
 
 fn prepare_app_exit<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    APP_EXITING.store(true, Ordering::SeqCst);
+    if APP_EXITING.swap(true, Ordering::SeqCst) {
+        return;
+    }
     let runtime = app.state::<launch_runtime::ManagedLaunchRuntime>();
     tauri::async_runtime::block_on(runtime.shutdown_owned_resources());
 }

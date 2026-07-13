@@ -3157,19 +3157,6 @@ body {
   border-bottom: 0;
 }
 
-.app-symbol {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 auto;
-  border: 1px solid hsl(var(--sidebar-border));
-  border-radius: 8px;
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
-  box-shadow: 0 1px 2px hsl(0 0% 0% / 0.16);
-}
-
 .brand-title {
   font-size: 13px;
   font-weight: 650;
@@ -3636,7 +3623,6 @@ textarea:focus-visible {
     display: none;
   }
 
-  .app-symbol,
   .nav-section-label,
   .sidebar-footer span:not(.connection-dot),
   .sidebar-footer kbd {

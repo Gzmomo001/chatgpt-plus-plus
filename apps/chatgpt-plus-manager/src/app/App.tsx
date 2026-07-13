@@ -2,7 +2,6 @@ import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   CircleArrowUp,
-  Command,
   Languages,
   Moon,
   RefreshCw,
@@ -1437,9 +1436,6 @@ export function App() {
     <div className={`shell ${theme}`}>
       <aside className="sidebar">
         <div className="brand">
-          <div className="app-symbol" aria-hidden="true">
-            <Command className="h-4 w-4" />
-          </div>
           <div className="brand-copy">
             <div className="brand-title-row">
               <div className="brand-title">ChatGPT++</div>

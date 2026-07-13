@@ -113,6 +113,8 @@ fn explicit_quit_releases_manager_owned_runtime_but_window_close_does_not() {
 
     assert!(lib_rs.contains("runtime.shutdown_owned_resources()"));
     assert!(lib_rs.contains("WindowEvent::CloseRequested"));
+    assert!(lib_rs.contains("tauri::RunEvent::ExitRequested"));
+    assert!(lib_rs.contains("APP_EXITING.swap(true, Ordering::SeqCst)"));
     assert!(!lib_rs.contains("launcher.shutdown"));
     assert!(runtime.contains("handle.wait_for_codex_exit().await"));
     assert!(runtime.contains("handle.shutdown_owned_resources().await"));
