@@ -52,9 +52,9 @@ pub struct RelayProfile {
     pub auth_contents: String,
     #[serde(rename = "useCommonConfig", default = "default_true")]
     pub use_common_config: bool,
-    #[serde(rename = "contextSelection", default)]
+    #[serde(rename = "contextSelection", default, skip_serializing)]
     pub context_selection: RelayContextSelection,
-    #[serde(rename = "contextSelectionInitialized", default)]
+    #[serde(rename = "contextSelectionInitialized", default, skip_serializing)]
     pub context_selection_initialized: bool,
     #[serde(rename = "contextWindow", default)]
     pub context_window: String,
@@ -190,7 +190,7 @@ pub struct BackendSettings {
     pub relay_profiles: Vec<RelayProfile>,
     #[serde(rename = "relayCommonConfigContents", default)]
     pub relay_common_config_contents: String,
-    #[serde(rename = "relayContextConfigContents", default)]
+    #[serde(rename = "relayContextConfigContents", default, skip_serializing)]
     pub relay_context_config_contents: String,
     #[serde(rename = "activeRelayId", default = "default_active_relay_id")]
     pub active_relay_id: String,

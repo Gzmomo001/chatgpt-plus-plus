@@ -1,4 +1,3 @@
-import type { ContextEntries, ContextEntry, ContextKind } from "@/features/context/config";
 import type {
   AggregateRelayProfile,
   RelayProfile,
@@ -15,11 +14,6 @@ export type {
   RelayProfileView,
 } from "@/features/relay-profiles/contracts";
 export type { CommandResult, Status } from "@/shared/contracts/command";
-export type {
-  ContextEntries as CodexContextEntries,
-  ContextEntry as CodexContextEntry,
-  ContextKind,
-};
 
 export type BackendSettings = {
   codexAppPath: string;

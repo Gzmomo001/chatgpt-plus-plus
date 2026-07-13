@@ -98,10 +98,15 @@ impl SettingsStore {
             "relayCommonConfigContents".to_string(),
             Value::String(settings.relay_common_config_contents.clone()),
         );
-        raw.insert(
-            "relayContextConfigContents".to_string(),
-            Value::String(settings.relay_context_config_contents.clone()),
-        );
+        raw.remove("relayContextConfigContents");
+        if let Some(profiles) = raw.get_mut("relayProfiles").and_then(Value::as_array_mut) {
+            for profile in profiles {
+                if let Some(profile) = profile.as_object_mut() {
+                    profile.remove("contextSelection");
+                    profile.remove("contextSelectionInitialized");
+                }
+            }
+        }
         let bytes = serde_json::to_vec_pretty(&Value::Object(raw))?;
         atomic_file::write(&self.path, &bytes)?;
         Ok(settings)
@@ -180,15 +185,6 @@ fn merge_known_setting_fields(target: &mut Map<String, Value>, source: &Map<Stri
     {
         target.insert(
             "relayCommonConfigContents".to_string(),
-            Value::String(value.to_string()),
-        );
-    }
-    if let Some(value) = source
-        .get("relayContextConfigContents")
-        .and_then(Value::as_str)
-    {
-        target.insert(
-            "relayContextConfigContents".to_string(),
             Value::String(value.to_string()),
         );
     }

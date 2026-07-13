@@ -12,7 +12,6 @@ import { RelayProfilesScreen } from "@/screens/relay-profiles/RelayProfilesScree
 import { OverviewScreen } from "@/screens/overview/OverviewScreen";
 import type { OverviewActions } from "@/screens/overview/OverviewScreen";
 import { detectLaunchCrash } from "@/screens/overview/presentation";
-import { ContextScreen } from "@/screens/context/ContextScreen";
 import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
 import { SettingsScreen } from "@/screens/settings/SettingsScreen";
 import { EnhanceScreen } from "@/screens/enhance/EnhanceScreen";
@@ -44,20 +43,12 @@ import type {
 import type { OverviewResult } from "@/shared/contracts/overview";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 import type { LocalSession, ProviderSyncTargetsResult } from "@/shared/contracts/sessions";
-import { readContextCatalog } from "@/features/context/config";
-import {
-  createContextMutationController,
-  type ContextMutationController,
-  type ContextMutationPorts,
-} from "@/features/context/controller";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type {
   BackendSettings,
   CcsProvidersResult,
-  CodexContextEntries,
   CommandResult,
-  ContextKind,
   EnvConflictsResult,
   ExtractRelayCommonConfigResult,
   ProviderDoctorResult,
@@ -68,7 +59,6 @@ import type {
 } from "@/app/contracts";
 import {
   managerActions,
-  type LiveContextEntriesResult,
   type ProviderImportRequest,
   type ProviderSyncPayload,
   type RelayResult,
@@ -173,7 +163,6 @@ export function App() {
       viewChanged: (view) => sessionsControllerPortsRef.current.viewChanged(view),
     });
   }
-  const [liveContextEntries, setLiveContextEntries] = useState<CodexContextEntries | null>(null);
   const [logs, setLogs] = useState<LogsResult | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
   const [watcher, setWatcher] = useState<WatcherResult | null>(null);
@@ -440,18 +429,6 @@ export function App() {
   const executeSessionsAction = (intent: SessionsIntent) =>
     sessionsControllerRef.current!.execute(intent);
 
-  const refreshLiveContextEntries = async (silent = false) => {
-    const result = await run(() => managerActions.context.readLive());
-    if (result) {
-      setLiveContextEntries(result.entries);
-      if (!silent || !isSuccessStatus(result.status)) showResultNotice(t("工具与插件"), result, { silentSuccess: true });
-    }
-    return result;
-  };
-
-  const requestContextLiveSync = async (next: BackendSettings) =>
-    run(() => managerActions.context.syncLive(next));
-
   const refreshLogs = async (silent = false) => {
     const result = await run(() => managerActions.diagnostics.readLogs());
     if (result) {
@@ -493,11 +470,6 @@ export function App() {
       await refreshSettings(true);
       await refreshLocalSessions(true);
       await refreshProviderSyncTargets(true);
-    }
-    if (next === "context") {
-      await refreshSettings(true);
-      await refreshRelayFiles(true);
-      await refreshLiveContextEntries(true);
     }
     if (next === "settings") await refreshSettings(true);
     if (next === "about") {
@@ -955,12 +927,6 @@ export function App() {
     }
   };
 
-  const requestContextUpsert = async (next: BackendSettings, kind: ContextKind, id: string, tomlBody: string) =>
-    run(() => managerActions.context.upsert({ settings: next, kind, id, tomlBody }));
-
-  const requestContextDelete = async (next: BackendSettings, kind: ContextKind, id: string) =>
-    run(() => managerActions.context.delete({ settings: next, kind, id }));
-
   const extractRelayCommonConfig = async (configContents: string) => {
     const result = await run(() => managerActions.relay.extractCommonConfig(configContents));
     if (result) showResultNotice(t("通用配置文件"), result);
@@ -1016,7 +982,7 @@ export function App() {
     const selectedBeforeSave = activeRelayProfile(switchSettings);
     const validationError = relaySwitchIssue(
       switchSettings,
-      readContextCatalog(switchSettings).defaultSelection,
+      { mcpServers: [], skills: [], plugins: [] },
       selectedBeforeSave.id,
     );
     if (validationError) {
@@ -1172,48 +1138,6 @@ export function App() {
     return result;
   };
 
-  const contextMutationPortsRef = useRef<
-    ContextMutationPorts<BackendSettings, SettingsResult, LiveContextEntriesResult> | null
-  >(null);
-  contextMutationPortsRef.current = {
-    upsert: requestContextUpsert,
-    delete: requestContextDelete,
-    persist: async (next) => {
-      const normalized = normalizeSettings(next);
-      const result = await run(() => managerActions.settings.save(normalized));
-      if (!result) return null;
-      return { ...result, settings: normalizeSettings(result.settings) };
-    },
-    commitPersisted: (result) => setSettings(result),
-    syncLive: requestContextLiveSync,
-    commitLive: (result) => setLiveContextEntries(result.entries),
-    refreshRelayFiles: async () => {
-      await refreshRelayFiles();
-    },
-    reportFailure: (result) => {
-      if (result.message)
-        showNotice(t("工具与插件"), result.message, result.status as Status);
-    },
-  };
-  const contextMutationControllerRef = useRef<ContextMutationController<BackendSettings> | null>(null);
-  if (!contextMutationControllerRef.current) {
-    type Ports = ContextMutationPorts<BackendSettings, SettingsResult, LiveContextEntriesResult>;
-    const ports = <Key extends keyof Ports>(
-      key: Key,
-    ): Ports[Key] => contextMutationPortsRef.current![key];
-    contextMutationControllerRef.current = createContextMutationController({
-      upsert: (...args) => ports("upsert")(...args),
-      delete: (...args) => ports("delete")(...args),
-      persist: (...args) => ports("persist")(...args),
-      commitPersisted: (...args) => ports("commitPersisted")(...args),
-      syncLive: (...args) => ports("syncLive")(...args),
-      commitLive: (...args) => ports("commitLive")(...args),
-      refreshRelayFiles: (...args) => ports("refreshRelayFiles")(...args),
-      reportFailure: (...args) => ports("reportFailure")(...args),
-    });
-  }
-  const applyContextChange = contextMutationControllerRef.current.apply;
-
   const actions = useMemo(
     () => ({
       refreshCurrent: () => navigate(route),
@@ -1292,13 +1216,11 @@ export function App() {
       removeEnvConflicts,
       refreshCcsProviders,
       importCcsProviders,
-      refreshLiveContextEntries,
       openExternalUrl,
       applyRelayInjection,
       applyPureApiInjection,
       clearRelayInjection,
       saveRelayFile,
-      applyContextChange,
       extractRelayCommonConfig,
       testRelayProfile,
       diagnoseRelayProfile,
@@ -1535,8 +1457,6 @@ export function App() {
               envConflicts={envConflicts}
               ccsProviders={ccsProviders}
               form={normalizeSettings(settingsForm)}
-              contextEntries={readContextCatalog(normalizeSettings(settingsForm)).entries}
-              defaultContextSelection={readContextCatalog(normalizeSettings(settingsForm)).defaultSelection}
               onFormChange={setSettingsForm}
               actions={actions}
             />
@@ -1545,14 +1465,6 @@ export function App() {
             <SessionsScreen
               view={sessionsView}
               actions={sessionsActions}
-            />
-          ) : null}
-          {route === "context" ? (
-            <ContextScreen
-              form={normalizeSettings(settingsForm)}
-              liveEntries={liveContextEntries}
-              onFormChange={setSettingsForm}
-              actions={actions}
             />
           ) : null}
           {route === "enhance" ? (
@@ -1644,13 +1556,11 @@ type Actions = {
   removeEnvConflicts: (names: string[]) => Promise<void>;
   refreshCcsProviders: (silent?: boolean) => Promise<CcsProvidersResult | null>;
   importCcsProviders: () => Promise<void>;
-  refreshLiveContextEntries: () => Promise<LiveContextEntriesResult | null>;
   openExternalUrl: (url: string) => Promise<void>;
   applyRelayInjection: () => Promise<boolean>;
   applyPureApiInjection: () => Promise<boolean>;
   clearRelayInjection: () => Promise<boolean>;
   saveRelayFile: (kind: "config" | "auth", contents: string, silent?: boolean) => Promise<void>;
-  applyContextChange: ContextMutationController<BackendSettings>["apply"];
   extractRelayCommonConfig: (configContents: string) => Promise<ExtractRelayCommonConfigResult | null>;
   testRelayProfile: (profile: RelayProfileView) => Promise<void>;
   diagnoseRelayProfile: (profile: RelayProfileView) => Promise<ProviderDoctorResult | null>;

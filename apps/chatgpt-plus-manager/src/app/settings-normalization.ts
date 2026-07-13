@@ -1,8 +1,5 @@
 import type { BackendSettings } from "./contracts.ts";
-import {
-  normalizeContextSettings,
-  readContextCatalog,
-} from "../features/context/config.ts";
+import { stripNativeExtensionTables } from "../features/relay-profiles/config.ts";
 import { normalizeRelaySettings } from "../features/relay-profiles/controller.ts";
 import type {
   RelayMode,
@@ -62,15 +59,14 @@ export const defaultSettings: BackendSettings = {
 };
 
 export function normalizeSettings(settings: BackendSettings): BackendSettings {
-  const { relayCommonConfigContents, relayContextConfigContents } = normalizeContextSettings(
+  const relayCommonConfigContents = stripNativeExtensionTables(
     settings.relayCommonConfigContents || "",
-    settings.relayContextConfigContents || "",
   );
-  const defaultContextSelection = readContextCatalog({
-    relayContextConfigContents,
-  }).defaultSelection;
   const profiles = settings.relayProfiles?.length
-    ? settings.relayProfiles
+    ? settings.relayProfiles.map((profile) => ({
+        ...profile,
+        configContents: stripNativeExtensionTables(profile.configContents || ""),
+      }))
     : [
         {
           id: settings.activeRelayId || "default",
@@ -86,7 +82,7 @@ export function normalizeSettings(settings: BackendSettings): BackendSettings {
           configContents: "",
           authContents: "",
           useCommonConfig: true,
-          contextSelection: defaultContextSelection,
+          contextSelection: emptyContextSelection(),
           contextSelectionInitialized: true,
           contextWindow: "",
           autoCompactLimit: "",
@@ -102,11 +98,11 @@ export function normalizeSettings(settings: BackendSettings): BackendSettings {
       relayProfilesEnabled: settings.relayProfilesEnabled !== false,
       computerUseGuardEnabled: settings.computerUseGuardEnabled === true,
       relayCommonConfigContents,
-      relayContextConfigContents,
+      relayContextConfigContents: "",
       relayProfiles: profiles,
       activeRelayId: settings.activeRelayId,
     },
-    defaultContextSelection,
+    emptyContextSelection(),
   );
 }
 

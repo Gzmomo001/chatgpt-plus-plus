@@ -1,11 +1,11 @@
 import { ArrowLeft, Save } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { ContextEntries } from "@/features/context/config";
 import { Button } from "@/shared/ui/button";
 import { t } from "@/i18n";
 import { Toolbar } from "@/shared/ui/layout";
 import { RelayProfileEditor } from "./RelayProfileEditor";
 import { RelayProfileFilesEditor } from "./RelayProfileFilesEditor";
+import { stripNativeExtensionTables } from "../config";
 import { commitRelayChanges } from "../controller";
 import { edit, open as openProfileEditor } from "../editor";
 import type {
@@ -15,17 +15,15 @@ import type {
   RelaySettings,
 } from "../contracts";
 import type {
-  RelayContextSelection,
   RelayProfileEditableMode,
   RelayProfileEditorState,
   ReconciledRelayProfileSettings,
 } from "../types";
-export function RelayProfileDetail<Settings extends RelaySettings>({ profile, relayFiles, form, contextEntries, defaultContextSelection, isNew = false, onBack, onFormChange, onSaved, actions }: {
+const emptyContextSelection = { mcpServers: [], skills: [], plugins: [] };
+export function RelayProfileDetail<Settings extends RelaySettings>({ profile, relayFiles, form, isNew = false, onBack, onFormChange, onSaved, actions }: {
   profile: RelayProfileView;
   relayFiles: RelayFilesResult | null;
   form: Settings;
-  contextEntries: ContextEntries;
-  defaultContextSelection: RelayContextSelection;
   isNew?: boolean;
   onBack: () => void;
   onFormChange: (value: ReconciledRelayProfileSettings<Settings>) => void | Promise<void>;
@@ -37,9 +35,12 @@ export function RelayProfileDetail<Settings extends RelaySettings>({ profile, re
     const editableMode: RelayProfileEditableMode = profile.relayMode === "mixedApi" ? "official" : profile.relayMode;
     return openProfileEditor({
       settings: form,
-      defaultContextSelection,
+      defaultContextSelection: emptyContextSelection,
       focus: isNew ? { type: "create", id: profile.id, name: profile.name, mode: editableMode } : { type: "existing", profileId: profile.id },
-      liveFiles: isActive && relayFiles ? { configContents: relayFiles.configContents, authContents: relayFiles.authContents } : null,
+      liveFiles: isActive && relayFiles ? {
+        configContents: stripNativeExtensionTables(relayFiles.configContents),
+        authContents: relayFiles.authContents,
+      } : null,
     });
   };
   const [editorState, setEditorState] = useState<RelayProfileEditorState>(openEditor);
@@ -75,10 +76,8 @@ export function RelayProfileDetail<Settings extends RelaySettings>({ profile, re
     <RelayProfileEditor state={editorState} form={form} isNew={isNew} onStateChange={setEditorState} onSwitch={switchDraft} actions={actions} />
     {editorState.draft.relayMode === "aggregate" ? null : (
       <RelayProfileFilesEditor
-        contextProfile={profile}
         profile={draft}
         form={form}
-        contextEntries={contextEntries}
         isActive={isActive}
         onFormChange={onFormChange}
         onProfileChange={(next) => setEditorState((current) => edit(current, {

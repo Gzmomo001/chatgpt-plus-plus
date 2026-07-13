@@ -20,6 +20,11 @@ test("normalizes legacy settings through the application settings interface", ()
       "[mcp_servers.alpha]",
       'command = "uv"',
       "",
+      "[[skills.config]]",
+      'path = "/tmp/review"',
+      "",
+      'plugins.demo = { enabled = true }',
+      "",
     ].join("\n"),
     relayContextConfigContents: '[plugins.demo]\nenabled = true\n',
   });
@@ -28,12 +33,12 @@ test("normalizes legacy settings through the application settings interface", ()
   assert.equal(normalized.relayProfiles[0]?.baseUrl, "https://legacy.example/v1");
   assert.equal(normalized.relayProfiles[0]?.apiKey, "sk-legacy");
   assert.deepEqual(normalized.relayProfiles[0]?.contextSelection, {
-    mcpServers: ["alpha"],
+    mcpServers: [],
     skills: [],
-    plugins: ["demo"],
+    plugins: [],
   });
   assert.equal(normalized.relayCommonConfigContents, 'model = "gpt"\n');
-  assert.match(normalized.relayContextConfigContents, /\[mcp_servers\.alpha\]/);
+  assert.equal(normalized.relayContextConfigContents, "");
 });
 
 test("selects the active profile and preserves deterministic fallbacks", () => {
@@ -63,5 +68,23 @@ test("selects the active profile and preserves deterministic fallbacks", () => {
       activeRelayId: "missing",
     }).id,
     "default",
+  );
+});
+
+test("drops native extension tables from stored provider snapshots", () => {
+  const profile = {
+    ...defaultSettings.relayProfiles[0],
+    relayMode: "pureApi" as const,
+    configContents: 'model = "gpt-5"\n\n[[skills.config]]\npath = "/tmp/review"\n\n[features]\nskills = true\n',
+  };
+
+  const normalized = normalizeSettings({
+    ...defaultSettings,
+    relayProfiles: [profile],
+  });
+
+  assert.equal(
+    normalized.relayProfiles[0]?.configContents,
+    'model = "gpt-5"\n\n[features]\nskills = true\n',
   );
 });

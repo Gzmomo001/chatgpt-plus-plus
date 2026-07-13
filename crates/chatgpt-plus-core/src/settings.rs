@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn relay_profile_context_fields_default_to_empty() {
+    fn legacy_relay_profile_context_fields_default_to_empty() {
         let profile = RelayProfile::default();
 
         assert!(profile.context_selection.mcp_servers.is_empty());
@@ -143,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn relay_profile_context_fields_deserialize_from_camel_case() {
+    fn legacy_relay_profile_context_fields_still_deserialize_from_camel_case() {
         let profile: RelayProfile = serde_json::from_str(
             r#"{
                 "id":"relay-a",
@@ -197,6 +197,8 @@ mod tests {
         assert!(saved.get("model").is_none());
         assert!(saved.get("baseUrl").is_none());
         assert!(saved.get("apiKey").is_none());
+        assert!(saved.get("contextSelection").is_none());
+        assert!(saved.get("contextSelectionInitialized").is_none());
         assert_eq!(saved["configContents"], "model = \"gpt-5.4\"\n");
         assert_eq!(saved["authContents"], "{\"OPENAI_API_KEY\":\"sk-test\"}");
     }
@@ -703,9 +705,15 @@ experimental_bearer_token = "sk-existing""#
     }
 
     #[test]
-    fn settings_store_update_moves_context_tables_out_of_common_config() {
+    fn settings_store_update_drops_legacy_managed_extensions() {
         let dir = temp_dir();
-        let store = SettingsStore::new(dir.join("settings.json"));
+        let path = dir.join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"relayContextConfigContents":"[plugins.demo]\nenabled = true\n","relayProfiles":[{"id":"relay-a","name":"Relay A","contextSelection":{"plugins":["demo"]},"contextSelectionInitialized":true}]}"#,
+        )
+        .unwrap();
+        let store = SettingsStore::new(path.clone());
 
         let updated = store
             .update(json!({
@@ -714,15 +722,20 @@ experimental_bearer_token = "sk-existing""#
             .unwrap();
 
         assert!(updated.relay_common_config_contents.is_empty());
-        assert_eq!(
-            updated.relay_context_config_contents,
-            "[mcp_servers.context7]\ncommand = \"npx\"\n"
+        assert!(updated.relay_context_config_contents.is_empty());
+        let saved: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert!(saved.get("relayContextConfigContents").is_none());
+        assert!(saved["relayProfiles"][0].get("contextSelection").is_none());
+        assert!(
+            saved["relayProfiles"][0]
+                .get("contextSelectionInitialized")
+                .is_none()
         );
         assert_eq!(store.load().unwrap(), updated);
     }
 
     #[test]
-    fn settings_store_update_extracts_context_config_from_common_config() {
+    fn settings_store_update_keeps_only_non_extension_common_config() {
         let dir = temp_dir();
         let store = SettingsStore::new(dir.join("settings.json"));
 
@@ -736,16 +749,7 @@ experimental_bearer_token = "sk-existing""#
             updated.relay_common_config_contents,
             "model_reasoning_effort = \"high\"\n"
         );
-        assert!(
-            updated
-                .relay_context_config_contents
-                .contains("[mcp_servers.context7]")
-        );
-        assert!(
-            updated
-                .relay_context_config_contents
-                .contains("[plugins.\"superpowers@openai-curated\"]")
-        );
+        assert!(updated.relay_context_config_contents.is_empty());
         assert_eq!(store.load().unwrap(), updated);
     }
 

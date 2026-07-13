@@ -4,7 +4,6 @@ import {
   KeyRound,
   LayoutDashboard,
   MessageCircle,
-  Network,
   Settings,
   Wrench,
   type LucideIcon,
@@ -32,11 +31,6 @@ const routePresentation: Record<
     label: t("会话管理"),
     subtitle: t("查看、删除和修复 Codex 本地会话"),
     icon: MessageCircle,
-  },
-  context: {
-    label: t("工具与插件"),
-    subtitle: t("独立管理 MCP、Skills、Plugins"),
-    icon: Network,
   },
   enhance: {
     label: t("插件与增强"),
@@ -72,7 +66,7 @@ export const navigationGroups = [
   },
   {
     label: t("Codex 配置"),
-    routes: navigationRoutes.filter(({ id }) => ["context", "enhance"].includes(id)),
+    routes: navigationRoutes.filter(({ id }) => id === "enhance"),
   },
   {
     label: t("系统管理"),

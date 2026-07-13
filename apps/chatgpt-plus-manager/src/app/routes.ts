@@ -2,7 +2,6 @@ export const ROUTE_IDS = [
   "overview",
   "relay",
   "sessions",
-  "context",
   "enhance",
   "maintenance",
   "about",

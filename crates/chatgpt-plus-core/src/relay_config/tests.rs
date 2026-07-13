@@ -4,12 +4,9 @@ use chatgpt_plus_core::codex_home_apply::{
 use chatgpt_plus_core::codex_sqlite::codex_session_db_path_from_home;
 use chatgpt_plus_core::relay_config::{
     backfill_relay_profile_from_home, backfill_relay_profile_from_home_with_common,
-    chatgpt_auth_status_from_home, delete_context_entry_from_common_config,
-    extract_common_config_from_config, filter_common_config_for_selection,
-    list_context_entries_from_common_config, relay_config_status_from_home,
-    sanitize_common_config_contents, set_codex_goals_feature_in_home,
-    strip_common_config_from_config, sync_live_config_context_entries,
-    upsert_context_entry_in_common_config,
+    chatgpt_auth_status_from_home, extract_common_config_from_config,
+    relay_config_status_from_home, sanitize_common_config_contents,
+    set_codex_goals_feature_in_home, strip_common_config_from_config,
 };
 
 fn reconcile_profile(
@@ -477,205 +474,6 @@ fn official_mix_api_profile_removes_auth_api_key_on_storage() {
 }
 
 #[test]
-fn lists_codex_context_entries_from_common_config() {
-    let entries = list_context_entries_from_common_config(
-        r#"[mcp_servers.context7]
-command = "npx"
-args = ["-y", "@upstash/context7-mcp"]
-
-[skills.writer]
-enabled = true
-
-[plugins.local]
-path = "plugin.js"
-"#,
-    )
-    .unwrap();
-
-    assert_eq!(entries.mcp_servers[0].id, "context7");
-    assert_eq!(entries.mcp_servers[0].summary, r#"command = "npx""#);
-    assert_eq!(entries.skills[0].id, "writer");
-    assert_eq!(entries.plugins[0].id, "local");
-}
-
-#[test]
-fn lists_codex_context_entries_with_parent_mcp_table() {
-    let entries = list_context_entries_from_common_config(
-        r#"[mcp_servers]
-
-[mcp_servers.ida-pro-mcp]
-type = "stdio"
-command = 'C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe'
-args = ['C:\Users\Administrator\AppData\Local\Programs\Python\Python313\Lib\site-packages\ida_pro_mcp\server.py']
-disabled = false
-timeout = 1800
-"#,
-    )
-    .unwrap();
-
-    assert_eq!(entries.mcp_servers.len(), 1);
-    assert_eq!(entries.mcp_servers[0].id, "ida-pro-mcp");
-    assert!(entries.mcp_servers[0].enabled);
-    assert!(
-        entries.mcp_servers[0]
-            .toml_body
-            .contains("disabled = false")
-    );
-}
-
-#[test]
-fn lists_codex_context_entries_with_enabled_state() {
-    let entries = list_context_entries_from_common_config(
-        r#"[mcp_servers.enabled_mcp]
-disabled = false
-
-[mcp_servers.disabled_mcp]
-disabled = true
-
-[plugins.enabled_plugin]
-enabled = true
-
-[plugins.disabled_plugin]
-enabled = false
-"#,
-    )
-    .unwrap();
-
-    assert!(entries.mcp_servers[0].enabled);
-    assert!(!entries.mcp_servers[1].enabled);
-    assert!(entries.plugins[0].enabled);
-    assert!(!entries.plugins[1].enabled);
-}
-
-#[test]
-fn sync_live_config_context_entries_toggles_live_context_by_enabled_state() {
-    let live = r#"model = "gpt-5"
-
-[mcp_servers]
-
-[mcp_servers.ida-pro-mcp]
-command = "python"
-enabled = true
-
-[plugins."browser@openai-bundled"]
-enabled = true
-"#;
-    let disabled = r#"[mcp_servers.ida-pro-mcp]
-command = "python"
-enabled = false
-
-[plugins."browser@openai-bundled"]
-enabled = true
-"#;
-
-    let updated = sync_live_config_context_entries(live, disabled).unwrap();
-
-    assert!(updated.contains(r#"model = "gpt-5""#));
-    assert!(!updated.contains("[mcp_servers.ida-pro-mcp]"));
-    assert!(updated.contains("[plugins.\"browser@openai-bundled\"]"));
-
-    let enabled = r#"[mcp_servers.ida-pro-mcp]
-command = "python"
-enabled = true
-"#;
-
-    let updated = sync_live_config_context_entries(&updated, enabled).unwrap();
-
-    assert!(updated.contains("[mcp_servers.ida-pro-mcp]"));
-    assert!(updated.contains(r#"command = "python""#));
-    assert!(updated.contains("[plugins.\"browser@openai-bundled\"]"));
-}
-
-#[test]
-fn upserts_and_deletes_context_entry_in_common_config() {
-    let common = upsert_context_entry_in_common_config(
-        "",
-        "mcp",
-        "context7",
-        r#"command = "npx"
-args = ["-y", "@upstash/context7-mcp"]
-"#,
-    )
-    .unwrap();
-
-    assert!(common.contains("[mcp_servers.context7]"));
-    assert!(common.contains(r#"command = "npx""#));
-
-    let updated =
-        upsert_context_entry_in_common_config(&common, "mcp", "context7", r#"command = "bunx""#)
-            .unwrap();
-
-    assert!(updated.contains(r#"command = "bunx""#));
-    assert!(!updated.contains(r#"command = "npx""#));
-
-    let deleted = delete_context_entry_from_common_config(&updated, "mcp", "context7").unwrap();
-    assert!(!deleted.contains("[mcp_servers.context7]"));
-}
-
-#[test]
-fn upserts_context_entry_tolerates_duplicate_existing_context_tables() {
-    let common = r#"[plugins."browser@openai-bundled"]
-enabled = true
-
-[plugins."browser@openai-bundled"]
-enabled = true
-"#;
-
-    let updated = upsert_context_entry_in_common_config(
-        common,
-        "plugin",
-        "browser@openai-bundled",
-        "enabled = false",
-    )
-    .unwrap();
-
-    assert_eq!(
-        updated
-            .matches("[plugins.\"browser@openai-bundled\"]")
-            .count(),
-        1
-    );
-    assert!(updated.contains("enabled = false"));
-}
-
-#[test]
-fn global_common_config_filters_context_by_supplier_selection() {
-    let filtered = filter_common_config_for_selection(
-        r#"disable_response_storage = true
-
-[features]
-goals = true
-
-[mcp_servers.context7]
-command = "npx"
-
-[mcp_servers.memory]
-command = "memory"
-
-[skills.writer]
-enabled = true
-
-[plugins.local]
-path = "plugin.js"
-"#,
-        &RelayContextSelection {
-            mcp_servers: vec!["memory".to_string()],
-            skills: vec![],
-            plugins: vec!["local".to_string()],
-        },
-    )
-    .unwrap();
-
-    assert!(filtered.contains("disable_response_storage = true"));
-    assert!(filtered.contains("[features]"));
-    assert!(filtered.contains("goals = true"));
-    assert!(!filtered.contains("[mcp_servers.context7]"));
-    assert!(filtered.contains("[mcp_servers.memory]"));
-    assert!(!filtered.contains("[skills.writer]"));
-    assert!(filtered.contains("[plugins.local]"));
-}
-
-#[test]
 fn extracts_codex_common_config_without_provider_fields() {
     let extracted = extract_common_config_from_config(
         r#"model = "gpt-5"
@@ -701,9 +499,9 @@ path = "C:\\Tools\\plugin"
     )
     .unwrap();
 
-    assert!(extracted.contains("[mcp_servers.context7]"));
-    assert!(extracted.contains("[skills.writer]"));
-    assert!(extracted.contains("[plugins.local]"));
+    assert!(!extracted.contains("[mcp_servers.context7]"));
+    assert!(!extracted.contains("[skills.writer]"));
+    assert!(!extracted.contains("[plugins.local]"));
     assert!(!extracted.contains("model_provider"));
     assert!(!extracted.contains("model ="));
     assert!(!extracted.contains("model_catalog_json"));
@@ -774,106 +572,6 @@ enabled = false
     assert!(!stripped.contains("[mcp_servers.context7]"));
     assert!(stripped.contains("[skills.writer]"));
     assert!(stripped.contains("enabled = false"));
-}
-
-#[test]
-fn reconcile_profile_with_context_selection_writes_only_selected_global_context() {
-    let temp = tempfile::tempdir().unwrap();
-    let selection = RelayContextSelection {
-        mcp_servers: vec!["memory".to_string()],
-        skills: vec![],
-        plugins: vec!["local".to_string()],
-    };
-
-    let profile = RelayProfile {
-        id: "selected-context".to_string(),
-        relay_mode: RelayMode::PureApi,
-        config_contents: r#"model_provider = "custom"
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "https://relay.example/v1"
-experimental_bearer_token = "sk-new"
-"#
-        .to_string(),
-        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
-        context_selection: selection,
-        context_selection_initialized: true,
-        context_window: "200000".to_string(),
-        auto_compact_limit: "160000".to_string(),
-        ..RelayProfile::default()
-    };
-    let common = r#"[mcp_servers.context7]
-command = "npx"
-
-[mcp_servers.memory]
-command = "memory"
-
-[skills.writer]
-enabled = true
-
-[plugins.local]
-path = "plugin.js"
-"#;
-
-    reconcile_profile(temp.path(), &profile, common).unwrap();
-
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(config.contains("[mcp_servers.memory]"));
-    assert!(!config.contains("[mcp_servers.context7]"));
-    assert!(!config.contains("[skills.writer]"));
-    assert!(config.contains("[plugins.local]"));
-    assert!(config.contains("model_context_window = 200000"));
-    assert!(config.contains("model_auto_compact_token_limit = 160000"));
-}
-
-#[test]
-fn reconcile_profile_with_context_skips_disabled_global_context() {
-    let temp = tempfile::tempdir().unwrap();
-    let selection = RelayContextSelection {
-        mcp_servers: vec!["enabled_one".to_string()],
-        skills: vec!["disabled_skill".to_string()],
-        plugins: vec!["disabled_one".to_string(), "enabled_two".to_string()],
-    };
-
-    let profile = RelayProfile {
-        id: "disabled-context".to_string(),
-        relay_mode: RelayMode::PureApi,
-        config_contents: r#"model_provider = "custom"
-[model_providers.custom]
-name = "custom"
-wire_api = "responses"
-requires_openai_auth = true
-base_url = "https://relay.example/v1"
-experimental_bearer_token = "sk-new"
-"#
-        .to_string(),
-        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
-        context_selection: selection,
-        context_selection_initialized: true,
-        ..RelayProfile::default()
-    };
-    let common = r#"[mcp_servers.enabled_one]
-command = "npx"
-
-[plugins.disabled_one]
-enabled = false
-
-[skills.disabled_skill]
-enabled = false
-
-[plugins.enabled_two]
-enabled = true
-"#;
-
-    reconcile_profile(temp.path(), &profile, common).unwrap();
-
-    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
-    assert!(config.contains("[mcp_servers.enabled_one]"));
-    assert!(config.contains("[plugins.enabled_two]"));
-    assert!(!config.contains("[plugins.disabled_one]"));
-    assert!(!config.contains("[skills.disabled_skill]"));
 }
 
 #[test]
@@ -2071,7 +1769,7 @@ requires_openai_auth = true
 }
 
 #[test]
-fn reconcile_profile_preserves_unmanaged_live_context_entries() {
+fn reconcile_profile_preserves_native_extension_entries() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("config.toml"),
@@ -2115,15 +1813,14 @@ command = "managed-command"
     assert!(config.contains("[mcp_servers.manual]"));
     assert!(config.contains(r#"command = "manual-command""#));
     assert!(config.contains("[plugins.manual]"));
-    assert!(config.contains("[mcp_servers.managed]"));
-    assert!(config.contains(r#"command = "managed-command""#));
+    assert!(!config.contains("[mcp_servers.managed]"));
     assert!(config.contains("[marketplaces.role-specific-plugins]"));
     assert!(config.contains(r#"source_type = "local""#));
     assert!(config.contains("role-specific-plugins"));
 }
 
 #[test]
-fn reconcile_profile_does_not_preserve_unselected_managed_context_entries() {
+fn reconcile_profile_preserves_all_native_extension_entries() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join("config.toml"),
@@ -2163,86 +1860,8 @@ command = "managed-command"
 
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(config.contains("[mcp_servers.manual]"));
-    assert!(!config.contains("[mcp_servers.managed]"));
-}
-
-#[test]
-fn filter_common_config_for_selection_writes_only_selected_context_entries() {
-    let common = r#"model_reasoning_effort = "high"
-
-[mcp_servers.keep]
-command = "keep"
-
-[mcp_servers.skip]
-command = "skip"
-
-[skills.writer]
-enabled = true
-
-[plugins.browser]
-enabled = true
-"#;
-    let selection = RelayContextSelection {
-        mcp_servers: vec!["keep".to_string()],
-        skills: Vec::new(),
-        plugins: vec!["browser".to_string()],
-    };
-
-    let filtered = filter_common_config_for_selection(common, &selection).unwrap();
-
-    assert!(filtered.contains("model_reasoning_effort"));
-    assert!(filtered.contains("[mcp_servers.keep]"));
-    assert!(!filtered.contains("[mcp_servers.skip]"));
-    assert!(!filtered.contains("[skills.writer]"));
-    assert!(filtered.contains("[plugins.browser]"));
-}
-
-#[test]
-fn sync_live_config_context_entries_preserves_unmanaged_live_entries() {
-    let live = r#"model = "gpt-5"
-
-[mcp_servers.manual]
-command = "manual"
-
-[mcp_servers.managed]
-command = "old"
-"#;
-    let context = r#"[mcp_servers.managed]
-command = "new"
-
-[mcp_servers.disabled]
-enabled = false
-command = "disabled"
-"#;
-
-    let updated = sync_live_config_context_entries(live, context).unwrap();
-
-    assert!(updated.contains("[mcp_servers.manual]"));
-    assert!(updated.contains(r#"command = "manual""#));
-    assert!(updated.contains("[mcp_servers.managed]"));
-    assert!(updated.contains(r#"command = "new""#));
-    assert!(!updated.contains("[mcp_servers.disabled]"));
-}
-
-#[test]
-fn sync_live_config_context_entries_removes_disabled_managed_entries_from_live() {
-    let live = r#"model = "gpt-5"
-
-[mcp_servers.manual]
-command = "manual"
-
-[mcp_servers.managed]
-command = "old"
-"#;
-    let context = r#"[mcp_servers.managed]
-enabled = false
-command = "old"
-"#;
-
-    let updated = sync_live_config_context_entries(live, context).unwrap();
-
-    assert!(updated.contains("[mcp_servers.manual]"));
-    assert!(!updated.contains("[mcp_servers.managed]"));
+    assert!(config.contains("[mcp_servers.managed]"));
+    assert!(config.contains(r#"command = "old-managed""#));
 }
 
 #[test]

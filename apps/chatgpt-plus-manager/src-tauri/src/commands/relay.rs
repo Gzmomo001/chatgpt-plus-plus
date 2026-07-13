@@ -45,6 +45,19 @@ pub struct RelaySwitchPayload {
 pub struct SettingsBackfillPayload {
     pub settings: BackendSettings,
 }
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractRelayCommonConfigPayload {
+    pub common_config_contents: String,
+    pub profile_config_contents: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtractRelayCommonConfigRequest {
+    pub config_contents: String,
+}
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayProfileTestPayload {
@@ -73,6 +86,35 @@ pub struct SaveRelayFileRequest {
 pub struct BackfillRelayProfileRequest {
     pub settings: BackendSettings,
     pub profile_id: String,
+}
+
+#[tauri::command]
+pub fn extract_relay_common_config(
+    request: ExtractRelayCommonConfigRequest,
+) -> CommandResult<ExtractRelayCommonConfigPayload> {
+    match chatgpt_plus_core::relay_config::extract_common_config_from_config(
+        &request.config_contents,
+    )
+    .and_then(|common_config_contents| {
+        let profile_config_contents =
+            chatgpt_plus_core::relay_config::strip_common_config_from_config(
+                &request.config_contents,
+                &common_config_contents,
+            )?;
+        Ok(ExtractRelayCommonConfigPayload {
+            common_config_contents,
+            profile_config_contents,
+        })
+    }) {
+        Ok(payload) => ok("通用配置已按兼容切换规则提取。", payload),
+        Err(error) => failed(
+            &format!("提取通用配置失败：{error}"),
+            ExtractRelayCommonConfigPayload {
+                common_config_contents: String::new(),
+                profile_config_contents: request.config_contents,
+            },
+        ),
+    }
 }
 #[tauri::command]
 pub fn relay_status() -> CommandResult<RelayPayload> {
@@ -228,7 +270,7 @@ pub fn backfill_relay_profile_from_live(
     match chatgpt_plus_core::relay_config::backfill_relay_profile_from_home_with_common(
         &home,
         profile,
-        &mut settings.relay_context_config_contents,
+        &settings.relay_common_config_contents,
     ) {
         Ok(()) => {
             log_manager_event(

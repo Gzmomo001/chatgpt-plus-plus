@@ -6,8 +6,7 @@ import { Textarea } from "@/shared/ui/textarea";
 import {
   projectRelayFiles,
   promoteRelayCommonConfig,
-  type ContextEntries,
-} from "@/features/context/config";
+} from "@/features/relay-profiles/config";
 import { t } from "@/i18n";
 import type {
   RelayProfileFilesActions,
@@ -17,10 +16,8 @@ import type {
 import type { ReconciledRelayProfileSettings } from "../types";
 
 type RelayProfileFilesEditorProps<Settings extends RelaySettings>={
-  contextProfile: RelayProfileView;
   profile: RelayProfileView;
   form: Settings;
-  contextEntries: ContextEntries;
   isActive: boolean;
   onFormChange: (value: ReconciledRelayProfileSettings<Settings>) => void|Promise<void>;
   onProfileChange: (value: RelayProfileView) => void;
@@ -28,20 +25,14 @@ type RelayProfileFilesEditorProps<Settings extends RelaySettings>={
 };
 
 export function RelayProfileFilesEditor<Settings extends RelaySettings>({
-  contextProfile,
   profile,
   form,
-  contextEntries,
   isActive,
   onFormChange,
   onProfileChange,
   actions,
 }: RelayProfileFilesEditorProps<Settings>) {
-  const projection=projectRelayFiles(
-    { ...profile,contextSelection: contextProfile.contextSelection },
-    form,
-    contextEntries,
-  );
+  const projection=projectRelayFiles(profile,form);
 
   const promoteCommonConfig=async () => {
     const extracted=await actions.extractRelayCommonConfig(
@@ -51,8 +42,6 @@ export function RelayProfileFilesEditor<Settings extends RelaySettings>({
     const promoted=promoteRelayCommonConfig(form,profile,extracted);
     if(
       !promoted.settings.relayCommonConfigContents.trim()
-      &&promoted.settings.relayContextConfigContents
-      ===form.relayContextConfigContents
     ) {
       await actions.showMessage(
         t("通用配置文件"),
@@ -72,8 +61,8 @@ export function RelayProfileFilesEditor<Settings extends RelaySettings>({
         <FileHead
           title={t("config.toml 预览")}
           detail={isActive
-            ? t("当前供应商切换后会写入的预览；上下文开关变化会立即反映")
-            :t("切换到此供应商时会写入的预览；上下文开关变化会立即反映")}
+            ? t("当前供应商管理部分的写入预览；Codex 原生扩展会保留且不在此显示")
+            :t("切换到此供应商时的管理部分预览；Codex 原生扩展会保留且不在此显示")}
         />
         <SyncedTextarea
           className="relay-file-textarea"
@@ -89,7 +78,7 @@ export function RelayProfileFilesEditor<Settings extends RelaySettings>({
         <div className="relay-file-head">
           <div>
             <strong>{t("通用配置文件")}</strong>
-            <span>{t("只保留非 MCP、Skills、Plugins 的跨供应商配置；工具与插件在独立页面管理。")}</span>
+            <span>{t("跨供应商复用的 Codex 配置；MCP、Skills、Plugins 由 Codex 原生管理。")}</span>
           </div>
           <Button
             onClick={() => void promoteCommonConfig()}

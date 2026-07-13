@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 use toml_edit::{DocumentMut, Item, Table, TableLike};
 
-use crate::settings::{RelayContextSelection, RelayProfile, RelayProtocol};
+use crate::settings::{RelayProfile, RelayProtocol};
 
 const RELAY_PROVIDER: &str = "custom";
 const LEGACY_RELAY_PROVIDERS: &[&str] = &["ChatGPTPlusPlus", "CodexPlusPlus", "CodexPP"];
@@ -56,25 +56,6 @@ pub struct RelayProfileTestResult {
     pub http_status: u16,
     pub endpoint: String,
     pub response_preview: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexContextEntry {
-    pub id: String,
-    pub kind: String,
-    pub title: String,
-    pub summary: String,
-    pub toml_body: String,
-    pub enabled: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodexContextEntries {
-    pub mcp_servers: Vec<CodexContextEntry>,
-    pub skills: Vec<CodexContextEntry>,
-    pub plugins: Vec<CodexContextEntry>,
 }
 
 pub fn default_relay_status() -> RelayStatus {
@@ -243,14 +224,13 @@ pub(super) fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_gua
     preserve_computer_use_guard: bool,
 ) -> anyhow::Result<Option<String>> {
     let selected_common = if profile.use_common_config {
-        filter_common_config_for_profile(common_config_contents, profile)?
+        sanitize_common_config_contents(common_config_contents)
     } else {
         String::new()
     };
     let profile_config = complete_relay_profile_config(profile)?;
     let config_with_common = merge_common_config_into_config(&profile_config, &selected_common)?;
-    let config_with_common =
-        preserve_unmanaged_live_context_entries(home, &config_with_common, common_config_contents)?;
+    let config_with_common = preserve_native_extension_entries(home, &config_with_common)?;
     let config_with_limits = apply_context_limits_to_config(
         &config_with_common,
         &profile.context_window,
@@ -451,7 +431,7 @@ pub fn backfill_relay_profile_from_home(
 pub fn backfill_relay_profile_from_home_with_common(
     home: &Path,
     profile: &mut RelayProfile,
-    common_config_contents: &mut String,
+    common_config_contents: &str,
 ) -> anyhow::Result<()> {
     let live_config = read_optional_text(&home.join("config.toml"))?;
     let template_config = profile.config_contents.clone();
@@ -461,6 +441,7 @@ pub fn backfill_relay_profile_from_home_with_common(
     } else {
         ensure_trailing_newline(live_config.clone())
     };
+    profile.config_contents = strip_native_extension_config(&profile.config_contents);
     profile.config_contents =
         restore_profile_provider_id_for_backfill(&profile.config_contents, &template_config)?;
     profile.auth_contents = read_optional_text(&home.join("auth.json"))?;
@@ -488,6 +469,7 @@ pub fn extract_common_config_from_config(config_text: &str) -> anyhow::Result<St
         doc.as_table_mut().remove(key);
     }
     doc.as_table_mut().remove("model_providers");
+    remove_native_extension_tables(doc.as_table_mut());
     Ok(normalize_optional_toml(doc))
 }
 
@@ -495,10 +477,47 @@ pub fn sanitize_common_config_contents(common_config: &str) -> String {
     match parse_toml_document(common_config) {
         Ok(mut doc) => {
             remove_provider_specific_common_keys(doc.as_table_mut());
+            remove_native_extension_tables(doc.as_table_mut());
             normalize_optional_toml(doc)
         }
-        Err(_) => sanitize_common_config_text_fallback(common_config),
+        Err(_) => strip_native_extension_text_fallback(&sanitize_common_config_text_fallback(
+            common_config,
+        )),
     }
+}
+
+fn strip_native_extension_config(config_text: &str) -> String {
+    match parse_toml_document(config_text) {
+        Ok(mut doc) => {
+            remove_native_extension_tables(doc.as_table_mut());
+            normalize_optional_toml(doc)
+        }
+        Err(_) => strip_native_extension_text_fallback(config_text),
+    }
+}
+
+fn remove_native_extension_tables(table: &mut toml_edit::Table) {
+    for key in ["mcp_servers", "skills", "plugins"] {
+        table.remove(key);
+    }
+}
+
+fn strip_native_extension_text_fallback(config_text: &str) -> String {
+    let mut kept = Vec::new();
+    let mut skipping = false;
+    for line in config_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+            let path = trimmed.trim_matches(['[', ']']);
+            skipping = ["mcp_servers", "skills", "plugins"]
+                .iter()
+                .any(|key| path == *key || path.starts_with(&format!("{key}.")));
+        }
+        if !skipping {
+            kept.push(line);
+        }
+    }
+    ensure_trailing_newline(kept.join("\n").trim_end().to_string())
 }
 
 pub fn strip_common_config_from_config(
@@ -538,225 +557,25 @@ pub fn merge_common_config_into_config(
     Ok(normalize_optional_toml(target_doc))
 }
 
-pub fn list_context_entries_from_common_config(
-    common_config: &str,
-) -> anyhow::Result<CodexContextEntries> {
-    let normalized = normalize_duplicate_toml_text(common_config);
-    let doc = parse_toml_document(&normalized)?;
-    Ok(CodexContextEntries {
-        mcp_servers: list_context_entries_for_table(&doc, "mcp_servers"),
-        skills: list_context_entries_for_table(&doc, "skills"),
-        plugins: list_context_entries_for_table(&doc, "plugins"),
-    })
-}
-
-pub fn upsert_context_entry_in_common_config(
-    common_config: &str,
-    kind: &str,
-    id: &str,
-    toml_body: &str,
-) -> anyhow::Result<String> {
-    let id = id.trim();
-    if id.is_empty() {
-        anyhow::bail!("上下文 id 不能为空");
-    }
-    let table_name = context_table_name(kind)?;
-    let body_doc = parse_toml_document(toml_body)?;
-    let normalized = normalize_duplicate_toml_text(common_config);
-    let mut doc = parse_toml_document(&normalized)?;
-    if !doc.as_table().contains_key(table_name) {
-        doc[table_name] = toml_edit::table();
-    }
-    if doc[table_name].as_table().is_none() {
-        anyhow::bail!("{table_name} 必须是 TOML 表");
-    }
-    doc[table_name][id] = Item::Table(body_doc.as_table().clone());
-    Ok(normalize_optional_toml(doc))
-}
-
-pub fn delete_context_entry_from_common_config(
-    common_config: &str,
-    kind: &str,
-    id: &str,
-) -> anyhow::Result<String> {
-    let table_name = context_table_name(kind)?;
-    let normalized = normalize_duplicate_toml_text(common_config);
-    let mut doc = parse_toml_document(&normalized)?;
-    if let Some(table) = doc[table_name].as_table_mut() {
-        table.remove(id.trim());
-        if table.is_empty() {
-            doc.as_table_mut().remove(table_name);
-        }
-    }
-    Ok(normalize_optional_toml(doc))
-}
-
-pub fn filter_common_config_for_selection(
-    common_config: &str,
-    selection: &RelayContextSelection,
-) -> anyhow::Result<String> {
-    let sanitized_common = sanitize_common_config_contents(common_config);
-    let mut filtered = parse_toml_document(&sanitized_common)?;
-    filter_context_tables_for_selection(filtered.as_table_mut(), selection);
-    remove_disabled_context_tables(filtered.as_table_mut());
-    Ok(normalize_optional_toml(filtered))
-}
-
-fn filter_common_config_for_profile(
-    common_config: &str,
-    profile: &RelayProfile,
-) -> anyhow::Result<String> {
-    if profile.context_selection_initialized {
-        filter_common_config_for_selection(common_config, &profile.context_selection)
-    } else {
-        let sanitized_common = sanitize_common_config_contents(common_config);
-        let mut filtered = parse_toml_document(&sanitized_common)?;
-        remove_disabled_context_tables(filtered.as_table_mut());
-        Ok(normalize_optional_toml(filtered))
-    }
-}
-
-pub fn sync_live_config_context_entries(
-    live_config: &str,
-    context_config: &str,
-) -> anyhow::Result<String> {
-    let normalized_live = normalize_duplicate_toml_text(live_config);
-    let normalized_context = normalize_duplicate_toml_text(context_config);
-    let mut live_doc = parse_toml_document(&normalized_live)?;
-    if normalized_context.trim().is_empty() {
-        return Ok(normalize_optional_toml(live_doc));
-    }
-    let managed_doc = parse_toml_document(&normalized_context)?;
-    remove_managed_context_entries(live_doc.as_table_mut(), managed_doc.as_table());
-    let mut context_doc = managed_doc;
-    remove_disabled_context_tables(context_doc.as_table_mut());
-    merge_managed_context_tables(live_doc.as_table_mut(), context_doc.as_table());
-    Ok(normalize_optional_toml(live_doc))
-}
-
-fn preserve_unmanaged_live_context_entries(
-    home: &Path,
-    config_text: &str,
-    managed_context_config: &str,
-) -> anyhow::Result<String> {
+fn preserve_native_extension_entries(home: &Path, config_text: &str) -> anyhow::Result<String> {
     let live_config = read_optional_text(&home.join("config.toml"))?;
     if live_config.trim().is_empty() {
         return Ok(ensure_trailing_newline(config_text.to_string()));
     }
     let mut target_doc = parse_toml_document(config_text)?;
     let live_doc = parse_toml_document(&live_config)?;
-    let managed_doc =
-        parse_toml_document(&sanitize_common_config_contents(managed_context_config))?;
-    preserve_unmanaged_context_tables(
-        target_doc.as_table_mut(),
-        live_doc.as_table(),
-        managed_doc.as_table(),
-    );
+    preserve_native_extension_tables(target_doc.as_table_mut(), live_doc.as_table());
     Ok(normalize_optional_toml(target_doc))
 }
-
-fn filter_context_tables_for_selection(
-    table: &mut toml_edit::Table,
-    selection: &RelayContextSelection,
-) {
-    filter_context_table_for_ids(table, "mcp_servers", &selection.mcp_servers);
-    filter_context_table_for_ids(table, "skills", &selection.skills);
-    filter_context_table_for_ids(table, "plugins", &selection.plugins);
-}
-
-fn filter_context_table_for_ids(
-    table: &mut toml_edit::Table,
-    table_name: &str,
-    selected_ids: &[String],
-) {
-    let Some(item) = table.get_mut(table_name) else {
-        return;
-    };
-    let Some(context_table) = item.as_table_mut() else {
-        return;
-    };
-    let selected = selected_ids
-        .iter()
-        .map(|id| id.trim())
-        .filter(|id| !id.is_empty())
-        .collect::<HashSet<_>>();
-    let remove_ids = context_table
-        .iter()
-        .filter_map(|(id, _)| (!selected.contains(id)).then_some(id.to_string()))
-        .collect::<Vec<_>>();
-    for id in remove_ids {
-        context_table.remove(&id);
-    }
-}
-
-fn merge_managed_context_tables(target: &mut toml_edit::Table, managed: &toml_edit::Table) {
+fn preserve_native_extension_tables(target: &mut toml_edit::Table, live: &toml_edit::Table) {
     for table_name in ["mcp_servers", "skills", "plugins"] {
-        merge_managed_context_table(target, managed, table_name);
+        preserve_native_extension_table(target, live, table_name);
     }
 }
 
-fn merge_managed_context_table(
-    target: &mut toml_edit::Table,
-    managed: &toml_edit::Table,
-    table_name: &str,
-) {
-    let Some(managed_item) = managed.get(table_name) else {
-        return;
-    };
-    let Some(managed_table) = managed_item.as_table_like() else {
-        return;
-    };
-    if target.get(table_name).is_none() {
-        target[table_name] = toml_edit::table();
-    }
-    let Some(target_table) = target.get_mut(table_name).and_then(Item::as_table_like_mut) else {
-        target[table_name] = managed_item.clone();
-        return;
-    };
-    for (id, item) in managed_table.iter() {
-        target_table.insert(id, item.clone());
-    }
-}
-
-fn remove_managed_context_entries(target: &mut toml_edit::Table, managed: &toml_edit::Table) {
-    for table_name in ["mcp_servers", "skills", "plugins"] {
-        remove_managed_context_entry_table(target, managed, table_name);
-    }
-}
-
-fn remove_managed_context_entry_table(
-    target: &mut toml_edit::Table,
-    managed: &toml_edit::Table,
-    table_name: &str,
-) {
-    let Some(managed_item) = managed.get(table_name) else {
-        return;
-    };
-    let Some(managed_table) = managed_item.as_table_like() else {
-        return;
-    };
-    let Some(target_table) = target.get_mut(table_name).and_then(Item::as_table_like_mut) else {
-        return;
-    };
-    for (id, _) in managed_table.iter() {
-        target_table.remove(id);
-    }
-}
-
-fn preserve_unmanaged_context_tables(
+fn preserve_native_extension_table(
     target: &mut toml_edit::Table,
     live: &toml_edit::Table,
-    managed: &toml_edit::Table,
-) {
-    for table_name in ["mcp_servers", "skills", "plugins"] {
-        preserve_unmanaged_context_table(target, live, managed, table_name);
-    }
-}
-
-fn preserve_unmanaged_context_table(
-    target: &mut toml_edit::Table,
-    live: &toml_edit::Table,
-    managed: &toml_edit::Table,
     table_name: &str,
 ) {
     let Some(live_item) = live.get(table_name) else {
@@ -771,40 +590,9 @@ fn preserve_unmanaged_context_table(
     let Some(target_table) = target.get_mut(table_name).and_then(Item::as_table_like_mut) else {
         return;
     };
-    let managed_ids = managed
-        .get(table_name)
-        .and_then(Item::as_table_like)
-        .map(|table| {
-            table
-                .iter()
-                .map(|(id, _)| id.to_string())
-                .collect::<HashSet<_>>()
-        })
-        .unwrap_or_default();
     for (id, item) in live_table.iter() {
-        if !managed_ids.contains(id) && target_table.get(id).is_none() {
+        if target_table.get(id).is_none() {
             target_table.insert(id, item.clone());
-        }
-    }
-}
-
-fn remove_disabled_context_tables(table: &mut toml_edit::Table) {
-    for table_name in ["mcp_servers", "skills", "plugins"] {
-        let Some(item) = table.get_mut(table_name) else {
-            continue;
-        };
-        let Some(context_table) = item.as_table_mut() else {
-            continue;
-        };
-        let disabled_ids: Vec<String> = context_table
-            .iter()
-            .filter_map(|(id, item)| {
-                let enabled = item.as_table().map(context_entry_enabled).unwrap_or(true);
-                (!enabled).then_some(id.to_string())
-            })
-            .collect();
-        for id in disabled_ids {
-            context_table.remove(&id);
         }
     }
 }
@@ -1451,79 +1239,6 @@ fn normalize_optional_toml(doc: DocumentMut) -> String {
     } else {
         ensure_trailing_newline(contents)
     }
-}
-
-fn list_context_entries_for_table(doc: &DocumentMut, table_name: &str) -> Vec<CodexContextEntry> {
-    let Some(table) = doc.get(table_name).and_then(Item::as_table) else {
-        return Vec::new();
-    };
-    table
-        .iter()
-        .filter_map(|(id, item)| {
-            let table = item.as_table()?;
-            let body = table_body_to_string(table);
-            Some(CodexContextEntry {
-                id: id.to_string(),
-                kind: context_kind_name(table_name).to_string(),
-                title: id.to_string(),
-                summary: context_entry_summary(&body),
-                toml_body: body,
-                enabled: context_entry_enabled(table),
-            })
-        })
-        .collect()
-}
-
-fn table_body_to_string(table: &Table) -> String {
-    let mut doc = DocumentMut::new();
-    merge_toml_table_like(doc.as_table_mut(), table);
-    normalize_optional_toml(doc)
-}
-
-fn context_table_name(kind: &str) -> anyhow::Result<&'static str> {
-    match kind {
-        "mcp" | "mcpServer" | "mcpServers" => Ok("mcp_servers"),
-        "skill" | "skills" => Ok("skills"),
-        "plugin" | "plugins" => Ok("plugins"),
-        other => anyhow::bail!("未知上下文类型：{other}"),
-    }
-}
-
-fn context_kind_name(table: &str) -> &'static str {
-    match table {
-        "mcp_servers" => "mcp",
-        "skills" => "skill",
-        "plugins" => "plugin",
-        _ => "unknown",
-    }
-}
-
-fn context_entry_summary(body: &str) -> String {
-    body.lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty() && !line.starts_with('#'))
-        .unwrap_or("")
-        .chars()
-        .take(96)
-        .collect()
-}
-
-fn context_entry_enabled(table: &Table) -> bool {
-    if table
-        .get("enabled")
-        .and_then(|value| value.as_bool())
-        .is_some_and(|enabled| !enabled)
-    {
-        return false;
-    }
-    if table
-        .get("disabled")
-        .and_then(|value| value.as_bool())
-        .is_some_and(|disabled| disabled)
-    {
-        return false;
-    }
-    true
 }
 
 fn set_provider_id(doc: &mut DocumentMut, provider_id: &str) {

@@ -4,7 +4,6 @@ use chatgpt_plus_core::codex_home_apply::CodexHomeReconcileIntent;
 use chatgpt_plus_core::settings::{BackendSettings, RelayProfile, normalize_settings_before_save};
 use serde_json::json;
 
-use super::context::{self, delete_context_entry, list_context_entries, upsert_context_entry};
 use super::diagnostics::{self, check_env_conflicts, read_latest_logs};
 use super::install::{self, ads_payload, load_watcher_state, open_external_url, perform_update};
 use super::relay::*;
@@ -633,13 +632,16 @@ fn save_relay_file_in_home_only_allows_known_files() {
 }
 
 #[test]
-fn normalize_settings_before_save_preserves_profile_context_until_manual_extract() {
+fn normalize_settings_before_save_drops_legacy_managed_extensions() {
     let settings = BackendSettings {
-        relay_common_config_contents: "[mcp_servers.context7]\ncommand = \"npx\"\n".to_string(),
+        relay_common_config_contents:
+            "skills.config = [{ path = \"/tmp/review\" }]\n\n[mcp_servers.context7]\ncommand = \"npx\"\n"
+                .to_string(),
         relay_profiles: vec![RelayProfile {
             use_common_config: false,
-            config_contents: "model = \"gpt-5\"\n\n[mcp_servers.context7]\ncommand = \"npx\"\n"
-                .to_string(),
+            config_contents:
+                "model = \"gpt-5\"\nplugins.demo = { enabled = true }\n\n[mcp_servers.context7]\ncommand = \"npx\"\n"
+                    .to_string(),
             ..RelayProfile::default()
         }],
         ..BackendSettings::default()
@@ -653,19 +655,25 @@ fn normalize_settings_before_save_preserves_profile_context_until_manual_extract
             .contains("model = \"gpt-5\"")
     );
     assert!(
-        normalized.relay_profiles[0]
+        !normalized.relay_profiles[0]
             .config_contents
             .contains("[mcp_servers.context7]")
     );
     assert!(
-        normalized
-            .relay_context_config_contents
-            .contains("[mcp_servers.context7]")
+        !normalized.relay_profiles[0]
+            .config_contents
+            .contains("plugins.demo")
     );
+    assert!(normalized.relay_context_config_contents.is_empty());
     assert!(
         !normalized
             .relay_common_config_contents
             .contains("[mcp_servers")
+    );
+    assert!(
+        !normalized
+            .relay_common_config_contents
+            .contains("skills.config")
     );
 }
 
@@ -795,45 +803,6 @@ model_reasoning_effort = "high"
         normalized
             .relay_common_config_contents
             .contains("model_reasoning_effort = \"high\"")
-    );
-}
-
-#[test]
-fn context_entry_commands_update_settings_payload() {
-    let settings = BackendSettings::default();
-    let upsert = upsert_context_entry(context::ContextEntryRequest {
-        settings: settings.clone(),
-        kind: "mcp".to_string(),
-        id: "context7".to_string(),
-        toml_body: "command = \"npx\"\n".to_string(),
-    });
-
-    assert_eq!(upsert.status, "ok");
-    assert!(
-        upsert
-            .payload
-            .settings
-            .relay_context_config_contents
-            .contains("[mcp_servers.context7]")
-    );
-
-    let listed = list_context_entries(context::ContextSettingsRequest {
-        settings: upsert.payload.settings.clone(),
-    });
-    assert_eq!(listed.payload.entries.mcp_servers[0].id, "context7");
-
-    let deleted = delete_context_entry(context::ContextDeleteRequest {
-        settings: upsert.payload.settings,
-        kind: "mcp".to_string(),
-        id: "context7".to_string(),
-    });
-    assert_eq!(deleted.status, "ok");
-    assert!(
-        !deleted
-            .payload
-            .settings
-            .relay_context_config_contents
-            .contains("[mcp_servers.context7]")
     );
 }
 

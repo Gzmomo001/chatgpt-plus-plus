@@ -361,7 +361,7 @@ fn disabled_reconciliation_returns_an_error_without_writing() {
 }
 
 #[test]
-fn common_and_context_config_are_both_merged_into_the_profile() {
+fn legacy_managed_extensions_are_not_merged_into_the_profile() {
     let home = tempfile::tempdir().unwrap();
     let settings = BackendSettings {
         relay_common_config_contents: r#"
@@ -389,10 +389,8 @@ path = "/tmp/context-skill"
     .unwrap();
 
     let config = std::fs::read_to_string(home.path().join("config.toml")).unwrap();
-    assert!(config.contains("[mcp_servers.common]"));
-    assert!(config.contains(r#"command = "common-command""#));
-    assert!(config.contains("[skills.context]"));
-    assert!(config.contains(r#"path = "/tmp/context-skill""#));
+    assert!(!config.contains("[mcp_servers.common]"));
+    assert!(!config.contains("[skills.context]"));
 }
 
 #[test]

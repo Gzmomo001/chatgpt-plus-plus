@@ -1,6 +1,5 @@
 mod shared;
 
-pub(crate) mod context;
 pub(crate) mod diagnostics;
 pub(crate) mod install;
 pub(crate) mod relay;

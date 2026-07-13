@@ -232,18 +232,10 @@ pub fn reconcile(
 }
 
 fn combined_common_config(settings: &BackendSettings) -> String {
-    let sections = [
-        settings.relay_common_config_contents.trim(),
-        settings.relay_context_config_contents.trim(),
-    ]
-    .into_iter()
-    .filter(|section| !section.is_empty())
-    .collect::<Vec<_>>();
-
-    if sections.is_empty() {
+    if settings.relay_common_config_contents.trim().is_empty() {
         String::new()
     } else {
-        crate::relay_config::normalize_config_text(&format!("{}\n", sections.join("\n\n")))
+        crate::relay_config::normalize_config_text(&settings.relay_common_config_contents)
     }
 }
 
@@ -260,7 +252,7 @@ fn backfill_previous_profile(
     backfill_relay_profile_from_home_with_common(
         home,
         profile,
-        &mut settings.relay_context_config_contents,
+        &settings.relay_common_config_contents,
     )
     .context("回填当前供应商配置失败")
 }

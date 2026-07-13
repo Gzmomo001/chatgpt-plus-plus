@@ -32,6 +32,8 @@ fn wire_contract_uses_camel_case_and_omits_derived_profile_fields() {
     assert!(value["relayProfiles"][0].get("model").is_none());
     assert!(value["relayProfiles"][0].get("baseUrl").is_none());
     assert!(value["relayProfiles"][0].get("apiKey").is_none());
+    assert!(value["relayProfiles"][0].get("contextSelection").is_none());
+    assert!(value.get("relayContextConfigContents").is_none());
 }
 
 #[test]
@@ -100,11 +102,7 @@ base_url = "http://127.0.0.1:57321/v1"
         normalized.relay_common_config_contents,
         "model_reasoning_effort = \"high\"\n"
     );
-    assert!(
-        normalized
-            .relay_context_config_contents
-            .contains("[mcp_servers.context7]")
-    );
+    assert!(normalized.relay_context_config_contents.is_empty());
 }
 
 #[test]

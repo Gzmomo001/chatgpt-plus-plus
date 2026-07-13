@@ -28,7 +28,6 @@ test("publishes domain adapters instead of one flat command bag", () => {
 
   assert.deepEqual(Object.keys(actions).sort(), [
     "app",
-    "context",
     "diagnostics",
     "maintenance",
     "overview",
@@ -46,7 +45,6 @@ test("adapters own wire command names and nested payload shapes", async () => {
   const profile = { id: "relay-a" } as never;
 
   await actions.overview.launch({ appPath: "/Applications/Codex.app" });
-  await actions.context.upsert({ settings, kind: "skill", id: "skill-a", tomlBody: "enabled = true" });
   await actions.relay.switchProfile({ settings, targetRelayId: "relay-a" });
   await actions.relay.saveFile("config", "model = \"gpt-5\"\n");
   await actions.relay.fetchModels(profile);
@@ -62,10 +60,6 @@ test("adapters own wire command names and nested payload shapes", async () => {
     {
       command: "launch_chatgpt_plus",
       args: { request: { appPath: "/Applications/Codex.app" } },
-    },
-    {
-      command: "upsert_context_entry",
-      args: { request: { settings, kind: "skill", id: "skill-a", tomlBody: "enabled = true" } },
     },
     {
       command: "switch_relay_profile",

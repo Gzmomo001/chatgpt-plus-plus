@@ -3,9 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   BackendSettings,
   CcsProvidersResult,
-  CodexContextEntries,
   CommandResult,
-  ContextKind,
   EnvConflict,
   EnvConflictsResult,
   ExtractRelayCommonConfigResult,
@@ -34,7 +32,6 @@ export const TAURI_COMMAND_NAMES = [
   "clear_relay_injection",
   "confirm_pending_provider_import",
   "copy_diagnostics",
-  "delete_context_entry",
   "delete_local_session",
   "diagnose_relay_profile",
   "disable_watcher",
@@ -63,7 +60,6 @@ export const TAURI_COMMAND_NAMES = [
   "perform_update",
   "plugin_marketplace_inventory",
   "read_latest_logs",
-  "read_live_context_entries",
   "read_relay_files",
   "refresh_plugin_marketplace",
   "refresh_remote_plugin_marketplace",
@@ -80,13 +76,11 @@ export const TAURI_COMMAND_NAMES = [
   "save_settings",
   "startup_options",
   "switch_relay_profile",
-  "sync_live_context_entries",
   "sync_providers_now",
   "test_relay_profile",
   "uninstall_entrypoints",
   "uninstall_watcher",
   "update_tray_labels",
-  "upsert_context_entry",
   "write_diagnostic_event",
 ] as const;
 
@@ -108,15 +102,6 @@ export type RelayResult = CommandResult<{
 }>;
 
 type RelayPayload = Omit<RelayResult, "status" | "message">;
-
-export type ContextEntriesResult = CommandResult<{
-  settings: BackendSettings;
-  entries: CodexContextEntries;
-}>;
-
-export type LiveContextEntriesResult = CommandResult<{
-  entries: CodexContextEntries;
-}>;
 
 export type RelaySwitchResult = CommandResult<{
   settings: BackendSettings;
@@ -354,19 +339,6 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<RelayProfileModelsResult>("fetch_relay_profile_models", { profile }),
       switchProfile: (request: { settings: BackendSettings; targetRelayId: string }) =>
         call<RelaySwitchResult>("switch_relay_profile", { request }),
-    },
-    context: {
-      readLive: () => call<LiveContextEntriesResult>("read_live_context_entries"),
-      syncLive: (settings: BackendSettings) =>
-        call<LiveContextEntriesResult>("sync_live_context_entries", { request: { settings } }),
-      upsert: (request: {
-        settings: BackendSettings;
-        kind: ContextKind;
-        id: string;
-        tomlBody: string;
-      }) => call<ContextEntriesResult>("upsert_context_entry", { request }),
-      delete: (request: { settings: BackendSettings; kind: ContextKind; id: string }) =>
-        call<ContextEntriesResult>("delete_context_entry", { request }),
     },
     sessions: {
       list: () => call<LocalSessionsResult>("list_local_sessions"),

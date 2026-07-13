@@ -5,7 +5,6 @@ import type {
   RelayProtocol,
   ReconciledRelayProfileSettings,
 } from "./types";
-import type { ContextEntries } from "@/features/context/config";
 import type { CommandResult, Status } from "@/shared/contracts/command";
 export type { CommandResult, Status } from "@/shared/contracts/command";
 export type RelayProfileView = DeepReadonly<RelayProfile>;
@@ -50,7 +49,6 @@ export type ExtractRelayCommonConfigResult = CommandResult<{
   commonConfigContents: string;
   profileConfigContents: string;
 }>;
-export type RelayContextEntries = ContextEntries;
 export type RelaySettings = RelayProfileSettings & {
   relayProfilesEnabled: boolean;
   relayCommonConfigContents: string;

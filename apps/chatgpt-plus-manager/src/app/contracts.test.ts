@@ -40,7 +40,6 @@ test("publishes the manager routes in navigation order", () => {
     "overview",
     "relay",
     "sessions",
-    "context",
     "enhance",
     "maintenance",
     "about",
@@ -57,7 +56,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "clear_relay_injection",
     "confirm_pending_provider_import",
     "copy_diagnostics",
-    "delete_context_entry",
     "delete_local_session",
     "diagnose_relay_profile",
     "disable_watcher",
@@ -86,7 +84,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "perform_update",
     "plugin_marketplace_inventory",
     "read_latest_logs",
-    "read_live_context_entries",
     "read_relay_files",
     "refresh_plugin_marketplace",
     "refresh_remote_plugin_marketplace",
@@ -103,13 +100,11 @@ test("publishes every frontend-known Tauri command name", () => {
     "save_settings",
     "startup_options",
     "switch_relay_profile",
-    "sync_live_context_entries",
     "sync_providers_now",
     "test_relay_profile",
     "uninstall_entrypoints",
     "uninstall_watcher",
     "update_tray_labels",
-    "upsert_context_entry",
     "write_diagnostic_event",
   ]);
 });
@@ -256,8 +251,6 @@ test("composes Relay profiles through its screen-owned vertical slice", () => {
     "ProviderDoctorModal",
     "providerDoctorSteps",
     "ensureTrailingNewline",
-    "selectedContextConfigToml",
-    "contextEntryToTomlSection",
     "applyContextLimitPreview",
     "normalizeDuplicateTomlTables",
     "tomlRootKeyFromLine",
@@ -371,80 +364,6 @@ test("composes Overview through its screen-owned vertical slice", () => {
     if (!/\.[cm]?[jt]sx?$/.test(entry)) continue;
     const source = readFileSync(new URL(entry, screensRoot), "utf8");
     assert.doesNotMatch(source, /from ["']@\/app(?:\/|["'])/, `${entry} must not import from app`);
-  }
-});
-
-test("composes Context through its screen-owned vertical slice", () => {
-  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  const screen = readFileSync(
-    new URL("../screens/context/ContextScreen.tsx", import.meta.url),
-    "utf8",
-  );
-  const field = readFileSync(new URL("../shared/ui/field.tsx", import.meta.url), "utf8");
-  const relayEditor = readFileSync(
-    new URL("../features/relay-profiles/components/RelayProfileEditor.tsx", import.meta.url),
-    "utf8",
-  );
-
-  assert.match(app, /import \{ ContextScreen \} from ["']@\/screens\/context\/ContextScreen["']/);
-  assert.match(app, /<ContextScreen\b/);
-  assert.match(screen, /export function ContextScreen(?:<[^>]+>)?\(/);
-  assert.match(screen, /export type ContextActions(?:<[^>]+>)?\s*=\s*\{/);
-  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app\/App/);
-  assert.doesNotMatch(screen, /@\/features\/relay-profiles/);
-  assert.match(screen, /applyContextChange/);
-  for (const lowLevelOperation of [
-    "upsertContextEntry",
-    "deleteContextEntry",
-    "syncLiveContextEntries",
-    "refreshRelayFiles",
-    "isSuccessfulContextSync",
-  ]) {
-    assert.doesNotMatch(screen, new RegExp(`\\b${lowLevelOperation}\\b`));
-  }
-  assert.match(screen, /import \{ Field \} from ["']@\/shared\/ui\/field["']/);
-  assert.match(relayEditor, /import \{ Field \} from ["']@\/shared\/ui\/field["']/);
-  assert.match(field, /export function Field\(/);
-  assert.doesNotMatch(app, /function Field\(/);
-  assert.doesNotMatch(relayEditor, /function Field\(/);
-
-  const contextPorts = app.slice(
-    app.indexOf("contextMutationPortsRef.current = {"),
-    app.indexOf("const contextMutationControllerRef"),
-  );
-  assert.match(contextPorts, /commitPersisted:/);
-  assert.match(contextPorts, /commitLive:/);
-  assert.match(contextPorts, /syncLive:\s*requestContextLiveSync/);
-  assert.doesNotMatch(contextPorts, /refreshRelayFiles\(true\)/);
-  const persistRequest = contextPorts.slice(
-    contextPorts.indexOf("persist:"),
-    contextPorts.indexOf("commitPersisted:"),
-  );
-  const liveRequest = contextPorts.slice(
-    contextPorts.indexOf("syncLive:"),
-    contextPorts.indexOf("commitLive:"),
-  );
-  assert.doesNotMatch(persistRequest, /setSettings\(/);
-  assert.doesNotMatch(liveRequest, /setLiveContextEntries\(/);
-
-  for (const definition of [
-    "ContextScreen",
-    "RelayContextManager",
-    "ContextEntryEditor",
-    "contextEntriesFromSettings",
-    "contextEntriesWithLiveEntries",
-    "mergeLiveContextEntries",
-    "withLiveEntryState",
-    "mergeContextEntries",
-    "mergeContextEntryList",
-    "dedupeContextEntryList",
-    "contextEntriesByKind",
-    "contextSelectionIds",
-    "setContextSelectionId",
-    "removeContextSelectionFromSettings",
-    "contextSelectionForAllEntries",
-  ]) {
-    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
   }
 });
 

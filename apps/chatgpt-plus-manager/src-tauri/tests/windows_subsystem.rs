@@ -218,7 +218,6 @@ fn manager_does_not_register_the_removed_remote_project_commands() {
         "commands/shared.rs",
         "commands/sessions.rs",
         "commands/install.rs",
-        "commands/context.rs",
         "commands/diagnostics.rs",
         "commands/settings.rs",
         "commands/relay.rs",
@@ -237,7 +236,7 @@ fn manager_does_not_register_the_removed_remote_project_commands() {
         .next()
         .expect("manager handler registration end");
 
-    assert_eq!(handler.matches("commands::").count(), 62);
+    assert_eq!(handler.matches("commands::").count(), 57);
     assert!(!commands_rs.contains(&command_stem));
     assert!(!handler.contains(&command_stem));
 }
@@ -251,7 +250,6 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         "shared.rs",
         "sessions.rs",
         "install.rs",
-        "context.rs",
         "diagnostics.rs",
         "settings.rs",
         "relay.rs",
@@ -320,15 +318,15 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(annotated.len(), 62, "Manager domain command count changed");
+    assert_eq!(annotated.len(), 57, "Manager domain command count changed");
     assert_eq!(
         lib_annotated, tray_commands,
         "lib.rs must own only the three tray commands"
     );
     assert_eq!(
         registered.len(),
-        65,
-        "handler must include 62 domain and three tray commands"
+        60,
+        "handler must include 57 domain and three tray commands"
     );
     assert_eq!(
         registered_paths, expected_registered_paths,
@@ -338,9 +336,9 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         registered_manager, annotated_paths,
         "generate_handler must register every domain command exactly once",
     );
-    assert_eq!(frontend.len(), 61, "frontend-known command count changed");
+    assert_eq!(frontend.len(), 57, "frontend-known command count changed");
     assert!(frontend.is_superset(&tray_commands));
-    assert_eq!(frontend_manager.len(), 58);
+    assert_eq!(frontend_manager.len(), 54);
     assert!(
         annotated.is_superset(&frontend_manager),
         "every frontend manager command must have an annotated backend command"
@@ -355,7 +353,6 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         BTreeSet::from([
             "backend_version".to_string(),
             "backfill_relay_profile_from_live".to_string(),
-            "list_context_entries".to_string(),
             "plugin_marketplace_status".to_string(),
         ])
     );
@@ -519,20 +516,10 @@ fn relay_settings_keeps_profile_config_and_auth_files_isolated() {
 }
 
 #[test]
-fn relay_context_management_is_global_not_supplier_scoped() {
+fn manager_does_not_expose_extension_management() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let app_tsx = manifest_dir.parent().unwrap().join("src/app/App.tsx");
     let app_tsx = std::fs::read_to_string(&app_tsx).expect("read manager App.tsx");
-    let screen_tsx = manifest_dir
-        .parent()
-        .unwrap()
-        .join("src/screens/context/ContextScreen.tsx");
-    let screen_tsx = std::fs::read_to_string(&screen_tsx).expect("read Context screen");
-    let config_ts = manifest_dir
-        .parent()
-        .unwrap()
-        .join("src/features/context/config.ts");
-    let config_ts = std::fs::read_to_string(&config_ts).expect("read Context config module");
     let routes_ts = manifest_dir.parent().unwrap().join("src/app/routes.ts");
     let routes_ts = std::fs::read_to_string(&routes_ts).expect("read manager routes");
     let presentation_ts = manifest_dir
@@ -545,44 +532,17 @@ fn relay_context_management_is_global_not_supplier_scoped() {
     let styles = manifest_dir.parent().unwrap().join("src/styles.css");
     let styles = std::fs::read_to_string(&styles).expect("read manager styles.css");
 
-    assert!(screen_tsx.contains("作为全局配置独立管理"));
-    assert!(
-        presentation_ts.contains("label: t(\"工具与插件\")")
-            || presentation_ts.contains("label: \"工具与插件\"")
-    );
-    assert!(
-        screen_tsx.contains("title={t(\"Codex 工具与插件\")}")
-            || screen_tsx.contains("title=\"Codex 工具与插件\"")
-    );
-    assert!(!screen_tsx.contains("label: \"上下文配置\""));
-    assert!(!screen_tsx.contains("title=\"上下文配置\""));
-    assert!(!screen_tsx.contains("<strong>Codex 上下文</strong>"));
-    assert!(routes_ts.contains("\"context\""));
-    assert!(screen_tsx.contains("export function ContextScreen"));
-    assert!(app_tsx.contains("route === \"context\""));
-    assert!(app_tsx.contains("if (next === \"context\")"));
-    assert!(config_ts.contains("selectedContextConfigToml(entries)"));
-    assert!(screen_tsx.contains("{ type: \"toggle\", entry }"));
-    assert!(config_ts.contains("export function projectRelayFiles"));
-    assert!(actions_ts.contains("read_live_context_entries"));
-    assert!(actions_ts.contains("sync_live_context_entries"));
-    assert!(app_tsx.contains("refreshLiveContextEntries"));
-    assert!(app_tsx.contains("syncLive: requestContextLiveSync"));
-    assert!(config_ts.contains("function mergeStoredAndLiveContextEntries"));
-    assert!(config_ts.contains("function mergeStoredAndLiveContextEntryList"));
-    assert!(screen_tsx.contains("contextEnabledSwitch"));
-    assert!(!screen_tsx.contains("entry.enabled ? \"已启用\" : \"已禁用\""));
-    assert!(!screen_tsx.contains("空配置体"));
-    assert!(screen_tsx.contains("relay-context-delete"));
-    assert!(!screen_tsx.contains("切换供应商时只合并勾选项"));
-    assert!(!screen_tsx.contains("未勾选的条目不会写入"));
-    assert!(!screen_tsx.contains("className=\"context-switch\""));
-    assert!(!styles.contains(".context-switch {"));
-    assert!(styles.contains(".context-enabled-switch"));
-    assert!(styles.contains(".context-switch-track"));
-    assert!(styles.contains(".context-switch-thumb"));
-    assert!(!styles.contains(".relay-context-row code"));
-    assert!(styles.contains(".relay-context-delete"));
+    for source in [&app_tsx, &routes_ts, &presentation_ts, &actions_ts] {
+        assert!(!source.contains("工具与插件"));
+        assert!(!source.contains("read_live_context_entries"));
+        assert!(!source.contains("sync_live_context_entries"));
+        assert!(!source.contains("upsert_context_entry"));
+        assert!(!source.contains("delete_context_entry"));
+    }
+    assert!(!routes_ts.contains("\"context\""));
+    assert!(!app_tsx.contains("ContextScreen"));
+    assert!(!styles.contains(".relay-context-panel"));
+    assert!(!styles.contains(".context-enabled-switch"));
 }
 
 #[test]
@@ -623,8 +583,8 @@ fn relay_preview_deduplicates_root_keys_when_merging_common_config() {
     let config_ts = manifest_dir
         .parent()
         .unwrap()
-        .join("src/features/context/config.ts");
-    let config_ts = std::fs::read_to_string(&config_ts).expect("read Context config module");
+        .join("src/features/relay-profiles/config.ts");
+    let config_ts = std::fs::read_to_string(&config_ts).expect("read Relay config module");
 
     assert!(config_ts.contains("dedupeTomlRootLines"));
     assert!(config_ts.contains("rootSeen.add(key)"));

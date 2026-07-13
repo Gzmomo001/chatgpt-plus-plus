@@ -22,14 +22,14 @@ const RESERVED_MODEL_PROVIDER_IDS: &[&str] = &[
 const PROTOCOL_PROXY_PORT: u16 = 57321;
 
 pub(super) fn normalize_settings_config_sections(mut settings: BackendSettings) -> BackendSettings {
-    let (common, extracted_context) =
-        split_context_config_sections(&settings.relay_common_config_contents);
-    let context = join_config_sections(&[
-        settings.relay_context_config_contents.as_str(),
-        extracted_context.as_str(),
-    ]);
-    settings.relay_common_config_contents = normalize_config_text(&common);
-    settings.relay_context_config_contents = normalize_config_text(&context);
+    settings.relay_common_config_contents =
+        strip_context_config_sections(&settings.relay_common_config_contents);
+    settings.relay_context_config_contents.clear();
+    for profile in &mut settings.relay_profiles {
+        profile.context_selection = Default::default();
+        profile.context_selection_initialized = false;
+        profile.config_contents = strip_context_config_sections(&profile.config_contents);
+    }
     for profile in &mut settings.relay_profiles {
         let _ = normalize_relay_profile_for_storage(profile);
     }
@@ -59,20 +59,23 @@ fn split_context_config_sections(config: &str) -> (String, String) {
     )
 }
 
-fn is_context_table_header(header: &str) -> bool {
-    header.starts_with("[mcp_servers.")
-        || header.starts_with("[skills.")
-        || header.starts_with("[plugins.")
+fn strip_context_config_sections(config: &str) -> String {
+    match parse_toml_document(config) {
+        Ok(mut doc) => {
+            for key in ["mcp_servers", "skills", "plugins"] {
+                doc.as_table_mut().remove(key);
+            }
+            normalize_config_text(&doc.to_string())
+        }
+        Err(_) => split_context_config_sections(config).0,
+    }
 }
 
-fn join_config_sections(sections: &[&str]) -> String {
-    let joined = sections
+fn is_context_table_header(header: &str) -> bool {
+    let path = header.trim_matches(['[', ']']);
+    ["mcp_servers", "skills", "plugins"]
         .iter()
-        .map(|section| section.trim())
-        .filter(|section| !section.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    normalize_text_config(joined)
+        .any(|key| path == *key || path.starts_with(&format!("{key}.")))
 }
 
 fn normalize_text_config(contents: String) -> String {
@@ -92,22 +95,20 @@ pub(super) fn normalize_settings_before_save(mut settings: BackendSettings) -> B
 
     settings.relay_common_config_contents =
         sanitize_common_config_contents(&settings.relay_common_config_contents);
-    let (common_without_context, extracted_context) =
-        split_context_config_sections(&settings.relay_common_config_contents);
-    settings.relay_common_config_contents = common_without_context;
-    settings.relay_context_config_contents =
-        join_config_sections(&[&settings.relay_context_config_contents, &extracted_context]);
-    settings.relay_context_config_contents =
-        sanitize_common_config_contents(&settings.relay_context_config_contents);
+    settings.relay_common_config_contents =
+        strip_context_config_sections(&settings.relay_common_config_contents);
+    settings.relay_context_config_contents.clear();
+    for profile in &mut settings.relay_profiles {
+        profile.context_selection = Default::default();
+        profile.context_selection_initialized = false;
+        profile.config_contents = strip_context_config_sections(&profile.config_contents);
+    }
 
     for profile in &mut settings.relay_profiles {
         let _ = normalize_relay_profile_for_storage(profile);
     }
 
-    let common_config = join_config_sections(&[
-        &settings.relay_common_config_contents,
-        &settings.relay_context_config_contents,
-    ]);
+    let common_config = settings.relay_common_config_contents.clone();
     if !common_config.trim().is_empty() {
         for profile in &mut settings.relay_profiles {
             if !profile.use_common_config || profile.config_contents.trim().is_empty() {

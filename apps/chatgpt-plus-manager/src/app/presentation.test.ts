@@ -12,22 +12,19 @@ import {
 } from "./presentation.ts";
 
 test("projects every application route and its shell copy through one interface", () => {
-  assert.equal(navigationRoutes.length, 8);
+  assert.equal(navigationRoutes.length, 7);
   assert.deepEqual(
     navigationRoutes.map(({ id }) => id),
     [
       "overview",
       "relay",
       "sessions",
-      "context",
       "enhance",
       "maintenance",
       "about",
       "settings",
     ],
   );
-  assert.equal(routeTitle("context"), "工具与插件");
-  assert.equal(routeSubtitle("context"), "独立管理 MCP、Skills、Plugins");
   assert.deepEqual(
     navigationGroups.map(({ label, routes }) => ({
       label,
@@ -35,7 +32,7 @@ test("projects every application route and its shell copy through one interface"
     })),
     [
       { label: "日常使用", routes: ["overview", "relay", "sessions"] },
-      { label: "Codex 配置", routes: ["context", "enhance"] },
+      { label: "Codex 配置", routes: ["enhance"] },
       { label: "系统管理", routes: ["maintenance", "about", "settings"] },
     ],
   );

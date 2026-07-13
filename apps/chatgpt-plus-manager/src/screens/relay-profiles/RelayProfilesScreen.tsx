@@ -9,7 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/ui/card";
-import type { ContextEntries } from "@/features/context/config";
 import { EnvConflictNotice } from "@/features/relay-profiles/components/RelayFeedback";
 import { RelayProfileDetail } from "@/features/relay-profiles/components/RelayProfileDetail";
 import { RelayProfileList } from "@/features/relay-profiles/components/RelayProfileList";
@@ -25,19 +24,18 @@ import { shouldRefreshRelayFiles } from "@/features/relay-profiles/controller";
 import { open as openProfileEditor } from "@/features/relay-profiles/editor";
 import { ccsProviderSummary } from "@/features/relay-profiles/presentation";
 import type {
-  RelayContextSelection,
   RelayProfileEditableMode,
   ReconciledRelayProfileSettings,
 } from "@/features/relay-profiles/types";
 import { t, tf } from "@/i18n";
+
+const emptyContextSelection = { mcpServers: [], skills: [], plugins: [] };
 
 type RelayProfilesScreenProps<Settings extends RelaySettings> = {
   relayFiles: RelayFilesResult | null;
   envConflicts: EnvConflictsResult | null;
   ccsProviders: CcsProvidersResult | null;
   form: Settings;
-  contextEntries: ContextEntries;
-  defaultContextSelection: RelayContextSelection;
   onFormChange: (value: ReconciledRelayProfileSettings<Settings>) => void;
   actions: RelayProfileActions<Settings>;
 };
@@ -47,8 +45,6 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
   envConflicts,
   ccsProviders,
   form,
-  contextEntries,
-  defaultContextSelection,
   onFormChange,
   actions,
 }: RelayProfilesScreenProps<Settings>) {
@@ -68,7 +64,7 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
 
   const createProfile = (mode: RelayProfileEditableMode) => openProfileEditor({
     settings: form,
-    defaultContextSelection,
+    defaultContextSelection: emptyContextSelection,
     focus: {
       type: "create",
       id: `${mode === "aggregate" ? "aggregate" : "relay"}-${Date.now().toString(36)}`,
@@ -111,8 +107,6 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
           ? relayFiles
           : null}
         form={form}
-        contextEntries={contextEntries}
-        defaultContextSelection={defaultContextSelection}
         isNew={isNewProfile}
         onBack={() => {
           setNewProfileDraft(null);
@@ -211,7 +205,7 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
         </div>
         <RelayProfileList
           form={form}
-          defaultContextSelection={defaultContextSelection}
+          defaultContextSelection={emptyContextSelection}
           onEdit={(id) => {
             setNewProfileDraft(null);
             setDetailProfileId(
