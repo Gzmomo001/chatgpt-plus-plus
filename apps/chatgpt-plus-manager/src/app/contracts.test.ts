@@ -10,7 +10,7 @@ test("owns application composition under app without a root forwarding wrapper",
   const appPath = new URL("./App.tsx", import.meta.url);
   const legacyAppPath = new URL("../App.tsx", import.meta.url);
   const main = readFileSync(new URL("../main.tsx", import.meta.url), "utf8");
-  const brandMark = readFileSync(new URL("./components/BrandMark.tsx", import.meta.url), "utf8");
+  const brandMarkPath = new URL("./components/BrandMark.tsx", import.meta.url);
 
   assert.equal(existsSync(appPath), true, "app/App.tsx must own application composition");
   assert.equal(existsSync(legacyAppPath), false, "the root App.tsx forwarding path must be deleted");
@@ -18,11 +18,9 @@ test("owns application composition under app without a root forwarding wrapper",
 
   const app = readFileSync(appPath, "utf8");
   assert.match(app, /export function App\(\)/);
-  assert.match(app, /import \{ BrandMark \} from ["']@\/app\/components\/BrandMark["']/);
-  assert.match(app, /<BrandMark\s*\/>/);
-  assert.doesNotMatch(app, /className=["']brand-mark["']>C\+\+</);
-  assert.match(brandMark, /<svg\b/);
-  assert.match(brandMark, /aria-hidden=["']true["']/);
+  assert.equal(existsSync(brandMarkPath), false);
+  assert.doesNotMatch(app, /BrandMark|brand-mark/);
+  assert.match(app, /className=["']brand-title["']>ChatGPT\+\+</);
   assert.doesNotMatch(
     app,
     /function (?:FeatureItem|GuideList|PendingProviderImportDialog|providerImportWireApiLabel|providerImportRelayModeLabel|maskSecret|truncateSessionDeletePreview|providerSyncProgressMessage|formatDuration|formatBytes)\b/,
