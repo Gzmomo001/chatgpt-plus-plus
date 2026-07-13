@@ -38,7 +38,6 @@ test("publishes the manager routes in navigation order", () => {
     "sessions",
     "context",
     "enhance",
-    "recommendations",
     "maintenance",
     "about",
     "settings",
@@ -557,50 +556,15 @@ test("composes Enhance through a minimal screen-owned view and action seam", () 
   assert.doesNotMatch(screen, /\bzed\b/i);
 });
 
-test("composes Recommendations through its screen-owned vertical slice", () => {
+test("does not expose the removed Recommendations section", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const screenPath = new URL(
     "../screens/recommendations/RecommendationsScreen.tsx",
     import.meta.url,
   );
 
-  assert.equal(existsSync(screenPath), true);
-  const screen = readFileSync(screenPath, "utf8");
-  const recommendationsContracts = readFileSync(
-    new URL("../shared/contracts/recommendations.ts", import.meta.url),
-    "utf8",
-  );
-
-  assert.match(
-    app,
-    /import \{ RecommendationsScreen \} from ["']@\/screens\/recommendations\/RecommendationsScreen["']/,
-  );
-  assert.match(app, /<RecommendationsScreen\b/);
-  assert.match(screen, /export function RecommendationsScreen(?:<[^>]+>)?\(/);
-  const actionContract = screen.match(
-    /export type RecommendationsActions\s*=\s*\{([\s\S]*?)\n\};/,
-  );
-  assert.ok(actionContract);
-  assert.deepEqual(
-    [...actionContract[1].matchAll(/^\s*(\w+):/gm)].map((match) => match[1]),
-    ["refreshAds", "openExternalUrl"],
-  );
-  assert.match(screen, /refreshAds:\s*\(\)\s*=>\s*Promise<void>/);
-  assert.match(screen, /openExternalUrl:\s*\(url:\s*string\)\s*=>\s*Promise<void>/);
-  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
-
-  for (const definition of ["RecommendationsScreen", "AdGrid", "isExpiredAd"]) {
-    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
-  }
-  assert.doesNotMatch(app, /type (?:AdItem|AdsResult)\s*=/);
-  assert.match(
-    recommendationsContracts,
-    /export type AdsResult\s*=\s*CommandResult</,
-  );
-  assert.match(
-    recommendationsContracts,
-    /import type \{ CommandResult \} from ["']\.\/command["']/,
-  );
+  assert.equal(existsSync(screenPath), false);
+  assert.doesNotMatch(app, /RecommendationsScreen|recommendationsActions|refreshAds/);
 });
 
 test("removes the Renderer user-script surface end to end", () => {

@@ -32,7 +32,6 @@ test("publishes domain adapters instead of one flat command bag", () => {
     "diagnostics",
     "maintenance",
     "overview",
-    "recommendations",
     "relay",
     "sessions",
     "settings",

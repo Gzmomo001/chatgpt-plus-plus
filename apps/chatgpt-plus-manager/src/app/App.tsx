@@ -15,8 +15,6 @@ import { detectLaunchCrash } from "@/screens/overview/presentation";
 import { ContextScreen } from "@/screens/context/ContextScreen";
 import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
 import { SettingsScreen } from "@/screens/settings/SettingsScreen";
-import { RecommendationsScreen } from "@/screens/recommendations/RecommendationsScreen";
-import type { RecommendationsActions } from "@/screens/recommendations/RecommendationsScreen";
 import { EnhanceScreen } from "@/screens/enhance/EnhanceScreen";
 import type { EnhanceActions, EnhanceView } from "@/screens/enhance/EnhanceScreen";
 import { MaintenanceScreen } from "@/screens/maintenance/MaintenanceScreen";
@@ -44,7 +42,6 @@ import type {
   UpdateResult,
 } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
-import type { AdsResult } from "@/shared/contracts/recommendations";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 import type { LocalSession, ProviderSyncTargetsResult } from "@/shared/contracts/sessions";
 import { readContextCatalog } from "@/features/context/config";
@@ -186,7 +183,6 @@ export function App() {
     percent: 0,
     message: t("尚未运行安装包更新。"),
   });
-  const [ads, setAds] = useState<AdsResult | null>(null);
   const [launchForm, setLaunchForm] = useState({
     appPath: "",
   });
@@ -504,7 +500,6 @@ export function App() {
       await refreshLiveContextEntries(true);
     }
     if (next === "settings") await refreshSettings(true);
-    if (next === "recommendations") await refreshAds(true);
     if (next === "about") {
       await refreshOverview(true);
       await refreshLogs(true);
@@ -824,14 +819,6 @@ export function App() {
       setSettings(result);
       setSettingsForm(normalizeSettings(result.settings));
       showNotice(t("设置重置"), result.message, result.status);
-    }
-  };
-
-  const refreshAds = async (silent = false) => {
-    const result = await run(() => managerActions.recommendations.load());
-    if (result) {
-      setAds(result);
-      if (!silent) showResultNotice(t("推荐内容"), result, { silentSuccess: true });
     }
   };
 
@@ -1306,7 +1293,6 @@ export function App() {
       refreshCcsProviders,
       importCcsProviders,
       refreshLiveContextEntries,
-      refreshAds,
       openExternalUrl,
       applyRelayInjection,
       applyPureApiInjection,
@@ -1348,10 +1334,6 @@ export function App() {
     repairPluginMarketplace: actions.repairPluginMarketplace,
     launch: actions.launch,
     goAbout: actions.goLogs,
-  };
-  const recommendationsActions: RecommendationsActions = {
-    refreshAds: actions.refreshAds,
-    openExternalUrl: actions.openExternalUrl,
   };
   const sessionsView: SessionsView = {
     ...sessionsControllerView,
@@ -1570,7 +1552,6 @@ export function App() {
               actions={enhanceActions}
             />
           ) : null}
-          {route === "recommendations" ? <RecommendationsScreen ads={ads} actions={recommendationsActions} /> : null}
           {route === "maintenance" ? (
             <MaintenanceScreen view={maintenanceView} actions={maintenanceActions} />
           ) : null}
@@ -1655,7 +1636,6 @@ type Actions = {
   refreshCcsProviders: (silent?: boolean) => Promise<CcsProvidersResult | null>;
   importCcsProviders: () => Promise<void>;
   refreshLiveContextEntries: () => Promise<LiveContextEntriesResult | null>;
-  refreshAds: () => Promise<void>;
   openExternalUrl: (url: string) => Promise<void>;
   applyRelayInjection: () => Promise<boolean>;
   applyPureApiInjection: () => Promise<boolean>;

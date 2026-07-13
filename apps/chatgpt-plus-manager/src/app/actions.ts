@@ -16,7 +16,6 @@ import type {
 } from "./contracts";
 import type { DiagnosticsResult, LogsResult, UpdateResult } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
-import type { AdsResult } from "@/shared/contracts/recommendations";
 import type {
   DeleteLocalSessionResult,
   ExportLocalSessionResult,
@@ -437,9 +436,6 @@ export function createManagerActions(call: InvokeManagerCommand) {
       loadWatcher: () => call<WireWatcherResult>("load_watcher_state").then(mapWatcherResult),
       changeWatcher: (action: WatcherAction) =>
         call<WireWatcherResult>(watcherCommands[action]).then(mapWatcherResult),
-    },
-    recommendations: {
-      load: () => call<AdsResult>("load_ads"),
     },
   } as const;
 }
