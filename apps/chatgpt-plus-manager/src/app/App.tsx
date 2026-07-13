@@ -80,6 +80,7 @@ import {
   ConfirmDialog,
   NoticeDialog,
 } from "@/app/components/ApplicationDialogs";
+import { BrandMark } from "@/app/components/BrandMark";
 import {
   isSuccessStatus,
   loadInitialTheme,
@@ -1436,7 +1437,7 @@ export function App() {
     <div className={`shell ${theme}`}>
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">C++</div>
+          <BrandMark />
           <div className="brand-copy">
             <div className="brand-title-row">
               <div className="brand-title">ChatGPT++</div>
