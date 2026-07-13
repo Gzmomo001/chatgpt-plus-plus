@@ -98,6 +98,7 @@ fn macos_cleanup_respects_preexisting_official_app() {
 struct FakeHooks {
     settings: BackendSettings,
     events: Arc<Mutex<Vec<String>>>,
+    fail_refresh: bool,
     fail_launch: bool,
     fail_watchdog: bool,
 }
@@ -107,6 +108,7 @@ impl FakeHooks {
         Self {
             settings,
             events: Arc::new(Mutex::new(Vec::new())),
+            fail_refresh: false,
             fail_launch: false,
             fail_watchdog: false,
         }
@@ -135,6 +137,14 @@ impl LaunchHooks for FakeHooks {
 
     async fn load_settings(&self) -> anyhow::Result<BackendSettings> {
         Ok(self.settings.clone())
+    }
+
+    async fn refresh_model_catalog(&self, _settings: &mut BackendSettings) -> anyhow::Result<()> {
+        self.event("model-catalog-refresh");
+        if self.fail_refresh {
+            anyhow::bail!("simulated model refresh failure");
+        }
+        Ok(())
     }
 
     fn apply_codex_home(&self, _settings: &BackendSettings) -> anyhow::Result<()> {
@@ -234,6 +244,7 @@ async fn official_launch_does_not_start_renderer_injection_or_proxy() {
     assert_eq!(
         events,
         [
+            "model-catalog-refresh",
             "codex-home-apply",
             "marketplace-config",
             "launch:",
@@ -281,14 +292,31 @@ async fn provider_sync_and_plugin_configuration_remain_prelaunch_maintenance() {
 
     let events = hooks.events.lock().unwrap().clone();
     assert_eq!(
-        &events[..4],
+        &events[..5],
         [
+            "model-catalog-refresh",
             "codex-home-apply",
             "provider-sync",
             "marketplace-config",
             "launch:"
         ]
     );
+}
+
+#[tokio::test]
+async fn model_refresh_failure_is_nonfatal_and_launch_uses_last_known_good() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut hooks = FakeHooks::new(BackendSettings::default());
+    hooks.fail_refresh = true;
+
+    launch_codex_with_hooks(options(&temp), &hooks)
+        .await
+        .unwrap();
+
+    let events = hooks.events.lock().unwrap().clone();
+    assert_eq!(events[0], "model-catalog-refresh");
+    assert!(events.contains(&"codex-home-apply".to_string()));
+    assert!(events.contains(&"launch:".to_string()));
 }
 
 #[tokio::test]

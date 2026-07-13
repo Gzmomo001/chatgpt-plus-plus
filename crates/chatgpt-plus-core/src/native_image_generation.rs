@@ -59,10 +59,8 @@ impl NativeImageGenerationConfig {
             configured_model
         };
         let current_model = crate::model_suffix::parse_model_suffix(&current_model).0;
-        let generated_catalog = format!(
-            "model-catalogs/{}.json",
-            sanitize_catalog_filename(&profile.id)
-        );
+        let generated_catalog =
+            crate::model_catalog_materializer::managed_catalog_relative_path(&profile.id);
         let uses_external_model_catalog = profile
             .config_contents
             .parse::<DocumentMut>()
@@ -99,6 +97,10 @@ impl NativeImageGenerationConfig {
 
     pub fn should_generate_model_catalog(&self) -> bool {
         self.is_enabled() && !self.current_model.trim().is_empty()
+    }
+
+    pub fn current_model_id(&self) -> &str {
+        self.current_model.trim()
     }
 
     pub fn model_modality_will_be_ready(&self) -> bool {
@@ -442,16 +444,4 @@ fn ensure_trailing_newline(mut contents: String) -> String {
         contents.push('\n');
     }
     contents
-}
-
-fn sanitize_catalog_filename(id: &str) -> String {
-    id.chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || character == '-' || character == '_' {
-                character
-            } else {
-                '-'
-            }
-        })
-        .collect()
 }

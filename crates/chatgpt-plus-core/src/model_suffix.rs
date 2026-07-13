@@ -1,18 +1,11 @@
-//! model_list 后缀语法解析与 catalog JSON 构建。
+//! 旧 model_list 后缀语法解析与小型模型声明迁移。
 //!
 //! 后缀语法：`deepseek-v4-pro[1M]` 表示 slug=deepseek-v4-pro、context_window=1000000。
 //! 单位 K/k=1000、M/m=1000000；纯数字也接受。后缀在生成 catalog 时剥离。
 
-use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModelCatalogEntry {
-    pub slug: String,
-    pub display_name: String,
-    /// 来自后缀的窗口值；None 表示该条目无后缀（回落顶层默认）。
-    pub suffix_window: Option<u64>,
-}
+use crate::model_catalog_materializer::CustomModelSpec;
 
 /// 解析单个模型条目的后缀，返回 (slug, 可选窗口)。
 /// 括号内非合法窗口 token 时，整串作为 slug 且 window=None（不剥离括号）。
@@ -73,126 +66,75 @@ fn parse_window_token(token: &str) -> Option<u64> {
         .filter(|value| *value > 0)
 }
 
-/// 收集 profile 的全部模型条目（当前 model + model_list），去重并从 `model_windows` map 读取窗口。
-/// 返回顺序：当前 model 在前。用于生成 catalog，包含全部模型以避免
-/// #1064 单模型副作用（catalog 只剩当前 model）。
-///
-/// 当前 model 若不带后缀，但在 `model_windows` 中存在同名条目，
-/// 则采纳该窗口（让当前 model 的窗口也能生效）。
-pub fn collect_catalog_entries(
+/// 将兼容字段和规范化声明合并成 materializer 的小型模型声明。
+/// 当前模型排在最前；逐模型窗口和 reasoning 优先于顶层窗口。
+pub fn collect_custom_model_specs(
     model_list: &str,
     model_windows: &HashMap<String, String>,
+    stored_specs: &[CustomModelSpec],
     current_model: &str,
-) -> Vec<ModelCatalogEntry> {
-    // 先解析 model_list，保留顺序并去重；后缀已从 model_list 剥离，窗口来自 model_windows map。
+    fallback_window: Option<u64>,
+) -> Vec<CustomModelSpec> {
+    let stored_by_id = stored_specs
+        .iter()
+        .filter(|spec| !spec.id.trim().is_empty())
+        .map(|spec| (spec.id.trim().to_string(), spec))
+        .collect::<HashMap<_, _>>();
+    let mut ids = Vec::new();
     let mut seen = HashSet::new();
-    let mut list_entries: Vec<ModelCatalogEntry> = Vec::new();
+    let current = parse_model_suffix(current_model).0;
+    if !current.is_empty() && seen.insert(current.clone()) {
+        ids.push(current);
+    }
     for raw in model_list
         .split(['\r', '\n', ','])
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        let (slug, _) = parse_model_suffix(raw);
-        if slug.is_empty() {
-            continue;
+        let id = parse_model_suffix(raw).0;
+        if !id.is_empty() && seen.insert(id.clone()) {
+            ids.push(id);
         }
-        if !seen.insert(slug.clone()) {
-            continue;
-        }
-        let suffix_window = model_windows
-            .get(&slug)
-            .and_then(|token| parse_window_token(token));
-        list_entries.push(ModelCatalogEntry {
-            display_name: slug.clone(),
-            slug,
-            suffix_window,
-        });
     }
-
-    // 处理当前 model，放到最前面。
-    let current_model = current_model.trim();
-    let mut entries = Vec::new();
-    if !current_model.is_empty() {
-        let (slug, _) = parse_model_suffix(current_model);
-        if !slug.is_empty() {
-            let suffix_window = model_windows
-                .get(&slug)
-                .and_then(|token| parse_window_token(token));
-            entries.push(ModelCatalogEntry {
-                display_name: slug.clone(),
-                slug: slug.clone(),
-                suffix_window,
-            });
-            // 从 list_entries 中移除同 slug 条目，避免重复。
-            list_entries.retain(|entry| entry.slug != slug);
+    for spec in stored_specs {
+        let id = spec.id.trim();
+        if !id.is_empty() && seen.insert(id.to_string()) {
+            ids.push(id.to_string());
         }
     }
 
-    entries.append(&mut list_entries);
-    entries
-}
-
-/// 内置 Codex 单模型模板，用于 clone entry。
-/// 模板与生成逻辑同属当前 crate，避免维护多个完整 bundled catalog 快照。
-const MODEL_CATALOG_TEMPLATE_JSON: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/assets/model-catalog-template.json"
-));
-
-/// 构建 codex model_catalog_json 内容。
-///
-/// 采用 cc-switch 的 template-clone 思路：取 codex 自带 bundled entry 做模板，
-/// 再覆盖 slug / display_name / description / context_window / max_context_window /
-/// effective_context_window_percent / priority / auto_compact_token_limit 等字段。
-/// 无后缀条目用 fallback_window；fallback 也无时回落 272000（codex 默认）。
-/// auto_compact_token_limit 留 null：codex 内置模型即 null（按比例算，调研第六节）。
-pub fn build_model_catalog_json(
-    entries: &[ModelCatalogEntry],
-    fallback_window: Option<u64>,
-) -> String {
-    build_model_catalog_json_with_template(entries, fallback_window, None)
-}
-
-/// 使用指定模板（或内置模板）构建 catalog。
-/// `template` 为单个 model entry 的 JSON Value；为 None 时使用内置单模型模板。
-pub fn build_model_catalog_json_with_template(
-    entries: &[ModelCatalogEntry],
-    fallback_window: Option<u64>,
-    template: Option<&Value>,
-) -> String {
-    let template = template
-        .cloned()
-        .or_else(load_model_catalog_template)
-        .unwrap_or_else(|| json!({}));
-
-    let models: Vec<Value> = entries
-        .iter()
-        .enumerate()
-        .map(|(index, entry)| {
-            let context_window = entry.suffix_window.or(fallback_window).unwrap_or(272_000);
-            let mut model = template.clone();
-            model["slug"] = json!(entry.slug);
-            model["display_name"] = json!(entry.display_name);
-            model["description"] = json!(entry.display_name);
-            model["context_window"] = json!(context_window);
-            model["max_context_window"] = json!(context_window);
-            // 默认 95 会让 1M 显示为 950K，显式写 100 以显示真实窗口。
-            model["effective_context_window_percent"] = json!(100);
-            model["auto_compact_token_limit"] = Value::Null;
-            model["priority"] = json!(1000 + index);
-            model["visibility"] = json!("list");
-            model["supported_in_api"] = json!(true);
-            model["additional_speed_tiers"] = json!([]);
-            model["service_tiers"] = json!([]);
-            model["availability_nux"] = Value::Null;
-            model["upgrade"] = Value::Null;
-            model
+    ids.into_iter()
+        .map(|id| {
+            let stored = stored_by_id.get(&id).copied();
+            let context_window = model_windows
+                .get(&id)
+                .and_then(|window| parse_window_token(window))
+                .or_else(|| stored.and_then(|spec| spec.context_window))
+                .or(fallback_window);
+            CustomModelSpec {
+                id,
+                context_window,
+                reasoning: stored.and_then(|spec| spec.reasoning.clone()),
+            }
         })
-        .collect();
-    serde_json::to_string_pretty(&json!({ "models": models })).unwrap_or_default()
+        .collect()
 }
 
-/// 加载内置的单模型模板。
-fn load_model_catalog_template() -> Option<Value> {
-    serde_json::from_str(MODEL_CATALOG_TEMPLATE_JSON).ok()
+pub fn legacy_fields_from_model_specs(
+    specs: &[CustomModelSpec],
+) -> (String, HashMap<String, String>) {
+    let mut ids = Vec::new();
+    let mut windows = HashMap::new();
+    let mut seen = HashSet::new();
+    for spec in specs {
+        let id = spec.id.trim();
+        if id.is_empty() || !seen.insert(id.to_string()) {
+            continue;
+        }
+        ids.push(id.to_string());
+        if let Some(window) = spec.context_window.filter(|window| *window > 0) {
+            windows.insert(id.to_string(), window.to_string());
+        }
+    }
+    (ids.join("\n"), windows)
 }

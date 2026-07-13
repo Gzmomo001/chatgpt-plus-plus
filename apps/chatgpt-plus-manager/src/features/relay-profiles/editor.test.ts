@@ -860,6 +860,57 @@ describe("Relay profile editor", () => {
     assert.equal(newOpened.draft.apiKey, "");
   });
 
+  it("round-trips compact model reasoning metadata and validates its default", () => {
+    const source = profile({
+      modelList: "model-a",
+      modelWindows: '{"model-a":"1000000"}',
+      modelSpecs: [{
+        id: "model-a",
+        context_window: 1_000_000,
+        reasoning: { supported: ["low", "medium", "high"], default: "medium" },
+      }],
+    });
+    const opened = openExisting(source, context([source]));
+    assert.deepEqual(opened.draft.models, [{
+      model: "model-a",
+      window: "1000000",
+      reasoningSupported: "low, medium, high",
+      reasoningDefault: "medium",
+    }]);
+
+    const valid = edit(opened, {
+      type: "replaceModels",
+      models: [{
+        model: "model-a",
+        window: "1M",
+        reasoningSupported: "low, high",
+        reasoningDefault: "high",
+      }],
+    });
+    const committed = commit(valid);
+    assert.equal(committed.ok, true);
+    if (!committed.ok) return;
+    assert.deepEqual(committed.profile.modelSpecs, [{
+      id: "model-a",
+      context_window: 1_000_000,
+      reasoning: { supported: ["low", "high"], default: "high" },
+    }]);
+
+    const invalid = edit(opened, {
+      type: "replaceModels",
+      models: [{
+        model: "model-a",
+        window: "1M",
+        reasoningSupported: "low, high",
+        reasoningDefault: "medium",
+      }],
+    });
+    const rejected = commit(invalid);
+    assert.equal(rejected.ok, false);
+    if (rejected.ok) return;
+    assert.equal(rejected.issues[0]?.code, "invalidDefaultReasoningEffort");
+  });
+
   it("merges and removes model rows without mutating earlier editor states", () => {
     const source = profile({
       modelList: "model-a\nmodel-b",

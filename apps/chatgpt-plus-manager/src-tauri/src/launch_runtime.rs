@@ -180,6 +180,13 @@ impl LaunchHooks for ManagerLaunchHooks {
         self.core.load_settings().await
     }
 
+    async fn refresh_model_catalog(
+        &self,
+        settings: &mut chatgpt_plus_core::settings::BackendSettings,
+    ) -> anyhow::Result<()> {
+        self.core.refresh_model_catalog(settings).await
+    }
+
     fn apply_codex_home(
         &self,
         settings: &chatgpt_plus_core::settings::BackendSettings,

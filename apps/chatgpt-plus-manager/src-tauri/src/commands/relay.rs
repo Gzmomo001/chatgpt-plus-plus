@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 
 use chatgpt_plus_core::codex_home_apply::CodexHomeReconcileIntent;
 use chatgpt_plus_core::settings::{
@@ -171,21 +171,11 @@ pub struct RelayProfileSwitchRequest {
 }
 
 #[tauri::command]
-pub fn switch_relay_profile(
+pub async fn switch_relay_profile(
     runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
     request: RelayProfileSwitchRequest,
-) -> CommandResult<RelaySwitchPayload> {
-    let Ok(_guard) = relay_switch_mutex().lock() else {
-        let status = chatgpt_plus_core::relay_config::default_relay_status();
-        return failed(
-            "供应商切换锁已损坏，请重启管理器后再试。",
-            relay_switch_payload(
-                SettingsStore::default().load().unwrap_or_default(),
-                status,
-                None,
-            ),
-        );
-    };
+) -> Result<CommandResult<RelaySwitchPayload>, String> {
+    let _guard = relay_switch_mutex().lock().await;
     let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let store = SettingsStore::default();
     let settings = normalize_settings_before_save(request.settings);
@@ -196,44 +186,53 @@ pub fn switch_relay_profile(
             "targetRelayId": target_relay_id
         }),
     );
-    match chatgpt_plus_core::codex_home_apply::activate(&store, &home, settings, &target_relay_id) {
-        Ok(activation) => {
-            let backup_path = activation
-                .home
-                .backup_path
-                .as_ref()
-                .map(|path| path.to_string_lossy().to_string());
-            log_manager_event(
-                "manager.switch_relay_profile.ok",
-                json!({
-                    "targetRelayId": activation.settings.active_relay_id,
-                    "configured": activation.home.status.configured,
-                    "backupPath": backup_path.as_ref()
-                }),
-            );
-            runtime.restart_after_configuration_change();
-            ok(
-                "供应商已切换。",
-                relay_switch_payload(activation.settings, activation.home.status, backup_path),
-            )
-        }
-        Err(error) => {
-            let status = chatgpt_plus_core::relay_config::relay_status_from_home(&home);
-            let settings = store.load().unwrap_or_default();
-            log_manager_event(
-                "manager.switch_relay_profile.failed",
-                json!({
-                    "targetRelayId": target_relay_id,
-                    "activeRelayId": settings.active_relay_id,
-                    "error": error.to_string()
-                }),
-            );
-            failed(
-                &format!("供应商切换失败：{error}"),
-                relay_switch_payload(settings, status, None),
-            )
-        }
-    }
+    Ok(
+        match chatgpt_plus_core::codex_home_apply::activate_with_model_refresh(
+            &store,
+            &home,
+            settings,
+            &target_relay_id,
+        )
+        .await
+        {
+            Ok(activation) => {
+                let backup_path = activation
+                    .home
+                    .backup_path
+                    .as_ref()
+                    .map(|path| path.to_string_lossy().to_string());
+                log_manager_event(
+                    "manager.switch_relay_profile.ok",
+                    json!({
+                        "targetRelayId": activation.settings.active_relay_id,
+                        "configured": activation.home.status.configured,
+                        "backupPath": backup_path.as_ref()
+                    }),
+                );
+                runtime.restart_after_configuration_change();
+                ok(
+                    "供应商已切换。",
+                    relay_switch_payload(activation.settings, activation.home.status, backup_path),
+                )
+            }
+            Err(error) => {
+                let status = chatgpt_plus_core::relay_config::relay_status_from_home(&home);
+                let settings = store.load().unwrap_or_default();
+                log_manager_event(
+                    "manager.switch_relay_profile.failed",
+                    json!({
+                        "targetRelayId": target_relay_id,
+                        "activeRelayId": settings.active_relay_id,
+                        "error": error.to_string()
+                    }),
+                );
+                failed(
+                    &format!("供应商切换失败：{error}"),
+                    relay_switch_payload(settings, status, None),
+                )
+            }
+        },
+    )
 }
 
 #[tauri::command]
@@ -608,9 +607,9 @@ fn relay_switch_payload(
     }
 }
 
-fn relay_switch_mutex() -> &'static Mutex<()> {
-    static RELAY_SWITCH_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    RELAY_SWITCH_LOCK.get_or_init(|| Mutex::new(()))
+fn relay_switch_mutex() -> &'static tokio::sync::Mutex<()> {
+    static RELAY_SWITCH_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    RELAY_SWITCH_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
 }
 
 pub(super) fn relay_files_payload_from_home(

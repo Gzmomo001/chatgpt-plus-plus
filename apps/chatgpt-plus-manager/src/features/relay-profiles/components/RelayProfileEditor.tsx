@@ -149,10 +149,14 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
           <div className="relay-model-row relay-model-row-head">
             <span>{t("模型名称")}</span>
             <span>{t("上下文窗口")}</span>
+            <span>{t("推理档位")}</span>
+            <span>{t("默认推理")}</span>
             <span />
           </div>{modelWindowRows.map((row, index) => <div className="relay-model-row" key={`${index}-${row.model}`}>
             <Input value={row.model} onChange={(event) => onStateChange(edit(state, { type: "replaceModels", models: modelWindowRows.map((item, rowIndex) => rowIndex === index ? { ...item, model: event.currentTarget.value } : item) }))} placeholder="deepseek/deepseek-v4-flash" />
             <Input value={row.window} onChange={(event) => onStateChange(edit(state, { type: "replaceModels", models: modelWindowRows.map((item, rowIndex) => rowIndex === index ? { ...item, window: event.currentTarget.value } : item) }))} placeholder="1M" />
+            <Input value={row.reasoningSupported ?? ""} onChange={(event) => onStateChange(edit(state, { type: "replaceModels", models: modelWindowRows.map((item, rowIndex) => rowIndex === index ? { ...item, reasoningSupported: event.currentTarget.value } : item) }))} placeholder="low, medium, high" />
+            <Input value={row.reasoningDefault ?? ""} onChange={(event) => onStateChange(edit(state, { type: "replaceModels", models: modelWindowRows.map((item, rowIndex) => rowIndex === index ? { ...item, reasoningDefault: event.currentTarget.value } : item) }))} placeholder="medium" />
             <Button aria-label={t("删除模型")} onClick={() => onStateChange(edit(state, { type: "removeModel", model: modelWindowRows[index]?.model ?? "" }))} size="icon" title={t("删除模型")} type="button" variant="ghost">
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -167,7 +171,7 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
           }} size="sm" type="button" variant="secondary">
             <Download className="h-4 w-4" />{t("从上游获取")}</Button>
         </div>
-        <p className="field-hint">{t("每行一个模型；上下文窗口可填")} <code>1M</code>{t("、")}<code>200K</code> {t("或")} <code>1000000</code>{t("，留空表示使用 Codex 默认长度。")}</p>
+        <p className="field-hint">{t("每行一个模型；上下文窗口可填")} <code>1M</code>{t("、")}<code>200K</code> {t("或")} <code>1000000</code>{t("，留空表示使用 Codex 默认长度。推理档位用英文逗号分隔；留空时不会向模型声明 reasoning 支持。")}</p>
         <p className="field-hint">{t("上游接口不可用时，仍可使用「添加模型」手动配置。")}</p>
       </Field> : null}
       {showApiFields ? <Field className="relay-field-user-agent" label="User-Agent">

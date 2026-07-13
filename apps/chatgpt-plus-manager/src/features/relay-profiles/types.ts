@@ -1,6 +1,17 @@
 export type ModelWindowRow = {
   model: string;
   window: string;
+  reasoningSupported?: string;
+  reasoningDefault?: string;
+};
+
+export type CustomModelSpec = {
+  id: string;
+  context_window?: number;
+  reasoning?: {
+    supported: string[];
+    default?: string;
+  };
 };
 
 export type RelayProtocol = "responses" | "chatCompletions";
@@ -52,6 +63,7 @@ export type RelayProfile = {
   autoCompactLimit: string;
   modelList: string;
   modelWindows: string;
+  modelSpecs?: CustomModelSpec[];
   userAgent: string;
   aggregate?: RelayAggregateConfig | null;
 };
@@ -63,7 +75,7 @@ export type RelayProfileCandidate = Omit<Pick<
   relayMode: Exclude<RelayMode, "aggregate">;
 };
 
-export type RelayProfileDraft = Omit<RelayProfile, "modelList" | "modelWindows"> & {
+export type RelayProfileDraft = Omit<RelayProfile, "modelList" | "modelWindows" | "modelSpecs"> & {
   models: ModelWindowRow[];
 };
 

@@ -122,7 +122,7 @@ Windows creates only one `ChatGPT++` shortcut on the Desktop and Start Menu. mac
 - Manager-native session deletion, Markdown export, and Token usage history.
 - Manager-native marketplace, plugin, and skill inventory without Codex page injection.
 - Provider Sync to keep historical sessions visible after switching providers.
-- Per-model context window configuration: the "Model list" is split into two columns, model name on the left and context window (e.g. `1M`, `200K`, or `1000000`) on the right. ChatGPT++ auto-generates `model_catalog_json` and injects it into `config.toml`; the matching window is applied when you switch models. Leave the window empty to use Codex's default length.
+- Per-model metadata: the "Model list" accepts a model ID, context window (for example `1M`, `200K`, or `1000000`), supported reasoning efforts, and a default effort. ChatGPT++ materializes the full `model_catalog_json` from a Codex runtime catalog or `models_cache.json`; the repository and user settings keep only compact model declarations. On a first offline run without a Codex cache, the selected model is preserved and Codex's unknown-model fallback is used.
 - GitHub Release updates from the unified ChatGPT++ UI.
 - Windows single instance, no console window, administrator manifest, and system Desktop path detection.
 - Separate macOS x64 and arm64 DMGs containing one main executable in `ChatGPT++.app`.

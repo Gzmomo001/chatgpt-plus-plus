@@ -5,8 +5,9 @@ use std::path::Path;
 use std::thread;
 
 use chatgpt_plus_core::model_catalog::{
-    read_codex_model_catalog, read_codex_model_catalog_from_home,
+    read_codex_model_catalog, read_codex_model_catalog_from_home, refresh_relay_profile_model_specs,
 };
+use chatgpt_plus_core::model_catalog_materializer::{CustomModelSpec, ReasoningSpec};
 use chatgpt_plus_core::settings::{
     BackendSettings, RelayMode, RelayProfile, RelayProtocol, SettingsStore,
 };
@@ -345,6 +346,97 @@ base_url = "{}"
     assert_eq!(result["sources"][0]["responses_api"]["status"], "unknown");
     let requests = server.finish();
     assert_eq!(requests[0].path, "/v1/models");
+}
+
+#[tokio::test]
+async fn refresh_merges_remote_ids_without_overwriting_manual_metadata() {
+    let server = spawn_models_server(json!({
+        "data": [
+            {"id": "manual-model"},
+            {"id": "new-remote-model"}
+        ]
+    }));
+    let mut profile = RelayProfile {
+        id: "relay".to_string(),
+        name: "Relay".to_string(),
+        base_url: format!("{}/v1", server.base_url),
+        upstream_base_url: format!("{}/v1", server.base_url),
+        api_key: "sk-test".to_string(),
+        relay_mode: RelayMode::PureApi,
+        model_list: "manual-model\noffline-only".to_string(),
+        model_windows: r#"{"manual-model":"1M"}"#.to_string(),
+        model_specs: vec![CustomModelSpec {
+            id: "manual-model".to_string(),
+            context_window: Some(1_000_000),
+            reasoning: Some(ReasoningSpec {
+                supported: vec!["low".to_string(), "high".to_string()],
+                default: Some("high".to_string()),
+            }),
+        }],
+        ..RelayProfile::default()
+    };
+
+    let outcome = refresh_relay_profile_model_specs(&mut profile)
+        .await
+        .unwrap();
+
+    assert!(outcome.attempted);
+    assert!(outcome.changed);
+    assert_eq!(outcome.discovered, 2);
+    assert_eq!(
+        profile
+            .model_specs
+            .iter()
+            .map(|spec| spec.id.as_str())
+            .collect::<Vec<_>>(),
+        ["manual-model", "offline-only", "new-remote-model"]
+    );
+    assert_eq!(profile.model_specs[0].context_window, Some(1_000_000));
+    assert_eq!(
+        profile.model_specs[0]
+            .reasoning
+            .as_ref()
+            .unwrap()
+            .default
+            .as_deref(),
+        Some("high")
+    );
+    assert_eq!(
+        profile.model_list,
+        "manual-model\noffline-only\nnew-remote-model"
+    );
+    let requests = server.finish();
+    assert_eq!(requests[0].path, "/v1/models");
+}
+
+#[tokio::test]
+async fn failed_refresh_keeps_last_known_good_manual_specs() {
+    let server = spawn_models_server(json!({"data": []}));
+    let mut profile = RelayProfile {
+        id: "relay".to_string(),
+        base_url: format!("{}/v1", server.base_url),
+        upstream_base_url: format!("{}/v1", server.base_url),
+        api_key: "sk-test".to_string(),
+        relay_mode: RelayMode::PureApi,
+        model_list: "manual-model".to_string(),
+        model_specs: vec![CustomModelSpec {
+            id: "manual-model".to_string(),
+            context_window: Some(128_000),
+            reasoning: None,
+        }],
+        ..RelayProfile::default()
+    };
+    let before = profile.clone();
+
+    assert!(
+        refresh_relay_profile_model_specs(&mut profile)
+            .await
+            .is_err()
+    );
+
+    assert_eq!(profile, before);
+    let requests = server.finish();
+    assert_eq!(requests.len(), 1);
 }
 
 fn write_config(home: &Path, contents: &str) {

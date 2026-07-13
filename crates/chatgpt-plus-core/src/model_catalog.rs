@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::model_catalog_materializer::CustomModelSpec;
+use crate::settings::{BackendSettings, RelayMode};
 use crate::settings::{RelayProfile, SettingsStore};
 use serde_json::{Value, json};
 
@@ -111,8 +113,10 @@ fn relay_profile_model_catalog_value(home: &Path, profile: &RelayProfile) -> Val
 fn relay_profile_model_ids(profile: &RelayProfile) -> Vec<String> {
     unique_strings(
         profile
-            .model_list
-            .split(['\r', '\n', ','])
+            .model_specs
+            .iter()
+            .map(|spec| spec.id.as_str())
+            .chain(profile.model_list.split(['\r', '\n', ',']))
             .chain(std::iter::once(profile.model.as_str()))
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -546,6 +550,83 @@ pub async fn fetch_relay_profile_model_ids(
         anyhow::bail!("{message}");
     }
     Ok((models, endpoint))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelSpecRefreshOutcome {
+    pub attempted: bool,
+    pub changed: bool,
+    pub discovered: usize,
+    pub endpoint: String,
+}
+
+pub async fn refresh_relay_profile_model_specs(
+    profile: &mut RelayProfile,
+) -> anyhow::Result<ModelSpecRefreshOutcome> {
+    if profile.relay_mode == RelayMode::Official && !profile.official_mix_api_key {
+        return Ok(ModelSpecRefreshOutcome {
+            attempted: false,
+            changed: false,
+            discovered: 0,
+            endpoint: String::new(),
+        });
+    }
+
+    let (models, endpoint) = fetch_relay_profile_model_ids(profile).await?;
+    let windows = serde_json::from_str(&profile.model_windows).unwrap_or_default();
+    let existing = crate::model_suffix::collect_custom_model_specs(
+        &profile.model_list,
+        &windows,
+        &profile.model_specs,
+        "",
+        None,
+    );
+    let mut merged = existing.clone();
+    let mut seen = merged
+        .iter()
+        .map(|spec| spec.id.clone())
+        .collect::<HashSet<_>>();
+    for id in &models {
+        let id = id.trim();
+        if !id.is_empty() && seen.insert(id.to_string()) {
+            merged.push(CustomModelSpec {
+                id: id.to_string(),
+                context_window: None,
+                reasoning: None,
+            });
+        }
+    }
+    let changed = merged != existing || profile.model_specs != merged;
+    profile.model_specs = merged;
+    let (model_list, model_windows) =
+        crate::model_suffix::legacy_fields_from_model_specs(&profile.model_specs);
+    profile.model_list = model_list;
+    profile.model_windows = serde_json::to_string(&model_windows).unwrap_or_default();
+    Ok(ModelSpecRefreshOutcome {
+        attempted: true,
+        changed,
+        discovered: models.len(),
+        endpoint,
+    })
+}
+
+pub async fn refresh_active_relay_profile_model_specs(
+    settings: &mut BackendSettings,
+) -> anyhow::Result<ModelSpecRefreshOutcome> {
+    let active_id = settings.active_relay_id.clone();
+    let Some(profile) = settings
+        .relay_profiles
+        .iter_mut()
+        .find(|profile| profile.id == active_id)
+    else {
+        return Ok(ModelSpecRefreshOutcome {
+            attempted: false,
+            changed: false,
+            discovered: 0,
+            endpoint: String::new(),
+        });
+    };
+    refresh_relay_profile_model_specs(profile).await
 }
 
 fn preferred_responses_api_status(sources: &[Value]) -> Value {

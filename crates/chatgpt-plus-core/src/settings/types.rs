@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use crate::model_catalog_materializer::CustomModelSpec;
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelayContextSelection {
@@ -72,6 +74,8 @@ pub struct RelayProfile {
         skip_serializing_if = "String::is_empty"
     )]
     pub model_windows: String,
+    #[serde(rename = "modelSpecs", default, skip_serializing_if = "Vec::is_empty")]
+    pub model_specs: Vec<CustomModelSpec>,
     #[serde(
         rename = "userAgent",
         default,
@@ -134,6 +138,7 @@ impl Default for RelayProfile {
             model_insert_mode: RelayModelInsertMode::Patch,
             model_list: String::new(),
             model_windows: String::new(),
+            model_specs: Vec::new(),
             user_agent: String::new(),
         }
     }
@@ -267,6 +272,7 @@ impl BackendSettings {
                 model_insert_mode: RelayModelInsertMode::Patch,
                 model_list: String::new(),
                 model_windows: String::new(),
+                model_specs: Vec::new(),
                 user_agent: String::new(),
             };
         }
@@ -313,6 +319,7 @@ impl BackendSettings {
             model_insert_mode: RelayModelInsertMode::Patch,
             model_list: String::new(),
             model_windows: String::new(),
+            model_specs: Vec::new(),
             user_agent: String::new(),
         }
     }

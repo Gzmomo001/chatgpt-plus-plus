@@ -139,7 +139,7 @@ Telegram 频道：<https://t.me/CodexPlusPlus>
 - 管理器会话页支持删除、Markdown 导出和 Token 使用历史。
 - 管理器直接维护插件 marketplace、插件与技能库存，不依赖 Codex 页面注入。
 - Provider 同步：启动前同步本地会话 metadata，切换供应商后旧会话仍可见。
-- 按模型粒度配置上下文窗口：「模型列表」分为左右两列，左侧填模型名，右侧填上下文窗口（如 `1M`、`200K` 或 `1000000`）；ChatGPT++ 自动生成 `model_catalog_json` 并注入 `config.toml`，切换模型即生效。右侧留空则使用 Codex 默认长度。
+- 按模型粒度配置 metadata：「模型列表」可填写模型名、上下文窗口（如 `1M`、`200K` 或 `1000000`）、支持的 reasoning effort 和默认 effort。ChatGPT++ 从 Codex runtime catalog 或 `models_cache.json` 生成完整 `model_catalog_json`；仓库与用户设置只维护小型模型声明。首次离线且没有 Codex cache 时会保留所选模型并使用 Codex unknown-model fallback。
 - GitHub Release 自动更新，统一从 ChatGPT++ 主界面检查和安装；内部 helper 可提示主应用显示更新页。
 - Windows 单实例、无黑框启动、管理员权限清单、系统桌面路径识别。
 - macOS x64/arm64 分架构 DMG，`ChatGPT++.app` 只包含一个主可执行程序。

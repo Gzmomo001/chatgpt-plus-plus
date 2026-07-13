@@ -2894,11 +2894,13 @@ body {
 .relay-model-row-editor {
   display: grid;
   gap: 8px;
+  overflow-x: auto;
 }
 
 .relay-model-row {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(120px, 180px) 36px;
+  grid-template-columns: minmax(210px, 1fr) minmax(110px, 160px) minmax(190px, 0.75fr) minmax(110px, 150px) 36px;
+  min-width: 720px;
   align-items: center;
   gap: 8px;
 }

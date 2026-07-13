@@ -339,6 +339,29 @@ fn normalize_relay_profile_for_storage(profile: &mut RelayProfile) -> anyhow::Re
         profile.model_list = clean_list;
         profile.model_windows = serde_json::to_string(&windows).unwrap_or_default();
     }
+    let windows = serde_json::from_str(&profile.model_windows).unwrap_or_default();
+    if profile.model_specs.is_empty() {
+        profile.model_specs = crate::model_suffix::collect_custom_model_specs(
+            &profile.model_list,
+            &windows,
+            &[],
+            "",
+            None,
+        );
+    } else {
+        let normalized = crate::model_suffix::collect_custom_model_specs(
+            &profile.model_list,
+            &windows,
+            &profile.model_specs,
+            "",
+            None,
+        );
+        profile.model_specs = normalized;
+        let (model_list, model_windows) =
+            crate::model_suffix::legacy_fields_from_model_specs(&profile.model_specs);
+        profile.model_list = model_list;
+        profile.model_windows = serde_json::to_string(&model_windows).unwrap_or_default();
+    }
 
     if profile.relay_mode == RelayMode::Official && !profile.official_mix_api_key {
         let has_api_config = !profile.base_url.trim().is_empty()

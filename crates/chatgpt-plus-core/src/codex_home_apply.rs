@@ -136,6 +136,29 @@ pub fn activate(
     }
 }
 
+pub async fn activate_with_model_refresh(
+    store: &SettingsStore,
+    home: &Path,
+    mut requested: BackendSettings,
+    target_id: &str,
+) -> anyhow::Result<RelayProfileActivation> {
+    if let Some(profile) = requested
+        .relay_profiles
+        .iter_mut()
+        .find(|profile| profile.id == target_id)
+        && let Err(error) = crate::model_catalog::refresh_relay_profile_model_specs(profile).await
+    {
+        let _ = crate::diagnostic_log::append_diagnostic_log(
+            "codex_home_apply.model_refresh_failed_nonfatal",
+            serde_json::json!({
+                "profile_id": target_id,
+                "message": error.to_string()
+            }),
+        );
+    }
+    activate(store, home, requested, target_id)
+}
+
 fn read_optional_file(path: &Path) -> anyhow::Result<Option<Vec<u8>>> {
     match std::fs::read(path) {
         Ok(contents) => Ok(Some(contents)),

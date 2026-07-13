@@ -134,6 +134,9 @@ pub trait LaunchHooks: Send + Sync {
     ) -> anyhow::Result<PathBuf>;
     fn select_protocol_proxy_port(&self, requested: u16) -> u16;
     async fn load_settings(&self) -> anyhow::Result<BackendSettings>;
+    async fn refresh_model_catalog(&self, _settings: &mut BackendSettings) -> anyhow::Result<()> {
+        Ok(())
+    }
     fn apply_codex_home(&self, settings: &BackendSettings) -> anyhow::Result<()> {
         if !settings.relay_profiles_enabled {
             return Ok(());
@@ -211,12 +214,18 @@ where
 {
     let hooks = hooks.into_launch_hooks();
     let mut protocol_proxy_port = hooks.select_protocol_proxy_port(options.protocol_proxy_port);
-    let settings = hooks.load_settings().await?;
+    let mut settings = hooks.load_settings().await?;
     let app_dir = hooks.resolve_app_dir(options.app_dir.as_deref(), &settings)?;
     let status_store = options.status_store.clone();
     let mut launched = None;
 
     let result: anyhow::Result<LaunchHandle> = async {
+        if let Err(error) = hooks.refresh_model_catalog(&mut settings).await {
+            let _ = crate::diagnostic_log::append_diagnostic_log(
+                "launch_runtime.model_catalog_refresh_failed_nonfatal",
+                serde_json::json!({ "message": error.to_string() }),
+            );
+        }
         hooks.apply_codex_home(&settings)?;
         if settings.provider_sync_enabled {
             hooks.run_provider_sync().await?;
@@ -395,6 +404,11 @@ impl LaunchHooks for DefaultLaunchHooks {
 
     async fn load_settings(&self) -> anyhow::Result<BackendSettings> {
         SettingsStore::default().load()
+    }
+
+    async fn refresh_model_catalog(&self, settings: &mut BackendSettings) -> anyhow::Result<()> {
+        crate::model_catalog::refresh_active_relay_profile_model_specs(settings).await?;
+        Ok(())
     }
 
     async fn run_provider_sync(&self) -> anyhow::Result<()> {

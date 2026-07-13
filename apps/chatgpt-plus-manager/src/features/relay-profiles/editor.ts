@@ -1,4 +1,5 @@
 import type {
+  CustomModelSpec,
   DeepReadonly,
   ModelWindowRow,
   RelayAggregateConfig,
@@ -54,6 +55,7 @@ function normalizeRelayProfileSettings(
       autoCompactLimit: source.autoCompactLimit ?? "",
       modelList: source.modelList ?? "",
       modelWindows: source.modelWindows || "{}",
+      ...(source.modelSpecs?.length ? { modelSpecs: structuredClone(source.modelSpecs) } : {}),
       userAgent: source.userAgent ?? "",
       aggregate: aggregate ? {
         strategy: aggregate.strategy,
@@ -95,7 +97,12 @@ function seedRelayProfile(
 
 function canonicalizeRelayProfile(profile: RelayProfile, profiles: RelayProfile[] = []): RelayProfile {
   if (profile.relayMode === "aggregate") {
-    const { modelList: _storedModelList, modelWindows: _storedModelWindows, ...draft } = profile;
+    const {
+      modelList: _storedModelList,
+      modelWindows: _storedModelWindows,
+      modelSpecs: _storedModelSpecs,
+      ...draft
+    } = profile;
     const projected = projectDraft({
       ...draft,
       models: [{ model: "", window: "" }],
@@ -190,11 +197,12 @@ export function open(
   const {
     modelList: _storedModelList,
     modelWindows: _storedModelWindows,
+    modelSpecs: _storedModelSpecs,
     ...semanticDraft
   } = semantic;
   const draft: RelayProfileDraft = {
     ...semanticDraft,
-    models: modelRows(semantic.modelList, semantic.modelWindows),
+    models: modelRows(semantic.modelList, semantic.modelWindows, semantic.modelSpecs),
   };
   if (semantic.relayMode === "aggregate") {
     Object.assign(draft, projectDraft({
@@ -307,10 +315,12 @@ export function edit(
       authContents: intent.authContents,
       modelList: serialized.modelList,
       modelWindows: serialized.modelWindows,
+      modelSpecs: serialized.modelSpecs,
     });
     const {
       modelList: _storedModelList,
       modelWindows: _storedModelWindows,
+      modelSpecs: _storedModelSpecs,
       ...derivedDraft
     } = derived;
     const draft: RelayProfileDraft = { ...derivedDraft, models: structuredClone(models) };
@@ -320,6 +330,7 @@ export function edit(
   const {
     modelList: _storedModelList,
     modelWindows: _storedModelWindows,
+    modelSpecs: _storedModelSpecs,
     models: _models,
     aggregate: _aggregate,
     relayMode: _relayMode,
@@ -327,6 +338,7 @@ export function edit(
   } = structuredClone(intent.patch) as RelayProfilePatch & {
     modelList?: unknown;
     modelWindows?: unknown;
+    modelSpecs?: unknown;
     models?: unknown;
     aggregate?: unknown;
     relayMode?: unknown;
@@ -459,15 +471,32 @@ function projectSettings(
   };
 }
 
-function modelRows(modelList: string, modelWindows: string): ModelWindowRow[] {
+function modelRows(
+  modelList: string,
+  modelWindows: string,
+  modelSpecs: CustomModelSpec[] = [],
+): ModelWindowRow[] {
+  const rows: ModelWindowRow[] = [];
+  const seen = new Set<string>();
   let windows: Record<string, string> = {};
   try {
     windows = JSON.parse(modelWindows || "{}") as Record<string, string>;
   } catch {
     windows = {};
   }
-  const rows: ModelWindowRow[] = [];
-  const seen = new Set<string>();
+  if (modelSpecs.length) {
+    for (const spec of modelSpecs) {
+      const model = spec.id.trim();
+      if (!model || seen.has(model)) continue;
+      seen.add(model);
+      rows.push({
+        model,
+        window: spec.context_window?.toString() ?? windows[model]?.trim() ?? "",
+        reasoningSupported: spec.reasoning?.supported.join(", ") ?? "",
+        reasoningDefault: spec.reasoning?.default ?? "",
+      });
+    }
+  }
   for (const raw of modelList.split(/\r?\n/)) {
     const legacy = parseLegacyModelSuffix(raw);
     if (!legacy.model || seen.has(legacy.model)) continue;
@@ -581,9 +610,14 @@ function authApiKey(contents: string): string {
   }
 }
 
-function serializeRows(rows: ModelWindowRow[]): { modelList: string; modelWindows: string } {
+function serializeRows(rows: ModelWindowRow[]): {
+  modelList: string;
+  modelWindows: string;
+  modelSpecs?: CustomModelSpec[];
+} {
   const models: string[] = [];
   const windows: Record<string, string> = {};
+  const modelSpecs: CustomModelSpec[] = [];
   const seen = new Set<string>();
   for (const row of rows) {
     const model = row.model.trim();
@@ -592,8 +626,43 @@ function serializeRows(rows: ModelWindowRow[]): { modelList: string; modelWindow
     models.push(model);
     const window = row.window.trim();
     if (window) windows[model] = window;
+    const supported = uniqueReasoningEfforts(row.reasoningSupported ?? "");
+    const defaultEffort = (row.reasoningDefault ?? "").trim();
+    const contextWindow = parseWindowMetadata(window);
+    modelSpecs.push({
+      id: model,
+      ...(contextWindow ? { context_window: contextWindow } : {}),
+      ...(supported.length || defaultEffort
+        ? {
+            reasoning: {
+              supported,
+              ...(defaultEffort ? { default: defaultEffort } : {}),
+            },
+          }
+        : {}),
+    });
   }
-  return { modelList: models.join("\n"), modelWindows: JSON.stringify(windows) };
+  return {
+    modelList: models.join("\n"),
+    modelWindows: JSON.stringify(windows),
+    ...(modelSpecs.length ? { modelSpecs } : {}),
+  };
+}
+
+function parseWindowMetadata(window: string): number | undefined {
+  const match = /^(\d+)([KkMm])?$/.exec(window.trim());
+  if (!match) return undefined;
+  const multiplier = match[2]?.toUpperCase() === "M"
+    ? 1_000_000
+    : match[2]?.toUpperCase() === "K"
+      ? 1_000
+      : 1;
+  const value = Number(match[1]) * multiplier;
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
+
+function uniqueReasoningEfforts(raw: string): string[] {
+  return [...new Set(raw.split(",").map((effort) => effort.trim()).filter(Boolean))];
 }
 
 function canonicalRows(rows: ModelWindowRow[]): ModelWindowRow[] {
@@ -603,7 +672,14 @@ function canonicalRows(rows: ModelWindowRow[]): ModelWindowRow[] {
     const model = row.model.trim();
     if (!model || seen.has(model)) continue;
     seen.add(model);
-    canonical.push({ model, window: row.window.trim() });
+    const reasoningSupported = (row.reasoningSupported ?? "").trim();
+    const reasoningDefault = (row.reasoningDefault ?? "").trim();
+    canonical.push({
+      model,
+      window: row.window.trim(),
+      ...(reasoningSupported ? { reasoningSupported } : {}),
+      ...(reasoningDefault ? { reasoningDefault } : {}),
+    });
   }
   return canonical.length ? canonical : [{ model: "", window: "" }];
 }
@@ -717,13 +793,24 @@ function issuesForDraft(draft: RelayProfileDraft): RelayProfileIssue[] {
   const issues: RelayProfileIssue[] = [];
   for (const row of draft.models) {
     const window = row.window.trim();
-    if (!window || /^[1-9]\d*[KkMm]?$/.test(window)) continue;
-    issues.push({
-      code: "invalidModelWindow",
-      field: `models.${row.model.trim() || "unknown"}.window`,
-      message: "模型上下文窗口必须为空或正整数，可带 K/M 后缀。",
-      blocking: true,
-    });
+    if (window && !/^[1-9]\d*[KkMm]?$/.test(window)) {
+      issues.push({
+        code: "invalidModelWindow",
+        field: `models.${row.model.trim() || "unknown"}.window`,
+        message: "模型上下文窗口必须为空或正整数，可带 K/M 后缀。",
+        blocking: true,
+      });
+    }
+    const supported = uniqueReasoningEfforts(row.reasoningSupported ?? "");
+    const defaultEffort = (row.reasoningDefault ?? "").trim();
+    if (defaultEffort && !supported.includes(defaultEffort)) {
+      issues.push({
+        code: "invalidDefaultReasoningEffort",
+        field: `models.${row.model.trim() || "unknown"}.reasoningDefault`,
+        message: "默认推理档位必须包含在该模型支持的推理档位中。",
+        blocking: true,
+      });
+    }
   }
   if (draft.relayMode === "aggregate" && !(draft.aggregate?.members.length)) {
     issues.push(aggregateMembersRequiredIssue());

@@ -23,6 +23,7 @@ fn reconcile_profile_with_guard(
     common_config_contents: &str,
     computer_use_guard_enabled: bool,
 ) -> anyhow::Result<CodexHomeApplyOutcome> {
+    ensure_test_models_cache(home);
     let settings = BackendSettings {
         relay_profiles: vec![profile.clone()],
         active_relay_id: profile.id.clone(),
@@ -36,6 +37,53 @@ fn reconcile_profile_with_guard(
             settings: &settings,
         },
     )
+}
+
+fn ensure_test_models_cache(home: &std::path::Path) {
+    let path = home.join("models_cache.json");
+    if path.exists() {
+        return;
+    }
+    std::fs::create_dir_all(home).unwrap();
+    std::fs::write(
+        path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "models": [{
+                "slug": "codex-test-template",
+                "display_name": "Codex test template",
+                "description": "Codex test template",
+                "default_reasoning_level": "medium",
+                "supported_reasoning_levels": [{"effort": "medium", "description": "Medium"}],
+                "shell_type": "shell_command",
+                "visibility": "list",
+                "supported_in_api": true,
+                "priority": 0,
+                "base_instructions": "Codex-owned test instructions",
+                "model_messages": {"instructions_template": "Codex-owned test template"},
+                "truncation_policy": {"mode": "tokens", "limit": 10_000},
+                "context_window": 272_000,
+                "max_context_window": 272_000,
+                "effective_context_window_percent": 95,
+                "supports_reasoning_summaries": false,
+                "default_reasoning_summary": "none",
+                "support_verbosity": false,
+                "default_verbosity": "medium",
+                "apply_patch_tool_type": "freeform",
+                "web_search_tool_type": "text",
+                "supports_parallel_tool_calls": false,
+                "supports_image_detail_original": false,
+                "experimental_supported_tools": [],
+                "input_modalities": ["text"],
+                "supports_search_tool": false,
+                "additional_speed_tiers": [],
+                "service_tiers": [],
+                "availability_nux": null,
+                "upgrade": null
+            }]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
 }
 use chatgpt_plus_core::settings::{
     BackendSettings, RelayContextSelection, RelayMode, RelayProfile, RelayProtocol,
@@ -2432,6 +2480,92 @@ experimental_bearer_token = "sk-new"
     let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
     assert!(!config.contains("model_catalog_json"));
     assert!(!catalog_path.exists());
+}
+
+#[test]
+fn reconcile_profile_degrades_to_unknown_model_without_a_runtime_catalog_source() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = RelayProfile {
+        id: "relay-offline".to_string(),
+        model: "selected-model".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model = "selected-model"
+model_provider = "custom"
+model_catalog_json = "model-catalogs/relay-offline.json"
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "https://relay.example/v1"
+experimental_bearer_token = "sk-new"
+"#
+        .to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-new"}"#.to_string(),
+        model_list: "selected-model".to_string(),
+        ..RelayProfile::default()
+    };
+    let settings = BackendSettings {
+        relay_profiles: vec![profile],
+        active_relay_id: "relay-offline".to_string(),
+        ..BackendSettings::default()
+    };
+
+    reconcile(
+        temp.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(config.contains(r#"model = "selected-model""#));
+    assert!(!config.contains("model_catalog_json"));
+    assert!(
+        !temp
+            .path()
+            .join("model-catalogs/relay-offline.json")
+            .exists()
+    );
+}
+
+#[test]
+fn official_login_mode_never_generates_or_injects_a_custom_catalog() {
+    let temp = tempfile::tempdir().unwrap();
+    ensure_test_models_cache(temp.path());
+    let profile = RelayProfile {
+        id: "official".to_string(),
+        relay_mode: RelayMode::Official,
+        official_mix_api_key: false,
+        model_list: "manual-model".to_string(),
+        model_specs: vec![
+            chatgpt_plus_core::model_catalog_materializer::CustomModelSpec {
+                id: "manual-model".to_string(),
+                context_window: Some(128_000),
+                reasoning: None,
+            },
+        ],
+        auth_contents: r#"{"auth_mode":"chatgpt","tokens":{"access_token":"token"}}"#.to_string(),
+        ..RelayProfile::default()
+    };
+    let settings = BackendSettings {
+        relay_profiles: vec![profile],
+        active_relay_id: "official".to_string(),
+        ..BackendSettings::default()
+    };
+
+    reconcile(
+        temp.path(),
+        CodexHomeReconcileIntent::ApplyActiveProfile {
+            settings: &settings,
+        },
+    )
+    .unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap_or_default();
+    assert!(!config.contains("model_catalog_json"));
+    assert!(!temp.path().join("model-catalogs/official.json").exists());
 }
 
 #[test]

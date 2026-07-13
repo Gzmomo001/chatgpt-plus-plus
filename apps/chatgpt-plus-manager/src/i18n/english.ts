@@ -344,6 +344,10 @@ export const EN_PLAIN: Record<string, string> = {
   "概览已检查": "Overview checked",
   "模型列表": "Model list",
   "模型名称": "Model name",
+  "推理档位": "Reasoning efforts",
+  "默认推理": "Default reasoning",
+  "，留空表示使用 Codex 默认长度。推理档位用英文逗号分隔；留空时不会向模型声明 reasoning 支持。":
+    "; leave it empty to use the Codex default. Separate reasoning efforts with commas; leave them empty to avoid declaring reasoning support for the model.",
   "模式": "Mode",
   "模式。": " mode.",
   "正在下载安装包…": "Downloading installer…",

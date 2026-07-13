@@ -1019,10 +1019,8 @@ fn apply_model_catalog_to_config(
 ) -> anyhow::Result<String> {
     let native_image_generation =
         crate::native_image_generation::NativeImageGenerationConfig::from_profile(profile);
-    let catalog_relative = format!(
-        "model-catalogs/{}.json",
-        sanitize_catalog_filename(&profile.id)
-    );
+    let catalog_relative =
+        crate::model_catalog_materializer::managed_catalog_relative_path(&profile.id);
     // 用户已手写 model_catalog_json 指针时保留，不覆盖（保 preserves_user_model_catalog_json 测试）
     // 仅当现有指针指向本 profile 自己生成的 catalog 时才重新生成。
     let existing_catalog = root_key_string(config_text, "model_catalog_json");
@@ -1040,47 +1038,47 @@ fn apply_model_catalog_to_config(
                 serde_json::from_str(&profile.model_windows).unwrap_or_default(),
             )
         };
-    let entries =
-        crate::model_suffix::collect_catalog_entries(&model_list, &model_windows, &profile.model);
+    let fallback = parse_optional_positive_u64(&profile.context_window, "上下文大小")?;
+    let specs = crate::model_suffix::collect_custom_model_specs(
+        &model_list,
+        &model_windows,
+        &profile.model_specs,
+        &profile.model,
+        fallback,
+    );
     // 手动模型列表是 /v1/models 不可用时的可靠后备。只要列表非空就生成 catalog；
     // 仅有默认 model 时保持 no-op，避免 catalog 退化为单模型并隐藏其他可用模型。
-    if model_list.trim().is_empty() && !native_image_generation.should_generate_model_catalog() {
+    if model_list.trim().is_empty()
+        && profile.model_specs.is_empty()
+        && !native_image_generation.should_generate_model_catalog()
+    {
         if existing_catalog.as_deref() != Some(catalog_relative.as_str()) {
             return Ok(config_text.to_string());
         }
-        let catalog_path = home.join(&catalog_relative);
-        match std::fs::remove_file(&catalog_path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
-        }
+        crate::model_catalog_materializer::materialize_model_catalog(home, &profile.id, &[])?;
         return Ok(remove_root_key(config_text, "model_catalog_json"));
     }
-    let fallback = parse_optional_positive_u64(&profile.context_window, "上下文大小")?;
-    let catalog_path = home.join(&catalog_relative);
-    if let Some(parent) = catalog_path.parent() {
-        std::fs::create_dir_all(parent)?;
+    let image_input_model = native_image_generation
+        .should_generate_model_catalog()
+        .then(|| native_image_generation.current_model_id());
+    let outcome =
+        crate::model_catalog_materializer::materialize_model_catalog_with_runtime_capabilities(
+            home,
+            &profile.id,
+            &specs,
+            image_input_model,
+        )?;
+    match outcome.status {
+        crate::model_catalog_materializer::CatalogMaterializationStatus::Ready => {
+            let mut doc = parse_toml_document(config_text)?;
+            doc["model_catalog_json"] = toml_edit::value(catalog_relative);
+            Ok(normalize_optional_toml(doc))
+        }
+        crate::model_catalog_materializer::CatalogMaterializationStatus::Degraded
+        | crate::model_catalog_materializer::CatalogMaterializationStatus::Cleared => {
+            Ok(remove_root_key(config_text, "model_catalog_json"))
+        }
     }
-    let catalog_json = crate::model_suffix::build_model_catalog_json(&entries, fallback);
-    let mut catalog_value: Value = serde_json::from_str(&catalog_json)?;
-    native_image_generation.ensure_current_model_input_modalities(&mut catalog_value);
-    let catalog_json = serde_json::to_string_pretty(&catalog_value)?;
-    std::fs::write(&catalog_path, catalog_json)?;
-    let mut doc = parse_toml_document(config_text)?;
-    doc["model_catalog_json"] = toml_edit::value(catalog_relative);
-    Ok(normalize_optional_toml(doc))
-}
-
-fn sanitize_catalog_filename(id: &str) -> String {
-    id.chars()
-        .map(|char| {
-            if char.is_ascii_alphanumeric() || char == '-' || char == '_' {
-                char
-            } else {
-                '-'
-            }
-        })
-        .collect()
 }
 
 fn sync_context_limits_from_config(profile: &mut RelayProfile, config_text: &str) {
