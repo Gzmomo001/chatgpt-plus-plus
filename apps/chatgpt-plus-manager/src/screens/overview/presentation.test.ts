@@ -21,13 +21,11 @@ test("projects all Overview health rows through one interface", () => {
   assert.deepEqual(projectOverviewHealth(null), [
     { id: "codex-version", status: "not_checked", ok: false, detail: null },
     { id: "codex-app", status: "not_checked", ok: false, detail: null },
-    { id: "app-shortcut", status: "not_checked", ok: false, detail: null },
   ]);
 
   assert.deepEqual(projectOverviewHealth(endpointHealth), [
     { id: "codex-version", status: "ok", ok: true, detail: "1.2.3" },
     { id: "codex-app", status: "found", ok: true, detail: "/Applications/Codex.app" },
-    { id: "app-shortcut", status: "installed", ok: true, detail: "/tmp/ChatGPT++.lnk" },
   ]);
 
   assert.deepEqual(
@@ -39,7 +37,6 @@ test("projects all Overview health rows through one interface", () => {
     [
       { id: "codex-version", status: "ok", ok: true, detail: "1.2.3" },
       { id: "codex-app", status: "missing", ok: false, detail: null },
-      { id: "app-shortcut", status: "missing", ok: false, detail: null },
     ],
   );
 });

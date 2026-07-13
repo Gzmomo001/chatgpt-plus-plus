@@ -1329,7 +1329,6 @@ export function App() {
   );
   const overviewActions: OverviewActions = {
     checkHealth: actions.checkHealth,
-    repairShortcuts: actions.repairShortcuts,
     repairPluginMarketplace: actions.repairPluginMarketplace,
     launch: actions.launch,
     goAbout: actions.goLogs,

@@ -1,4 +1,4 @@
-import { Bell, CheckCircle2, RefreshCw, Rocket, Wrench } from "lucide-react";
+import { Bell, CheckCircle2, RefreshCw, Rocket } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
@@ -14,7 +14,6 @@ import { projectOverviewHealth, type HealthItem } from "./presentation";
 
 export type OverviewActions = {
   checkHealth: () => Promise<void>;
-  repairShortcuts: () => Promise<void>;
   repairPluginMarketplace: () => Promise<void>;
   launch: () => Promise<void>;
   goAbout: () => Promise<void>;
@@ -55,10 +54,6 @@ export function OverviewScreen({
               <RefreshCw className="h-4 w-4" />
               {t("检查")}
             </Button>
-            <Button variant="secondary" onClick={() => void actions.repairShortcuts()}>
-              <Wrench className="h-4 w-4" />
-              {t("修复入口")}
-            </Button>
             <Button disabled={pluginMarketplaceProgress.active} variant="secondary" onClick={() => void actions.repairPluginMarketplace()}>
               {pluginMarketplaceProgress.active ? t("正在修复…") : t("修复插件市场")}
             </Button>
@@ -91,11 +86,6 @@ function healthCopy(item: HealthItem) {
       return { title: t("Codex 版本"), missingDetail: t("未检测到 Codex 应用版本。") };
     case "codex-app":
       return { title: t("Codex 应用"), missingDetail: t("尚未检查 Codex 应用路径。") };
-    case "app-shortcut":
-      return {
-        title: t("ChatGPT++ 应用入口"),
-        missingDetail: t("缺少 ChatGPT++ 应用快捷方式时可在安装维护页修复。"),
-      };
     default:
       return assertNever(item.id);
   }

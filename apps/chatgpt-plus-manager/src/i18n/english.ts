@@ -429,7 +429,6 @@ export const EN_PLAIN: Record<string, string> = {
   "编辑扩展项": "Edit entry",
   "缺失": "Missing",
   "ChatGPT++ 应用入口": "ChatGPT++ app entrypoint",
-  "缺少 ChatGPT++ 应用快捷方式时可在安装维护页修复。": "When the ChatGPT++ app shortcut is missing, repair it on the Install & Maintenance page.",
   "聚合": "Aggregate",
   "聚合/中转": "Aggregate/relay",
   "聚合供应商": "Aggregate provider",

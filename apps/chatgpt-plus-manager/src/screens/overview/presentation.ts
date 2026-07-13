@@ -6,7 +6,7 @@ import {
 } from "../../i18n/dynamic-keys.ts";
 import type { OverviewResult } from "@/shared/contracts/overview";
 
-type HealthItemId = "codex-version" | "codex-app" | "app-shortcut";
+type HealthItemId = "codex-version" | "codex-app";
 
 export type HealthItem = {
   id: HealthItemId;
@@ -37,12 +37,6 @@ export function projectOverviewHealth(overview: OverviewResult | null): HealthIt
       status: overview?.codexApp.status ?? "not_checked",
       ok: overview?.codexApp.status === "found",
       detail: overview?.codexApp.path ?? null,
-    },
-    {
-      id: "app-shortcut",
-      status: overview?.appShortcut.status ?? "not_checked",
-      ok: overview?.appShortcut.status === "installed",
-      detail: overview?.appShortcut.path ?? null,
     },
   ];
 }
