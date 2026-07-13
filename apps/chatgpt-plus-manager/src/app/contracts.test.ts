@@ -339,6 +339,7 @@ test("composes Overview through its screen-owned vertical slice", () => {
   assert.match(app, /<OverviewScreen\b/);
   assert.match(screen, /export function OverviewScreen(?:<[^>]+>)?\(/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(/);
+  assert.doesNotMatch(screen, /JOJO Code|jojocode\.com|官方中转站|jojocode-overview/);
 
   for (const definition of ["OverviewScreen", "LatestLaunch", "healthItems"]) {
     assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));

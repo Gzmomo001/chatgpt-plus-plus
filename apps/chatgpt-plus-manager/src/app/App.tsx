@@ -1328,7 +1328,6 @@ export function App() {
     [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, logs, diagnostics, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
   );
   const overviewActions: OverviewActions = {
-    openExternalUrl: actions.openExternalUrl,
     checkHealth: actions.checkHealth,
     repairShortcuts: actions.repairShortcuts,
     repairPluginMarketplace: actions.repairPluginMarketplace,
