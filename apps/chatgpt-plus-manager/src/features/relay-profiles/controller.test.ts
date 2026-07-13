@@ -12,6 +12,7 @@ import type { RelayProfile, RelayProfileSettings } from "./types.ts";
 const profile: RelayProfile = {
   id: "relay-a", name: "Relay A", model: "", baseUrl: "https://a.example/v1",
   upstreamBaseUrl: "https://a.example/v1", apiKey: "sk-a", protocol: "responses",
+  nativeImageGenerationEnabled: false,
   relayMode: "pureApi", officialMixApiKey: false, testModel: "", configContents: "",
   authContents: "", useCommonConfig: true,
   contextSelection: { mcpServers: [], skills: [], plugins: [] },

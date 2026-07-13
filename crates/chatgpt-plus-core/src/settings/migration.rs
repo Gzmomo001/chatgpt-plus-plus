@@ -332,6 +332,7 @@ fn sanitize_common_config_contents(common_config: &str) -> String {
 }
 
 fn normalize_relay_profile_for_storage(profile: &mut RelayProfile) -> anyhow::Result<()> {
+    crate::native_image_generation::NativeImageGenerationConfig::normalize_profile(profile);
     if profile.model_windows.trim().is_empty() && profile.model_list.contains('[') {
         let (clean_list, windows) =
             crate::model_suffix::migrate_model_list_with_suffixes(&profile.model_list);

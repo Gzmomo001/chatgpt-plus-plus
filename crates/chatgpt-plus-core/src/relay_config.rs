@@ -185,9 +185,13 @@ pub fn relay_config_status_from_home(home: &Path) -> RelayConfigStatus {
         .and_then(|values| values.get("base_url"))
         .map(|value| !unquote_toml_string(value).trim().is_empty())
         .unwrap_or(false);
+    let uses_native_image_generation_auth_compatibility =
+        crate::native_image_generation::NativeImageGenerationConfig::config_has_managed_actor_marker(
+            &contents,
+        );
     RelayConfigStatus {
         configured: root_provider.is_some()
-            && requires_openai_auth
+            && (requires_openai_auth || uses_native_image_generation_auth_compatibility)
             && (has_bearer_token || codex_auth_api_key(&auth_contents).is_some())
             && has_base_url,
         requires_openai_auth,
@@ -237,11 +241,14 @@ pub(super) fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_gua
         &profile.auto_compact_limit,
     )?;
     let config_with_catalog = apply_model_catalog_to_config(home, profile, &config_with_limits)?;
+    let config_with_native_image_generation =
+        crate::native_image_generation::NativeImageGenerationConfig::from_profile(profile)
+            .apply_to_config(&config_with_catalog)?;
 
     if profile.relay_mode == crate::settings::RelayMode::PureApi {
         apply_relay_files_to_home_with_computer_use_guard(
             home,
-            &config_with_catalog,
+            &config_with_native_image_generation,
             &profile.auth_contents,
             preserve_computer_use_guard,
         )
@@ -249,7 +256,7 @@ pub(super) fn apply_relay_profile_to_home_with_switch_rules_and_computer_use_gua
         let auth_contents = official_profile_auth_for_switch(home, &profile.auth_contents)?;
         apply_relay_files_to_home_with_computer_use_guard(
             home,
-            &config_with_catalog,
+            &config_with_native_image_generation,
             &auth_contents,
             preserve_computer_use_guard,
         )
@@ -436,10 +443,18 @@ pub fn backfill_relay_profile_from_home_with_common(
     let live_config = read_optional_text(&home.join("config.toml"))?;
     let template_config = profile.config_contents.clone();
     let template_auth = profile.auth_contents.clone();
+    let live_config_without_native_image_generation =
+        crate::native_image_generation::NativeImageGenerationConfig::strip_managed_projection_with_baseline(
+            &live_config,
+            &template_config,
+        )?;
     profile.config_contents = if profile.use_common_config {
-        strip_common_config_from_config(&live_config, common_config_contents)?
+        strip_common_config_from_config(
+            &live_config_without_native_image_generation,
+            common_config_contents,
+        )?
     } else {
-        ensure_trailing_newline(live_config.clone())
+        ensure_trailing_newline(live_config_without_native_image_generation)
     };
     profile.config_contents = strip_native_extension_config(&profile.config_contents);
     profile.config_contents =
@@ -457,7 +472,11 @@ pub fn backfill_relay_profile_from_home_with_common(
 }
 
 pub fn extract_common_config_from_config(config_text: &str) -> anyhow::Result<String> {
-    let mut doc = parse_toml_document(config_text)?;
+    let config_text =
+        crate::native_image_generation::NativeImageGenerationConfig::strip_managed_projection(
+            config_text,
+        )?;
+    let mut doc = parse_toml_document(&config_text)?;
     for key in [
         "model",
         "model_provider",
@@ -998,6 +1017,8 @@ fn apply_model_catalog_to_config(
     profile: &RelayProfile,
     config_text: &str,
 ) -> anyhow::Result<String> {
+    let native_image_generation =
+        crate::native_image_generation::NativeImageGenerationConfig::from_profile(profile);
     let catalog_relative = format!(
         "model-catalogs/{}.json",
         sanitize_catalog_filename(&profile.id)
@@ -1023,7 +1044,7 @@ fn apply_model_catalog_to_config(
         crate::model_suffix::collect_catalog_entries(&model_list, &model_windows, &profile.model);
     // 手动模型列表是 /v1/models 不可用时的可靠后备。只要列表非空就生成 catalog；
     // 仅有默认 model 时保持 no-op，避免 catalog 退化为单模型并隐藏其他可用模型。
-    if model_list.trim().is_empty() {
+    if model_list.trim().is_empty() && !native_image_generation.should_generate_model_catalog() {
         if existing_catalog.as_deref() != Some(catalog_relative.as_str()) {
             return Ok(config_text.to_string());
         }
@@ -1041,6 +1062,9 @@ fn apply_model_catalog_to_config(
         std::fs::create_dir_all(parent)?;
     }
     let catalog_json = crate::model_suffix::build_model_catalog_json(&entries, fallback);
+    let mut catalog_value: Value = serde_json::from_str(&catalog_json)?;
+    native_image_generation.ensure_current_model_input_modalities(&mut catalog_value);
+    let catalog_json = serde_json::to_string_pretty(&catalog_value)?;
     std::fs::write(&catalog_path, catalog_json)?;
     let mut doc = parse_toml_document(config_text)?;
     doc["model_catalog_json"] = toml_edit::value(catalog_relative);

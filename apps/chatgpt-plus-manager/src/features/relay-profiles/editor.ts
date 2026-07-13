@@ -41,6 +41,7 @@ function normalizeRelayProfileSettings(
       upstreamBaseUrl: source.upstreamBaseUrl || source.baseUrl || "",
       apiKey: source.apiKey ?? "",
       protocol: source.protocol === "chatCompletions" ? "chatCompletions" : "responses",
+      nativeImageGenerationEnabled: source.nativeImageGenerationEnabled === true,
       relayMode: aggregate ? "aggregate" : legacyMixed ? "official" : source.relayMode,
       officialMixApiKey: source.officialMixApiKey || legacyMixed,
       testModel: source.testModel ?? "",
@@ -83,6 +84,7 @@ function seedRelayProfile(
   const base: RelayProfile = {
     id, name, model: "", baseUrl: defaultBaseUrl, upstreamBaseUrl: defaultBaseUrl, apiKey: "",
     protocol: "responses", relayMode: mode, officialMixApiKey: false, testModel: "",
+    nativeImageGenerationEnabled: false,
     configContents: "", authContents: "", useCommonConfig: true,
     contextSelection: structuredClone(defaultContextSelection), contextSelectionInitialized: true,
     contextWindow: "", autoCompactLimit: "", modelList: "", modelWindows: "{}", userAgent: "",
@@ -846,6 +848,7 @@ function projectDraft(draft: RelayProfileDraft): RelayProfileDraft {
       upstreamBaseUrl: "",
       apiKey: "",
       protocol: "responses",
+      nativeImageGenerationEnabled: false,
       officialMixApiKey: false,
       configContents: "",
       authContents: "",
@@ -857,15 +860,20 @@ function projectDraft(draft: RelayProfileDraft): RelayProfileDraft {
   if (draft.relayMode === "official" && !draft.officialMixApiKey) {
     return {
       ...draft,
+      nativeImageGenerationEnabled: false,
       configContents: "",
       authContents: removeAuthApiKey(draft.authContents),
     };
   }
 
-  const configContents = projectConfig(draft);
+  const nativeImageGenerationEnabled = draft.protocol === "responses"
+    && draft.relayMode === "pureApi"
+    && draft.nativeImageGenerationEnabled;
+  const configContents = projectConfig({ ...draft, nativeImageGenerationEnabled });
   if (draft.relayMode === "pureApi") {
     return {
       ...draft,
+      nativeImageGenerationEnabled,
       configContents: removeSectionKey(
         configContents,
         activeProvider(configContents),
@@ -876,6 +884,7 @@ function projectDraft(draft: RelayProfileDraft): RelayProfileDraft {
   }
   return {
     ...draft,
+    nativeImageGenerationEnabled: false,
     configContents: setSectionString(
       configContents,
       activeProvider(configContents),

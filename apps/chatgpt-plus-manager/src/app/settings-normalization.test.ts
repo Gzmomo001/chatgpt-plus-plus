@@ -41,6 +41,17 @@ test("normalizes legacy settings through the application settings interface", ()
   assert.equal(normalized.relayContextConfigContents, "");
 });
 
+test("defaults a legacy Relay profile without native image generation configuration to false", () => {
+  const legacy = structuredClone(defaultSettings) as unknown as {
+    relayProfiles: Array<Record<string, unknown>>;
+  };
+  delete legacy.relayProfiles[0]?.nativeImageGenerationEnabled;
+
+  const normalized = normalizeSettings(legacy as unknown as typeof defaultSettings);
+
+  assert.equal(normalized.relayProfiles[0]?.nativeImageGenerationEnabled, false);
+});
+
 test("selects the active profile and preserves deterministic fallbacks", () => {
   const first = { ...defaultSettings.relayProfiles[0], id: "first" };
   const second = { ...defaultSettings.relayProfiles[0], id: "second" };

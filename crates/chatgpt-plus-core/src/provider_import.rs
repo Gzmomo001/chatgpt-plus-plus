@@ -203,6 +203,7 @@ fn relay_profile_from_request(
         upstream_base_url: request.base_url.clone(),
         api_key: request.api_key.clone(),
         protocol: relay_protocol(&request.wire_api),
+        native_image_generation_enabled: false,
         relay_mode: relay_mode(&request.relay_mode),
         official_mix_api_key: false,
         test_model: String::new(),

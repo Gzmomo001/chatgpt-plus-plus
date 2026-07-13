@@ -136,6 +136,138 @@ base_url = "https://relay.example/v1"
 }
 
 #[test]
+fn native_image_generation_projects_registration_config_for_direct_responses_provider() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = RelayProfile {
+        id: "image-provider".to_string(),
+        model: "chat-model".to_string(),
+        base_url: "https://images.example/v1".to_string(),
+        upstream_base_url: "https://images.example/v1".to_string(),
+        api_key: "sk-must-stay-in-auth-json".to_string(),
+        protocol: RelayProtocol::Responses,
+        native_image_generation_enabled: true,
+        relay_mode: RelayMode::PureApi,
+        model_list: "chat-model".to_string(),
+        config_contents: r#"model = "chat-model"
+model_provider = "custom"
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "https://images.example/v1"
+http_headers = { "x-existing-header" = "keep-me" }
+"#
+        .to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-must-stay-in-auth-json"}"#.to_string(),
+        ..RelayProfile::default()
+    };
+
+    reconcile_profile(
+        temp.path(),
+        &profile,
+        "[features]\nimage_generation = false\njs_repl = true\n",
+    )
+    .unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(config.contains("[features]"));
+    assert!(config.contains("image_generation = true"));
+    assert!(config.contains("requires_openai_auth = false"));
+    assert!(config.contains(r#"base_url = "https://images.example/v1""#));
+    assert!(!config.contains("127.0.0.1"));
+    assert!(config.contains(r#"wire_api = "responses""#));
+    assert!(config.contains("x-existing-header"));
+    assert!(config.contains("keep-me"));
+    assert!(config.contains("x-openai-actor-authorization"));
+    assert!(config.contains("chatgpt-plus-imagegen-v1"));
+    assert!(!config.contains("sk-must-stay-in-auth-json"));
+
+    let auth = std::fs::read_to_string(temp.path().join("auth.json")).unwrap();
+    assert!(auth.contains("sk-must-stay-in-auth-json"));
+}
+
+#[test]
+fn native_image_generation_creates_catalog_for_current_chat_model_without_image_model_default() {
+    let temp = tempfile::tempdir().unwrap();
+    let profile = RelayProfile {
+        id: "image-provider".to_string(),
+        model: "chat-model".to_string(),
+        upstream_base_url: "https://images.example/v1".to_string(),
+        protocol: RelayProtocol::Responses,
+        native_image_generation_enabled: true,
+        relay_mode: RelayMode::PureApi,
+        config_contents: r#"model = "chat-model"
+model_provider = "custom"
+
+[model_providers.custom]
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "https://images.example/v1"
+"#
+        .to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-test"}"#.to_string(),
+        ..RelayProfile::default()
+    };
+
+    reconcile_profile(temp.path(), &profile, "").unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(config.contains(r#"model = "chat-model""#));
+    assert!(!config.contains(r#"model = "gpt-image-2""#));
+    assert!(config.contains(r#"model_catalog_json = "model-catalogs/image-provider.json""#));
+    let catalog: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(temp.path().join("model-catalogs/image-provider.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(catalog["models"][0]["slug"], "chat-model");
+    assert_eq!(
+        catalog["models"][0]["input_modalities"],
+        serde_json::json!(["text", "image"])
+    );
+}
+
+#[test]
+fn native_image_generation_toggle_off_removes_managed_live_projection() {
+    let temp = tempfile::tempdir().unwrap();
+    let config_contents = r#"model = "chat-model"
+model_provider = "custom"
+
+[features]
+js_repl = true
+
+[model_providers.custom]
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "https://images.example/v1"
+http_headers = { "x-user-header" = "keep-me" }
+"#;
+    let mut profile = RelayProfile {
+        id: "image-provider".to_string(),
+        model: "chat-model".to_string(),
+        upstream_base_url: "https://images.example/v1".to_string(),
+        protocol: RelayProtocol::Responses,
+        native_image_generation_enabled: true,
+        relay_mode: RelayMode::PureApi,
+        config_contents: config_contents.to_string(),
+        auth_contents: r#"{"OPENAI_API_KEY":"sk-test"}"#.to_string(),
+        ..RelayProfile::default()
+    };
+
+    reconcile_profile(temp.path(), &profile, "").unwrap();
+    profile.native_image_generation_enabled = false;
+    reconcile_profile(temp.path(), &profile, "").unwrap();
+
+    let config = std::fs::read_to_string(temp.path().join("config.toml")).unwrap();
+    assert!(!config.contains("image_generation"));
+    assert!(!config.contains("chatgpt-plus-imagegen-v1"));
+    assert!(config.contains("requires_openai_auth = true"));
+    assert!(config.contains("js_repl = true"));
+    assert!(config.contains("x-user-header"));
+    assert!(config.contains("keep-me"));
+}
+
+#[test]
 fn codex_session_db_path_accepts_new_automation_runs_schema() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path();

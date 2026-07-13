@@ -144,7 +144,11 @@ function providerDoctorSteps(
   const base = [
     { id: "config", title: t("配置完整性"), pending: t("等待检查 Base URL / API Key。") },
     { id: "models", title: t("模型列表"), pending: t("等待检查 /v1/models。") },
-    { id: "image_generation", title: t("图像生成能力"), pending: t("等待检查上游图像模型与 Codex 工具注册能力。") },
+    { id: "image_generation", title: t("图像生成能力"), pending: t("等待检查 Codex 原生图片生成是否显式启用。") },
+    { id: "native_image_generation_protocol", title: t("图片生成协议"), pending: t("等待检查图片生成协议。") },
+    { id: "native_image_generation_provider", title: t("图片生成供应商模式"), pending: t("等待检查供应商模式。") },
+    { id: "native_image_generation_modality", title: t("聊天模型输入模态"), pending: t("等待检查当前聊天模型的输入模态。") },
+    { id: "native_image_generation_config", title: t("Codex 图片生成注册配置"), pending: t("等待检查 Codex 图片生成注册配置。") },
     { id: "request", title: t("真实请求"), pending: t("等待发送一次测试请求。") },
     { id: "recommendation", title: t("处理建议"), pending: t("等待生成建议。") },
   ];
@@ -171,7 +175,7 @@ function providerDoctorSteps(
       return {
         id: step.id,
         title: step.title,
-        detail: step.id === "models" || step.id === "image_generation" || step.id === "request"
+        detail: step.id === "models" || step.id.includes("image_generation") || step.id === "request"
           ? t("该步骤未执行。")
           : step.pending,
         state: "pending",

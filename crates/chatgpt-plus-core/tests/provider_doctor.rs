@@ -124,8 +124,26 @@ async fn configured_profile_reports_empty_models_and_http_failure() {
         outcome.payload.summary,
         "发现 2 项失败，Codex 可能无法使用该供应商。"
     );
-    assert_eq!(outcome.payload.checks[1].status, "failed");
-    assert_eq!(outcome.payload.checks[2].status, "failed");
+    assert_eq!(
+        outcome
+            .payload
+            .checks
+            .iter()
+            .find(|check| check.id == "models")
+            .unwrap()
+            .status,
+        "failed"
+    );
+    assert_eq!(
+        outcome
+            .payload
+            .checks
+            .iter()
+            .find(|check| check.id == "request")
+            .unwrap()
+            .status,
+        "failed"
+    );
     assert!(outcome.payload.recommendation.contains("/v1/models"));
 }
 
@@ -176,7 +194,16 @@ async fn configured_profile_reports_missing_model_as_warning() {
 
     assert_eq!(outcome.status, "ok");
     assert_eq!(outcome.payload.summary, "基础连接可用，但有 1 项需要确认。");
-    assert_eq!(outcome.payload.checks[1].status, "warning");
+    assert_eq!(
+        outcome
+            .payload
+            .checks
+            .iter()
+            .find(|check| check.id == "models")
+            .unwrap()
+            .status,
+        "warning"
+    );
     let image_generation = outcome
         .payload
         .checks
@@ -184,12 +211,12 @@ async fn configured_profile_reports_missing_model_as_warning() {
         .find(|check| check.id == "image_generation")
         .expect("image generation capability check");
     assert_eq!(image_generation.status, "ok");
-    assert!(image_generation.detail.contains("不会注册"));
+    assert!(image_generation.detail.contains("未启用"));
     assert!(outcome.payload.recommendation.contains("测试模型"));
 }
 
 #[tokio::test]
-async fn pure_api_profile_reports_image_models_without_claiming_hosted_tool_support() {
+async fn disabled_native_image_generation_does_not_treat_listed_image_models_as_compatibility() {
     let outcome = diagnose_with_probe(
         &configured_profile(),
         "fallback-model",
@@ -212,10 +239,9 @@ async fn pure_api_profile_reports_image_models_without_claiming_hosted_tool_supp
         .iter()
         .find(|check| check.id == "image_generation")
         .expect("image generation capability check");
-    assert_eq!(image_generation.status, "warning");
-    assert!(image_generation.detail.contains("gpt-image-2"));
-    assert!(image_generation.detail.contains("无法注册"));
-    assert!(outcome.payload.recommendation.contains("原生 image_gen"));
+    assert_eq!(image_generation.status, "ok");
+    assert!(image_generation.detail.contains("未启用"));
+    assert!(!image_generation.detail.contains("gpt-image-2"));
 }
 
 #[tokio::test]
@@ -236,14 +262,138 @@ async fn configured_profile_aggregates_model_and_request_errors() {
         "发现 2 项失败，Codex 可能无法使用该供应商。"
     );
     assert!(
-        outcome.payload.checks[1]
+        outcome
+            .payload
+            .checks
+            .iter()
+            .find(|check| check.id == "models")
+            .unwrap()
             .detail
             .contains("models unavailable")
     );
     assert!(
-        outcome.payload.checks[2]
+        outcome
+            .payload
+            .checks
+            .iter()
+            .find(|check| check.id == "request")
+            .unwrap()
             .detail
             .contains("request unavailable")
     );
     assert!(outcome.payload.recommendation.contains("/v1/models"));
+}
+
+#[tokio::test]
+async fn explicitly_enabled_native_image_generation_reports_all_registration_conditions() {
+    let mut profile = configured_profile();
+    profile.model = "expected-model".to_string();
+    profile.native_image_generation_enabled = true;
+    profile.api_key = "sk-do-not-diagnose".to_string();
+
+    let outcome = diagnose_with_probe(
+        &profile,
+        "fallback-model",
+        &FakeProbe {
+            models: Ok((
+                vec!["expected-model".to_string()],
+                "https://provider.example/v1/models".to_string(),
+            )),
+            request: Ok(request(200)),
+        },
+    )
+    .await;
+
+    for id in [
+        "image_generation",
+        "native_image_generation_protocol",
+        "native_image_generation_provider",
+        "native_image_generation_modality",
+        "native_image_generation_config",
+    ] {
+        assert_eq!(
+            outcome
+                .payload
+                .checks
+                .iter()
+                .find(|check| check.id == id)
+                .unwrap()
+                .status,
+            "ok"
+        );
+    }
+    let payload = serde_json::to_string(&outcome.payload).unwrap();
+    assert!(!payload.contains("sk-do-not-diagnose"));
+    assert!(payload.contains("未来版本可能变化"));
+}
+
+#[tokio::test]
+async fn native_image_generation_reports_unsupported_chat_completions_protocol() {
+    let mut profile = configured_profile();
+    profile.model = "expected-model".to_string();
+    profile.protocol = chatgpt_plus_core::settings::RelayProtocol::ChatCompletions;
+    profile.native_image_generation_enabled = true;
+
+    let outcome = diagnose_with_probe(
+        &profile,
+        "fallback-model",
+        &FakeProbe {
+            models: Ok((
+                vec!["expected-model".to_string()],
+                "https://provider.example/v1/models".to_string(),
+            )),
+            request: Ok(request(200)),
+        },
+    )
+    .await;
+
+    let protocol = outcome
+        .payload
+        .checks
+        .iter()
+        .find(|check| check.id == "native_image_generation_protocol")
+        .unwrap();
+    assert_eq!(protocol.status, "failed");
+    assert!(protocol.detail.contains("不会代理 /images/generations"));
+    assert!(outcome.payload.recommendation.contains("fallback CLI"));
+}
+
+#[tokio::test]
+async fn native_image_generation_reports_missing_image_modality_for_external_catalog() {
+    let mut profile = configured_profile();
+    profile.model = "expected-model".to_string();
+    profile.native_image_generation_enabled = true;
+    profile.config_contents = r#"model = "expected-model"
+model_provider = "custom"
+model_catalog_json = "/user/catalog.json"
+
+[model_providers.custom]
+base_url = "https://provider.example/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#
+    .to_string();
+
+    let outcome = diagnose_with_probe(
+        &profile,
+        "fallback-model",
+        &FakeProbe {
+            models: Ok((
+                vec!["expected-model".to_string()],
+                "https://provider.example/v1/models".to_string(),
+            )),
+            request: Ok(request(200)),
+        },
+    )
+    .await;
+
+    let modality = outcome
+        .payload
+        .checks
+        .iter()
+        .find(|check| check.id == "native_image_generation_modality")
+        .unwrap();
+    assert_eq!(modality.status, "failed");
+    assert!(modality.detail.contains("image 输入模态"));
+    assert!(outcome.payload.recommendation.contains("fallback CLI"));
 }

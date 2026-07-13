@@ -40,6 +40,8 @@ pub struct RelayProfile {
     pub api_key: String,
     #[serde(default)]
     pub protocol: RelayProtocol,
+    #[serde(rename = "nativeImageGenerationEnabled", default)]
+    pub native_image_generation_enabled: bool,
     #[serde(rename = "relayMode", default)]
     pub relay_mode: RelayMode,
     #[serde(rename = "officialMixApiKey", default)]
@@ -118,6 +120,7 @@ impl Default for RelayProfile {
             upstream_base_url: String::new(),
             api_key: String::new(),
             protocol: RelayProtocol::Responses,
+            native_image_generation_enabled: false,
             relay_mode: RelayMode::Official,
             official_mix_api_key: false,
             test_model: String::new(),
@@ -250,6 +253,7 @@ impl BackendSettings {
                 },
                 api_key: self.relay_api_key.clone(),
                 protocol: RelayProtocol::Responses,
+                native_image_generation_enabled: false,
                 relay_mode: RelayMode::MixedApi,
                 official_mix_api_key: true,
                 test_model: String::new(),
@@ -295,6 +299,7 @@ impl BackendSettings {
             },
             api_key: self.relay_api_key.clone(),
             protocol: RelayProtocol::Responses,
+            native_image_generation_enabled: false,
             relay_mode: RelayMode::Official,
             official_mix_api_key: false,
             test_model: String::new(),

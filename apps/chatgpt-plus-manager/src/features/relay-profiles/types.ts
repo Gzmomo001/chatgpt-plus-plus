@@ -39,6 +39,7 @@ export type RelayProfile = {
   upstreamBaseUrl: string;
   apiKey: string;
   protocol: RelayProtocol;
+  nativeImageGenerationEnabled: boolean;
   relayMode: RelayMode;
   officialMixApiKey: boolean;
   testModel: string;

@@ -329,6 +329,12 @@ export const EN_PLAIN: Record<string, string> = {
   "检查问题、启动与快速修复": "Check issues, launch and quick fixes",
   "诊断供应商": "Diagnose provider",
   "图像生成能力": "Image generation capability",
+  "启用 Codex 原生图片生成": "Enable native Codex image generation",
+  "实验性功能": "Experimental feature",
+  "图片生成协议": "Image generation protocol",
+  "图片生成供应商模式": "Image generation provider mode",
+  "聊天模型输入模态": "Chat model input modalities",
+  "Codex 图片生成注册配置": "Codex image generation registration config",
   "检测": "Detect",
   "检测到 OPENAI 环境变量": "OPENAI environment variables detected",
   "检测到来自网页的供应商配置导入请求，确认后会写入本机 ChatGPT++。":
@@ -428,7 +434,17 @@ export const EN_PLAIN: Record<string, string> = {
   "诊断报告已复制。": "Diagnostic report copied.",
   "点击后会打开诊断弹框，按步骤检查供应商。": "Click to open the diagnostic dialog and check the provider step by step.",
   "正在诊断供应商，请稍候。": "Diagnosing provider, please wait.",
-  "等待检查上游图像模型与 Codex 工具注册能力。": "Waiting to check upstream image models and Codex tool registration capability.",
+  "等待检查 Codex 原生图片生成是否显式启用。": "Waiting to check whether native Codex image generation is explicitly enabled.",
+  "等待检查图片生成协议。": "Waiting to check the image generation protocol.",
+  "等待检查供应商模式。": "Waiting to check the provider mode.",
+  "等待检查当前聊天模型的输入模态。": "Waiting to check the current chat model input modalities.",
+  "等待检查 Codex 图片生成注册配置。": "Waiting to check the Codex image generation registration config.",
+  "上游必须同时兼容 /v1/responses、/v1/images/generations、gpt-image-2，并返回 data[].b64_json；仅在 /v1/models 中出现 gpt-image-2 不能证明兼容。":
+    "The upstream must support /v1/responses, /v1/images/generations, gpt-image-2, and data[].b64_json together; listing gpt-image-2 in /v1/models alone does not prove compatibility.",
+  "Chat Completions 依赖本地协议代理；当前版本不代理图片生成路径，因此不能启用此功能。":
+    "Chat Completions relies on the local protocol proxy. This version does not proxy image generation paths, so this feature cannot be enabled.",
+  "此实验性功能仅用于纯 API 供应商，不会修改官方 ChatGPT 登录模式。":
+    "This experimental feature is only for pure API providers and does not modify official ChatGPT login mode.",
   "上游列出图像模型不代表 Codex 已注册原生 image_gen；Provider Doctor 会明确报告这项能力边界。":
     "Listing image models upstream does not mean Codex registered the native image_gen tool; Provider Doctor reports this capability boundary explicitly.",
   "诊断已完成。": "Diagnosis complete.",

@@ -117,6 +117,20 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
             <button className={`protocol-option ${profile.protocol === "chatCompletions" ? "active" : ""}`} onClick={() => updateDraft({ protocol: "chatCompletions" })} type="button">Chat Completions</button>
           </div>
         </Field>
+        <Field className="relay-field-native-image-generation" label={t("实验性功能")}>
+          <label className="inline-check">
+            <input
+              checked={profile.nativeImageGenerationEnabled}
+              disabled={profile.protocol !== "responses" || profile.relayMode !== "pureApi"}
+              onChange={(event) => updateDraft({ nativeImageGenerationEnabled: event.currentTarget.checked })}
+              type="checkbox"
+            />
+            <span>{t("启用 Codex 原生图片生成")}</span>
+          </label>
+          <p className="field-hint">{t("上游必须同时兼容 /v1/responses、/v1/images/generations、gpt-image-2，并返回 data[].b64_json；仅在 /v1/models 中出现 gpt-image-2 不能证明兼容。")}</p>
+          {profile.protocol !== "responses" ? <p className="field-hint">{t("Chat Completions 依赖本地协议代理；当前版本不代理图片生成路径，因此不能启用此功能。")}</p> : null}
+          {profile.relayMode !== "pureApi" ? <p className="field-hint">{t("此实验性功能仅用于纯 API 供应商，不会修改官方 ChatGPT 登录模式。")}</p> : null}
+        </Field>
       </div> : null}
       {showApiFields ? <div className="provider-doctor">
         <div className="provider-doctor-head">

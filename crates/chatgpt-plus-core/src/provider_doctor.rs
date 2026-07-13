@@ -140,6 +140,24 @@ pub async fn diagnose_with_probe(
         ),
     ));
 
+    let native_image_generation =
+        crate::native_image_generation::NativeImageGenerationConfig::from_profile(profile);
+    let native_image_diagnosis =
+        native_image_generation.diagnosis(native_image_generation.model_modality_will_be_ready());
+    checks.extend(
+        native_image_diagnosis
+            .checks
+            .into_iter()
+            .map(|native_check| {
+                check(
+                    native_check.id,
+                    native_check.title,
+                    native_check.status,
+                    native_check.detail,
+                )
+            }),
+    );
+
     match probe.fetch_models(profile).await {
         Ok((models, endpoint)) => {
             let contains_model = !test_model.trim().is_empty()
@@ -163,35 +181,6 @@ pub async fn diagnose_with_probe(
                 )
             };
             checks.push(check("models", "模型列表", status, detail));
-
-            let image_models = models
-                .iter()
-                .filter(|model| {
-                    model
-                        .rsplit('/')
-                        .next()
-                        .is_some_and(|name| name.to_ascii_lowercase().starts_with("gpt-image-"))
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-            if !image_models.is_empty() {
-                checks.push(check(
-                    "image_generation",
-                    "图像生成能力",
-                    "warning",
-                    format!(
-                        "上游模型列表声明图像模型（{}），但当前 Codex 供应商配置没有注册 hosted tool 的扩展点，ChatGPT++ 无法注册原生 image_gen。请勿将同名 MCP 或插件工具误认为原生工具。",
-                        image_models.join("、")
-                    ),
-                ));
-            } else if !models.is_empty() {
-                checks.push(check(
-                    "image_generation",
-                    "图像生成能力",
-                    "ok",
-                    "上游模型列表未声明 gpt-image-* 图像模型，不会注册 image_gen。",
-                ));
-            }
         }
         Err(error) => checks.push(check("models", "模型列表", "failed", error.to_string())),
     }
@@ -254,6 +243,12 @@ pub async fn diagnose_with_probe(
 pub fn recommendation(checks: &[ProviderDoctorCheck]) -> String {
     if checks
         .iter()
+        .any(|check| check.id.starts_with("native_image_generation_") && check.status == "failed")
+    {
+        return "Codex 原生图片生成注册条件不完整；继续使用现有 fallback CLI，并先核对 OPENAI_BASE_URL。Provider Doctor 不会为诊断自动生成付费图片。".to_string();
+    }
+    if checks
+        .iter()
         .any(|check| check.id == "config" && check.status == "failed")
     {
         return "先补齐 Base URL 和 API Key；如果使用官方账号，请切换到官方登录模式。".to_string();
@@ -270,12 +265,6 @@ pub fn recommendation(checks: &[ProviderDoctorCheck]) -> String {
         .any(|check| check.id == "request" && check.status == "failed")
     {
         return "优先检查测试模型名称、上游协议选择和 Key 权限；如果 Chat Completions 可用，请切到对应协议。".to_string();
-    }
-    if checks
-        .iter()
-        .any(|check| check.id == "image_generation" && check.status == "warning")
-    {
-        return "上游声明支持图像模型，但 Codex 尚未提供通过自定义供应商注册原生 image_gen 的配置；请使用官方提供的图像工具，或使用名称不同的 MCP/插件工具。".to_string();
     }
     if checks.iter().any(|check| check.status == "warning") {
         return "连接可用，但测试模型没有出现在模型列表里；建议改用上游返回的模型名。".to_string();

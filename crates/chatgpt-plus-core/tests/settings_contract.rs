@@ -37,6 +37,23 @@ fn wire_contract_uses_camel_case_and_omits_derived_profile_fields() {
 }
 
 #[test]
+fn legacy_relay_profile_defaults_native_image_generation_to_disabled() {
+    let profile: RelayProfile = serde_json::from_value(json!({
+        "id": "legacy",
+        "name": "Legacy",
+        "protocol": "responses",
+        "relayMode": "pureApi"
+    }))
+    .unwrap();
+
+    assert!(!profile.native_image_generation_enabled);
+    assert_eq!(
+        serde_json::to_value(profile).unwrap()["nativeImageGenerationEnabled"],
+        false
+    );
+}
+
+#[test]
 fn store_defaults_missing_and_invalid_json_and_preserves_unknown_fields_on_update() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("settings.json");
@@ -103,6 +120,51 @@ base_url = "http://127.0.0.1:57321/v1"
         "model_reasoning_effort = \"high\"\n"
     );
     assert!(normalized.relay_context_config_contents.is_empty());
+}
+
+#[test]
+fn migration_rejects_native_image_generation_for_chat_completions() {
+    let settings = BackendSettings {
+        relay_profiles: vec![RelayProfile {
+            id: "chat".to_string(),
+            protocol: RelayProtocol::ChatCompletions,
+            native_image_generation_enabled: true,
+            relay_mode: RelayMode::PureApi,
+            ..RelayProfile::default()
+        }],
+        ..BackendSettings::default()
+    };
+
+    let normalized = normalize_settings_before_save(settings);
+
+    assert!(!normalized.relay_profiles[0].native_image_generation_enabled);
+}
+
+#[test]
+fn migration_keeps_native_image_intent_and_api_key_out_of_config_snapshot() {
+    let settings = BackendSettings {
+        relay_profiles: vec![RelayProfile {
+            id: "image".to_string(),
+            model: "chat-model".to_string(),
+            base_url: "https://provider.example/v1".to_string(),
+            upstream_base_url: "https://provider.example/v1".to_string(),
+            api_key: "sk-settings-secret".to_string(),
+            protocol: RelayProtocol::Responses,
+            native_image_generation_enabled: true,
+            relay_mode: RelayMode::PureApi,
+            ..RelayProfile::default()
+        }],
+        ..BackendSettings::default()
+    };
+
+    let normalized = normalize_settings_before_save(settings);
+    let profile = &normalized.relay_profiles[0];
+
+    assert!(profile.native_image_generation_enabled);
+    assert!(!profile.config_contents.contains("image_generation"));
+    assert!(!profile.config_contents.contains("chatgpt-plus-imagegen-v1"));
+    assert!(!profile.config_contents.contains("sk-settings-secret"));
+    assert!(profile.auth_contents.contains("sk-settings-secret"));
 }
 
 #[test]

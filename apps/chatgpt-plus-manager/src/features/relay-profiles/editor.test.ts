@@ -60,6 +60,7 @@ function profile(patch: RelayProfileFixturePatch = {}): RelayProfile {
     upstreamBaseUrl: "https://example.com/v1",
     apiKey: "sk-a",
     protocol: "responses",
+    nativeImageGenerationEnabled: false,
     relayMode: "pureApi",
     officialMixApiKey: false,
     testModel: "",
@@ -1329,5 +1330,60 @@ describe("Relay profile editor", () => {
         members: [{ relayId: "relay-b", weight: 2 }],
       },
     ]);
+  });
+
+  it("keeps native image generation only for a pure API Responses profile", () => {
+    const source = profile({ nativeImageGenerationEnabled: true });
+    const opened = openExisting(source, context([source]));
+    assert.equal(opened.preview.profile.nativeImageGenerationEnabled, true);
+
+    const chatCompletions = edit(opened, {
+      type: "patch",
+      patch: { protocol: "chatCompletions" },
+    });
+    assert.equal(chatCompletions.preview.profile.nativeImageGenerationEnabled, false);
+
+    const responses = edit(chatCompletions, {
+      type: "patch",
+      patch: { protocol: "responses", nativeImageGenerationEnabled: true },
+    });
+    assert.equal(responses.preview.profile.nativeImageGenerationEnabled, true);
+
+    const official = edit(responses, { type: "setMode", mode: "official" });
+    assert.equal(official.preview.profile.nativeImageGenerationEnabled, false);
+  });
+
+  it("serializes the native image generation intent without moving the API key into config", () => {
+    const source = profile();
+    const edited = edit(openExisting(source, context([source])), {
+      type: "patch",
+      patch: {
+        nativeImageGenerationEnabled: true,
+        apiKey: "sk-native-image-secret",
+      },
+    });
+    const result = commit(edited);
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.profile.nativeImageGenerationEnabled, true);
+    assert.doesNotMatch(result.profile.configContents, /sk-native-image-secret/);
+    assert.match(result.profile.authContents, /sk-native-image-secret/);
+  });
+
+  it("renders the experimental native image switch with explicit compatibility constraints", () => {
+    const editor = readFileSync(
+      new URL("./components/RelayProfileEditor.tsx", import.meta.url),
+      "utf8",
+    );
+    const english = readFileSync(new URL("../../i18n/english.ts", import.meta.url), "utf8");
+
+    assert.match(editor, /启用 Codex 原生图片生成/);
+    assert.match(editor, /profile\.protocol !== "responses" \|\| profile\.relayMode !== "pureApi"/);
+    assert.match(editor, /\/v1\/images\/generations/);
+    assert.match(editor, /data\[\]\.b64_json/);
+    assert.match(editor, /仅在 \/v1\/models 中出现 gpt-image-2 不能证明兼容/);
+    assert.match(editor, /当前版本不代理图片生成路径/);
+    assert.match(english, /Enable native Codex image generation/);
   });
 });
