@@ -106,6 +106,28 @@ function context(profiles: RelayProfile[]): RelayProfileEditorContext {
 }
 
 describe("Relay profile editor", () => {
+  it("keeps Relay profile switching available without a master switch", () => {
+    const relayScreen = readFileSync(
+      new URL("../../screens/relay-profiles/RelayProfilesScreen.tsx", import.meta.url),
+      "utf8",
+    );
+    const relayDetail = readFileSync(
+      new URL("./components/RelayProfileDetail.tsx", import.meta.url),
+      "utf8",
+    );
+    const relayEditor = readFileSync(
+      new URL("./components/RelayProfileEditor.tsx", import.meta.url),
+      "utf8",
+    );
+
+    for (const source of [relayScreen, relayDetail, relayEditor]) {
+      assert.doesNotMatch(source, /relayProfilesEnabled|供应商配置总开关/);
+    }
+    assert.doesNotMatch(relayScreen, /启用供应商配置切换|relay-master-switch/);
+    assert.match(relayScreen, /disabled=\{actions\.relaySwitching\}/);
+    assert.match(relayEditor, /disabled=\{actions\.relaySwitching\}/);
+  });
+
   it("owns collection mutations and is the only production editor seam", () => {
     const source = profile();
     const settings = context([source]).settings;

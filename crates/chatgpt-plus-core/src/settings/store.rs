@@ -155,9 +155,6 @@ fn merge_known_setting_fields(target: &mut Map<String, Value>, source: &Map<Stri
         target.insert("providerSyncEnabled".to_string(), Value::Bool(value));
     }
     merge_bool_setting(target, source, "diagnosticLogEnabled");
-    if let Some(value) = source.get("relayProfilesEnabled").and_then(Value::as_bool) {
-        target.insert("relayProfilesEnabled".to_string(), Value::Bool(value));
-    }
     if let Some(value) = source
         .get("computerUseGuardEnabled")
         .and_then(Value::as_bool)

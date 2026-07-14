@@ -77,9 +77,6 @@ pub fn activate(
         .context("快照原供应商设置失败")?;
     let original = store.load().context("读取当前供应商设置失败")?;
     let mut selected = requested;
-    if !selected.relay_profiles_enabled {
-        anyhow::bail!("供应商配置总开关已关闭，未写入 config.toml / auth.json。");
-    }
     if !selected
         .relay_profiles
         .iter()
@@ -196,10 +193,6 @@ pub fn reconcile(
 ) -> anyhow::Result<CodexHomeApplyOutcome> {
     let (disposition, backup_path, requires_pure_api_postcondition) = match intent {
         CodexHomeReconcileIntent::ApplyActiveProfile { settings } => {
-            if !settings.relay_profiles_enabled {
-                anyhow::bail!("供应商配置总开关已关闭，未写入 config.toml / auth.json。");
-            }
-
             let profile = settings.active_relay_profile();
             if profile.relay_mode == RelayMode::Official && !profile.official_mix_api_key {
                 let auth_contents = (!profile.auth_contents.trim().is_empty())

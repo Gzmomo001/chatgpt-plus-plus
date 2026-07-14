@@ -50,7 +50,6 @@ export type ExtractRelayCommonConfigResult = CommandResult<{
   profileConfigContents: string;
 }>;
 export type RelaySettings = RelayProfileSettings & {
-  relayProfilesEnabled: boolean;
   relayCommonConfigContents: string;
   relayContextConfigContents: string;
   relayTestModel: string;

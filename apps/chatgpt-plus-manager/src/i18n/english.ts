@@ -94,10 +94,6 @@ export const EN_PLAIN: Record<string, string> = {
   "供应商测试模型": "Provider test model",
   "供应商配置": "Provider configuration",
   "供应商配置可能不正确": "Provider configuration may be incorrect",
-  "供应商配置已关闭": "Provider configuration disabled",
-  "供应商配置总开关已关闭": "The provider configuration master switch is off",
-  "供应商配置总开关已关闭；当前只保存配置，不写入 Codex live 文件":
-    "The provider configuration master switch is off; changes are only saved, not written to Codex live files",
   "供应商预设列表": "Provider preset list",
   "保存": "Save",
   "保存为默认路径": "Save as default path",
@@ -121,8 +117,6 @@ export const EN_PLAIN: Record<string, string> = {
   "更新与诊断": "Updates & diagnostics",
   "关于 ChatGPT++": "About ChatGPT++",
   "关闭": "Off",
-  "关闭后本工具不会在手动切换时写入 Codex 的 config.toml / auth.json；启动 Codex 时始终不会自动改这些文件。":
-    "When off, this tool won't write Codex's config.toml / auth.json on manual switches; it never auto-modifies these files when launching Codex.",
   "切换中": "Switching",
   "切换到此供应商时会写入 ~/.codex/auth.json": "Switching to this provider writes ~/.codex/auth.json",
   "切换到此供应商时的管理部分预览；Codex 原生扩展会保留且不在此显示": "Preview of the provider-managed configuration; native Codex extensions are preserved and not shown here",
@@ -167,7 +161,6 @@ export const EN_PLAIN: Record<string, string> = {
   "已切换到纯 API。": "Switched to Pure API.",
   "启动前自动修复历史会话": "Auto-repair historical sessions before launch",
   "启用": "Enable",
-  "启用供应商配置切换": "Enable provider configuration switching",
   "启用目标功能": "Enable goals feature",
   "偏好设置": "Preferences",
   "填写中转服务 Base URL": "Enter the relay service Base URL",
@@ -225,8 +218,6 @@ export const EN_PLAIN: Record<string, string> = {
     "When on, tidies up ownership tags of old conversations once before launching Codex through ChatGPT++.",
   "当前": "Current",
   "当前 provider": "current provider",
-  "当前不会写入 Codex config.toml / auth.json。打开供应商配置总开关后再切换。":
-    "Codex config.toml / auth.json won't be written right now. Turn on the provider configuration master switch before switching.",
   "当前使用中：打开时从 ~/.codex/auth.json 回填，保存后会作为此供应商 auth 存档":
     "Currently in use: backfilled from ~/.codex/auth.json when opened; saving stores it as this provider's auth archive",
   "当前供应商 config.toml 里没有可提取的通用配置。": "The current provider's config.toml has no extractable common config.",
@@ -591,7 +582,6 @@ export const EN_BACKEND: Record<string, string> = {
   "当前供应商已不在配置列表中，已停止切换以避免覆盖用户改动。": "The current provider is no longer in the config list. Switching stopped to avoid overwriting user changes.",
   "当前供应商配置已从 live 文件回填。": "Current provider config backfilled from live files.",
   "通用配置已按兼容切换规则提取。": "Common config extracted using compatibility switching rules.",
-  "供应商配置总开关已关闭，未写入 config.toml / auth.json。": "Provider config master switch is off. Nothing written to config.toml / auth.json.",
   "已按兼容切换规则切换供应商。": "Provider switched using compatibility rules.",
   "未检测到 ChatGPT 登录状态": "ChatGPT login not detected",
   "未检测到 ChatGPT 登录状态，已停止写入中转配置。": "ChatGPT login not detected. Relay config not written.",

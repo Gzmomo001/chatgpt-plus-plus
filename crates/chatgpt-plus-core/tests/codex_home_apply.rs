@@ -218,7 +218,7 @@ fn explicit_clear_restores_the_active_official_auth_snapshot_even_for_mixed_mode
 }
 
 #[test]
-fn explicit_clear_works_when_relay_profiles_are_disabled() {
+fn explicit_clear_works_for_the_active_relay_profile() {
     let home = tempfile::tempdir().unwrap();
     std::fs::write(
         home.path().join("config.toml"),
@@ -237,10 +237,7 @@ requires_openai_auth = true
         r#"{"OPENAI_API_KEY":"sk-live","tokens":{"access_token":"official"}}"#,
     )
     .unwrap();
-    let settings = BackendSettings {
-        relay_profiles_enabled: false,
-        ..pure_api_settings()
-    };
+    let settings = pure_api_settings();
     let original_settings = settings.clone();
 
     let outcome = reconcile(
@@ -333,31 +330,28 @@ command = "keep-me"
 }
 
 #[test]
-fn disabled_reconciliation_returns_an_error_without_writing() {
+fn legacy_disabled_setting_does_not_block_reconciliation() {
     let home = tempfile::tempdir().unwrap();
-    let config_path = home.path().join("config.toml");
-    let auth_path = home.path().join("auth.json");
-    std::fs::write(&config_path, "sentinel-config").unwrap();
-    std::fs::write(&auth_path, "sentinel-auth").unwrap();
-    let settings = BackendSettings {
-        relay_profiles_enabled: false,
-        ..pure_api_settings()
-    };
+    let settings_path = home.path().join("settings.json");
+    let mut legacy_settings = serde_json::to_value(pure_api_settings()).unwrap();
+    legacy_settings["relayProfilesEnabled"] = serde_json::Value::Bool(false);
+    std::fs::write(
+        &settings_path,
+        serde_json::to_vec_pretty(&legacy_settings).unwrap(),
+    )
+    .unwrap();
+    let settings = SettingsStore::new(settings_path).load().unwrap();
 
-    let error = reconcile(
+    let outcome = reconcile(
         home.path(),
         CodexHomeReconcileIntent::ApplyActiveProfile {
             settings: &settings,
         },
     )
-    .unwrap_err();
+    .unwrap();
 
-    assert!(error.to_string().contains("关闭"));
-    assert_eq!(
-        std::fs::read_to_string(config_path).unwrap(),
-        "sentinel-config"
-    );
-    assert_eq!(std::fs::read_to_string(auth_path).unwrap(), "sentinel-auth");
+    assert_eq!(outcome.disposition, CodexHomeDisposition::Applied);
+    assert!(outcome.status.configured);
 }
 
 #[test]

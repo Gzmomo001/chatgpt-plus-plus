@@ -37,8 +37,6 @@ export function relayModeLabel(mode: RelayMode): string {
 export function relayProfileEditorStatus(profile: RelayProfileView,form: RelaySettings,isNew: boolean): string {
   if(isNew)
     return t("新建供应商需要先保存到列表");
-  if(!form.relayProfilesEnabled)
-    return t("供应商配置总开关已关闭；当前只保存配置，不写入 Codex live 文件");
   return profile.id===form.activeRelayId? t("当前正在使用"):t("编辑后保存列表，再切换模式时会使用新配置");
 }
 export function aggregateStrategyLabel(strategy: RelayAggregateStrategy): string {

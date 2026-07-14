@@ -958,10 +958,6 @@ export function App() {
       return;
     }
     const switchSettings = normalizeSettings({ ...next, activeRelayId: targetRelayId });
-    if (!switchSettings.relayProfilesEnabled) {
-      showNotice(t("供应商配置已关闭"), t("当前不会写入 Codex config.toml / auth.json。打开供应商配置总开关后再切换。"), "failed");
-      return;
-    }
     const targetProfile = activeRelayProfile(switchSettings);
     logDiagnostic("switchRelayProfile.start", {
       currentRelayId: settingsForm.activeRelayId,

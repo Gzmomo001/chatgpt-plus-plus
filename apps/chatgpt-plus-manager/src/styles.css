@@ -746,10 +746,6 @@ body {
   font-family: Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
 }
 
-.relay-master-switch {
-  margin-bottom: 10px;
-}
-
 .relay-profile-card {
   display: grid;
   grid-template-columns: 32px 32px minmax(0, 1fr) auto;

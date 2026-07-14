@@ -23,7 +23,6 @@ export type BackendSettings = {
   providerSyncSavedProviders: string[];
   providerSyncManualProviders: string[];
   providerSyncLastSelectedProvider: string;
-  relayProfilesEnabled: boolean;
   computerUseGuardEnabled: boolean;
   codexAppFastStartup: boolean;
   relayBaseUrl: string;

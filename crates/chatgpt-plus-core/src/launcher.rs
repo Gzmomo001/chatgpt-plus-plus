@@ -138,9 +138,6 @@ pub trait LaunchHooks: Send + Sync {
         Ok(())
     }
     fn apply_codex_home(&self, settings: &BackendSettings) -> anyhow::Result<()> {
-        if !settings.relay_profiles_enabled {
-            return Ok(());
-        }
         let home = crate::codex_home::default_codex_home_dir();
         crate::codex_home_apply::reconcile(
             &home,

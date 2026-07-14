@@ -42,7 +42,6 @@ mod tests {
     fn settings_default_matches_expected_behavior() {
         let settings = BackendSettings::default();
         assert!(!settings.provider_sync_enabled);
-        assert!(settings.relay_profiles_enabled);
         assert!(!settings.computer_use_guard_enabled);
         assert!(!settings.codex_app_fast_startup);
         assert!(settings.diagnostic_log_enabled);

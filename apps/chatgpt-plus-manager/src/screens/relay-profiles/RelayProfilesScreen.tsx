@@ -145,20 +145,6 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
       </CardHeader>
       <CardContent>
         <EnvConflictNotice envConflicts={envConflicts} actions={actions} />
-        <label className="switch-row relay-master-switch">
-          <input
-            checked={form.relayProfilesEnabled}
-            onChange={(event) => void saveRelaySettings({
-              ...form,
-              relayProfilesEnabled: event.currentTarget.checked,
-            })}
-            type="checkbox"
-          />
-          <span>
-            <strong>{t("启用供应商配置切换")}</strong>
-            <small>{t("关闭后本工具不会在手动切换时写入 Codex 的 config.toml / auth.json；启动 Codex 时始终不会自动改这些文件。")}</small>
-          </span>
-        </label>
         <div className="relay-add-row">
           <Button variant="secondary" onClick={() => openNewProfile("official")}>
             <Plus className="h-4 w-4" />
@@ -213,7 +199,7 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
             );
           }}
           onFormChange={saveRelaySettings}
-          disabled={!form.relayProfilesEnabled || actions.relaySwitching}
+          disabled={actions.relaySwitching}
           actions={actions}
         />
       </CardContent>

@@ -52,6 +52,17 @@ test("defaults a legacy Relay profile without native image generation configurat
   assert.equal(normalized.relayProfiles[0]?.nativeImageGenerationEnabled, false);
 });
 
+test("drops the legacy Relay profile master switch so switching is always available", () => {
+  const legacy = {
+    ...defaultSettings,
+    relayProfilesEnabled: false,
+  };
+
+  const normalized = normalizeSettings(legacy);
+
+  assert.equal("relayProfilesEnabled" in normalized, false);
+});
+
 test("selects the active profile and preserves deterministic fallbacks", () => {
   const first = { ...defaultSettings.relayProfiles[0], id: "first" };
   const second = { ...defaultSettings.relayProfiles[0], id: "second" };

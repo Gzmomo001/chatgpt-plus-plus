@@ -49,11 +49,9 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
       </div>
       {isNew ? null : (
         <Button
-          disabled={!form.relayProfilesEnabled || actions.relaySwitching}
+          disabled={actions.relaySwitching}
           onClick={onSwitch}
-          title={!form.relayProfilesEnabled
-            ? t("供应商配置总开关已关闭")
-            : actions.relaySwitching ? t("供应商切换中") : undefined}
+          title={actions.relaySwitching ? t("供应商切换中") : undefined}
           variant={profile.id === form.activeRelayId ? "secondary" : "default"}
         >
           {actions.relaySwitching

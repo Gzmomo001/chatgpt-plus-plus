@@ -58,7 +58,7 @@ export function RelayProfileDetail<Settings extends RelaySettings>({ profile, re
     onSaved?.();
   };
   const switchDraft = () => {
-    if (isNew || !form.relayProfilesEnabled)
+    if (isNew)
       return;
     const committed = commitRelayChanges(edit(editorState, { type: "activate", profileId: profile.id }), form);
     if (committed.ok && committed.effect.type === "switchProfile")

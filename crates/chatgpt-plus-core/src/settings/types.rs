@@ -186,8 +186,6 @@ pub struct BackendSettings {
     pub provider_sync_manual_providers: Vec<String>,
     #[serde(rename = "providerSyncLastSelectedProvider", default)]
     pub provider_sync_last_selected_provider: String,
-    #[serde(rename = "relayProfilesEnabled", default = "default_true")]
-    pub relay_profiles_enabled: bool,
     #[serde(rename = "computerUseGuardEnabled", default)]
     pub computer_use_guard_enabled: bool,
     #[serde(rename = "codexAppFastStartup", default)]
@@ -222,7 +220,6 @@ impl Default for BackendSettings {
             provider_sync_saved_providers: Vec::new(),
             provider_sync_manual_providers: Vec::new(),
             provider_sync_last_selected_provider: String::new(),
-            relay_profiles_enabled: true,
             computer_use_guard_enabled: false,
             codex_app_fast_startup: false,
             relay_base_url: default_relay_base_url(),

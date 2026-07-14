@@ -22,7 +22,6 @@ export const defaultSettings: BackendSettings = {
   providerSyncSavedProviders: [],
   providerSyncManualProviders: [],
   providerSyncLastSelectedProvider: "",
-  relayProfilesEnabled: true,
   computerUseGuardEnabled: false,
   codexAppFastStartup: false,
   relayBaseUrl: "",
@@ -61,6 +60,10 @@ export const defaultSettings: BackendSettings = {
 };
 
 export function normalizeSettings(settings: BackendSettings): BackendSettings {
+  const {
+    relayProfilesEnabled: _legacyRelayProfilesEnabled,
+    ...currentSettings
+  } = settings as BackendSettings & { relayProfilesEnabled?: boolean };
   const relayCommonConfigContents = stripNativeExtensionTables(
     settings.relayCommonConfigContents || "",
   );
@@ -97,8 +100,7 @@ export function normalizeSettings(settings: BackendSettings): BackendSettings {
   return normalizeRelaySettings(
     {
       ...defaultSettings,
-      ...settings,
-      relayProfilesEnabled: settings.relayProfilesEnabled !== false,
+      ...currentSettings,
       computerUseGuardEnabled: settings.computerUseGuardEnabled === true,
       relayCommonConfigContents,
       relayContextConfigContents: "",
