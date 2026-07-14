@@ -45,6 +45,7 @@ mod tests {
         assert!(settings.relay_profiles_enabled);
         assert!(!settings.computer_use_guard_enabled);
         assert!(!settings.codex_app_fast_startup);
+        assert!(settings.diagnostic_log_enabled);
         assert!(settings.codex_app_path.is_empty());
         assert!(settings.codex_extra_args.is_empty());
         assert_eq!(settings.relay_base_url, default_relay_base_url());

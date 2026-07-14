@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -7,6 +8,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 static TEST_LOG_PATH: OnceLock<Mutex<Option<PathBuf>>> = OnceLock::new();
+static DIAGNOSTIC_LOG_ENABLED: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone, Serialize)]
 struct DiagnosticRecord {
@@ -17,6 +19,10 @@ struct DiagnosticRecord {
 }
 
 pub fn append_diagnostic_log(event: &str, detail: impl Serialize) -> std::io::Result<()> {
+    if !diagnostic_log_enabled() {
+        return Ok(());
+    }
+
     let path = diagnostic_log_path();
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -51,6 +57,22 @@ pub fn append_diagnostic_log(event: &str, detail: impl Serialize) -> std::io::Re
         .open(path)?;
     writeln!(file, "{line}")?;
     Ok(())
+}
+
+pub fn diagnostic_log_enabled() -> bool {
+    DIAGNOSTIC_LOG_ENABLED.load(Ordering::Relaxed)
+}
+
+pub fn initialize_diagnostic_log_setting() {
+    let enabled = crate::settings::SettingsStore::default()
+        .load()
+        .map(|settings| settings.diagnostic_log_enabled)
+        .unwrap_or(true);
+    set_diagnostic_log_enabled(enabled);
+}
+
+pub fn set_diagnostic_log_enabled(enabled: bool) {
+    DIAGNOSTIC_LOG_ENABLED.store(enabled, Ordering::Relaxed);
 }
 
 pub fn diagnostic_log_path() -> PathBuf {

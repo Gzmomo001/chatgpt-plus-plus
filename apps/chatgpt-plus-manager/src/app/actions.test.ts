@@ -54,6 +54,7 @@ test("adapters own wire command names and nested payload shapes", async () => {
   await actions.maintenance.mutatePlugin("demo@personal", "disable");
   await actions.maintenance.registerPluginMarketplace("personal", "/tmp/personal-market");
   await actions.maintenance.uninstallEntrypoints(true);
+  await actions.diagnostics.openLogFolder();
   await actions.app.updateTrayLabels({ showLabel: "Show", quitLabel: "Quit", windowTitle: "Manager" });
 
   assert.deepEqual(invocations, [
@@ -91,6 +92,7 @@ test("adapters own wire command names and nested payload shapes", async () => {
       args: { request: { name: "personal", source: "/tmp/personal-market" } },
     },
     { command: "uninstall_entrypoints", args: { options: { removeOwnedData: true } } },
+    { command: "open_log_folder", args: undefined },
     {
       command: "update_tray_labels",
       args: { showLabel: "Show", quitLabel: "Quit", windowTitle: "Manager" },

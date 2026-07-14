@@ -166,7 +166,12 @@ pub fn load_settings() -> CommandResult<SettingsPayload> {
 pub fn save_settings(settings: BackendSettings) -> CommandResult<SettingsPayload> {
     let settings = normalize_settings_before_save(settings);
     match SettingsStore::default().save(&settings) {
-        Ok(()) => settings_payload("设置已保存。", "设置保存后重新读取失败"),
+        Ok(()) => {
+            chatgpt_plus_core::diagnostic_log::set_diagnostic_log_enabled(
+                settings.diagnostic_log_enabled,
+            );
+            settings_payload("设置已保存。", "设置保存后重新读取失败")
+        }
         Err(error) => failed(
             &format!("保存设置失败：{error}"),
             SettingsPayload {
@@ -246,10 +251,15 @@ pub fn import_ccs_providers() -> CommandResult<SettingsPayload> {
 
     settings = normalize_settings_before_save(settings);
     match store.save(&settings) {
-        Ok(()) => settings_payload(
-            &format!("已从 cc-switch 导入供应商配置：{imported} 个。"),
-            "导入供应商配置后重新读取设置失败",
-        ),
+        Ok(()) => {
+            chatgpt_plus_core::diagnostic_log::set_diagnostic_log_enabled(
+                settings.diagnostic_log_enabled,
+            );
+            settings_payload(
+                &format!("已从 cc-switch 导入供应商配置：{imported} 个。"),
+                "导入供应商配置后重新读取设置失败",
+            )
+        }
         Err(error) => failed(
             &format!("保存 cc-switch 供应商配置失败：{error}"),
             settings_payload_value().unwrap_or_else(|(_, payload)| payload),
@@ -307,7 +317,12 @@ pub fn dismiss_pending_provider_import() -> CommandResult<PendingProviderImportP
 pub fn reset_settings() -> CommandResult<SettingsPayload> {
     let settings = BackendSettings::default();
     match SettingsStore::default().save(&settings) {
-        Ok(()) => settings_payload("设置已重置为默认值。", "设置重置后重新读取失败"),
+        Ok(()) => {
+            chatgpt_plus_core::diagnostic_log::set_diagnostic_log_enabled(
+                settings.diagnostic_log_enabled,
+            );
+            settings_payload("设置已重置为默认值。", "设置重置后重新读取失败")
+        }
         Err(error) => failed(
             &format!("重置设置失败：{error}"),
             SettingsPayload {

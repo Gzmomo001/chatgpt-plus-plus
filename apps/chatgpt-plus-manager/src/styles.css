@@ -3974,6 +3974,25 @@ input[type="range"] {
   grid-row: 1;
 }
 
+.log-folder-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  border-top: 1px solid hsl(var(--border) / 0.72);
+  padding-top: 14px;
+}
+
+.log-folder-path {
+  min-width: 0;
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .feature-group,
 .plugin-inventory-panel,
 .aggregate-members {

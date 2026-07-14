@@ -6,7 +6,6 @@ import { Textarea } from "@/shared/ui/textarea";
 import { t, tf } from "@/i18n";
 import type {
   DiagnosticsResult,
-  LogsResult,
   UpdateResult,
 } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
@@ -14,14 +13,10 @@ import { CardHead, Panel, Toolbar } from "@/shared/ui/layout";
 import { Metric } from "@/shared/ui/metric";
 import { TaskProgressBox, type TaskProgress } from "@/shared/ui/task-progress";
 
-import { splitLogLines } from "./presentation";
-
 export type DiagnosticsActions = {
   openExternalUrl: (url: string) => Promise<void>;
   checkUpdate: () => Promise<void>;
   performUpdate: () => Promise<void>;
-  refreshLogs: () => Promise<void>;
-  copyLogs: () => Promise<void>;
   refreshDiagnostics: () => Promise<void>;
   copyDiagnostics: () => Promise<void>;
 };
@@ -30,14 +25,12 @@ export function AboutScreen({
   overview,
   update,
   updateInstallProgress,
-  logs,
   diagnostics,
   actions,
 }: {
   overview: OverviewResult | null;
   update: UpdateResult | null;
   updateInstallProgress: TaskProgress;
-  logs: LogsResult | null;
   diagnostics: DiagnosticsResult | null;
   actions: DiagnosticsActions;
 }) {
@@ -90,38 +83,8 @@ export function AboutScreen({
           </Toolbar>
         </CardContent>
       </Panel>
-      <LogsPanel logs={logs} actions={actions} />
       <DiagnosticsPanel diagnostics={diagnostics} actions={actions} />
     </>
-  );
-}
-
-function LogsPanel({ logs, actions }: { logs: LogsResult | null; actions: DiagnosticsActions }) {
-  const lines = splitLogLines(logs?.text ?? "");
-  return (
-    <Panel>
-      <CardHead title={t("最近日志")} detail={logs?.path ?? ""} />
-      <CardContent>
-        <div className="log-lines">
-          {lines.length ? (
-            lines.map((line, index) => (
-              <div className="log-line" key={`${index}-${line.slice(0, 12)}`}>
-                <span>{index + 1}</span>
-                <code>{line || " "}</code>
-              </div>
-            ))
-          ) : (
-            <div className="empty">{t("暂无日志。")}</div>
-          )}
-        </div>
-        <Toolbar>
-          <Button onClick={() => void actions.refreshLogs()}>{t("刷新")}</Button>
-          <Button variant="secondary" onClick={() => void actions.copyLogs()}>
-            {t("复制")}
-          </Button>
-        </Toolbar>
-      </CardContent>
-    </Panel>
   );
 }
 

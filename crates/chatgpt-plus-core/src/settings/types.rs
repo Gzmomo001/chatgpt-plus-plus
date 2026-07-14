@@ -176,6 +176,8 @@ pub struct BackendSettings {
     pub codex_app_path: String,
     #[serde(rename = "codexExtraArgs", default)]
     pub codex_extra_args: Vec<String>,
+    #[serde(rename = "diagnosticLogEnabled", default = "default_true")]
+    pub diagnostic_log_enabled: bool,
     #[serde(rename = "providerSyncEnabled", default)]
     pub provider_sync_enabled: bool,
     #[serde(rename = "providerSyncSavedProviders", default)]
@@ -215,6 +217,7 @@ impl Default for BackendSettings {
         Self {
             codex_app_path: String::new(),
             codex_extra_args: Vec::new(),
+            diagnostic_log_enabled: true,
             provider_sync_enabled: false,
             provider_sync_saved_providers: Vec::new(),
             provider_sync_manual_providers: Vec::new(),

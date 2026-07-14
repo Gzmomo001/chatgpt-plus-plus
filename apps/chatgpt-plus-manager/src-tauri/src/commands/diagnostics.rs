@@ -27,44 +27,27 @@ pub struct RemoveEnvConflictsPayload {
     pub backup_path: Option<String>,
     pub remaining: Vec<chatgpt_plus_core::env_conflicts::EnvConflict>,
 }
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LogRequest {
-    #[serde(default = "default_log_lines")]
-    pub lines: usize,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LogsPayload {
-    pub path: String,
-    pub text: String,
-    pub lines: usize,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagnosticsPayload {
     pub report: String,
 }
+#[derive(Debug, Clone, Serialize)]
+pub struct LogFolderPayload {
+    pub path: String,
+}
+
 #[tauri::command]
-pub fn read_latest_logs(request: LogRequest) -> CommandResult<LogsPayload> {
-    let path = chatgpt_plus_core::paths::default_diagnostic_log_path();
-    match read_tail(&path, request.lines) {
-        Ok(text) => ok(
-            "日志已读取。",
-            LogsPayload {
-                path: path.to_string_lossy().to_string(),
-                text,
-                lines: request.lines,
-            },
-        ),
-        Err(error) => failed(
-            &format!("读取日志失败：{error}"),
-            LogsPayload {
-                path: path.to_string_lossy().to_string(),
-                text: String::new(),
-                lines: request.lines,
-            },
-        ),
+pub fn open_log_folder() -> CommandResult<LogFolderPayload> {
+    let path = chatgpt_plus_core::paths::default_app_state_dir();
+    let payload = LogFolderPayload {
+        path: path.to_string_lossy().to_string(),
+    };
+    let result = fs::create_dir_all(&path)
+        .map_err(anyhow::Error::from)
+        .and_then(|_| open_path_in_file_manager(&path));
+    match result {
+        Ok(()) => ok("日志文件夹已打开。", payload),
+        Err(error) => failed(&format!("打开日志文件夹失败：{error}"), payload),
     }
 }
 
@@ -120,6 +103,9 @@ pub fn remove_env_conflicts(
 #[tauri::command]
 pub fn write_diagnostic_event(event: String, detail: Value) -> CommandResult<Value> {
     let event = sanitize_manager_event(&event);
+    if !chatgpt_plus_core::diagnostic_log::diagnostic_log_enabled() {
+        return ok("日志功能已关闭，未写入。", json!({}));
+    }
     match chatgpt_plus_core::diagnostic_log::append_diagnostic_log(&event, detail) {
         Ok(()) => ok("诊断日志已写入。", json!({})),
         Err(error) => failed(&format!("写入诊断日志失败：{error}"), json!({})),
@@ -170,13 +156,25 @@ pub(super) fn diagnostics_report() -> String {
     }))
     .unwrap_or_else(|error| format!("诊断报告序列化失败：{error}"))
 }
-pub(super) fn read_tail(path: &Path, max_lines: usize) -> std::io::Result<String> {
-    let contents = fs::read_to_string(path)?;
-    let mut lines = contents.lines().rev().take(max_lines).collect::<Vec<_>>();
-    lines.reverse();
-    Ok(lines.join("\n"))
-}
-
-pub(super) fn default_log_lines() -> usize {
-    200
+fn open_path_in_file_manager(path: &Path) -> anyhow::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| anyhow::anyhow!("启动 Finder 失败：{error}"))
+    }
+    #[cfg(windows)]
+    {
+        chatgpt_plus_core::windows_open_url(&path.to_string_lossy())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| anyhow::anyhow!("启动文件管理器失败：{error}"))
+    }
 }

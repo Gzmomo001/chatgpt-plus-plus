@@ -1,11 +1,5 @@
 import type { CommandResult } from "./command";
 
-export type LogsResult = CommandResult<{
-  path: string;
-  text: string;
-  lines: number;
-}>;
-
 export type DiagnosticsResult = CommandResult<{
   report: string;
 }>;

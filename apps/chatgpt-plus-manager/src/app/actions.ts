@@ -12,7 +12,7 @@ import type {
   RelayProfileView,
   SettingsResult,
 } from "./contracts";
-import type { DiagnosticsResult, LogsResult, UpdateResult } from "@/shared/contracts/diagnostics";
+import type { DiagnosticsResult, UpdateResult } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
 import type {
   DeleteLocalSessionResult,
@@ -55,7 +55,7 @@ export const TAURI_COMMAND_NAMES = [
   "open_external_url",
   "perform_update",
   "plugin_marketplace_inventory",
-  "read_latest_logs",
+  "open_log_folder",
   "read_relay_files",
   "refresh_plugin_marketplace",
   "refresh_remote_plugin_marketplace",
@@ -346,7 +346,7 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<CommandResult<ProviderSyncPayload>>("sync_providers_now", { targetProvider }),
     },
     diagnostics: {
-      readLogs: (lines = 240) => call<LogsResult>("read_latest_logs", { request: { lines } }),
+      openLogFolder: () => call<CommandResult<{ path: string }>>("open_log_folder"),
       copy: () => call<DiagnosticsResult>("copy_diagnostics"),
       checkUpdate: () => call<UpdateResult>("check_update"),
       performUpdate: (release: UpdateRelease | null) =>

@@ -83,7 +83,7 @@ test("publishes every frontend-known Tauri command name", () => {
     "open_external_url",
     "perform_update",
     "plugin_marketplace_inventory",
-    "read_latest_logs",
+    "open_log_folder",
     "read_relay_files",
     "refresh_plugin_marketplace",
     "refresh_remote_plugin_marketplace",
@@ -386,14 +386,15 @@ test("composes diagnostics through its screen-owned vertical slice", () => {
   assert.match(screen, /export type DiagnosticsActions(?:<[^>]+>)?\s*=\s*\{/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
 
-  for (const definition of ["AboutScreen", "LogsPanel", "DiagnosticsPanel", "splitLogLines"]) {
+  for (const definition of ["AboutScreen", "DiagnosticsPanel"]) {
     assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
   }
   assert.match(
     diagnosticsContracts,
-    /export type (?:LogsResult|DiagnosticsResult|UpdateResult)\s*=\s*CommandResult</,
+    /export type (?:DiagnosticsResult|UpdateResult)\s*=\s*CommandResult</,
   );
-  assert.doesNotMatch(app, /type (?:LogsResult|DiagnosticsResult|UpdateResult)\s*=/);
+  assert.doesNotMatch(app, /type (?:DiagnosticsResult|UpdateResult)\s*=/);
+  assert.doesNotMatch(screen, /LogsPanel|splitLogLines|最近日志/);
 });
 
 test("composes Settings through its screen-owned vertical slice", () => {
@@ -421,6 +422,9 @@ test("composes Settings through its screen-owned vertical slice", () => {
   assert.match(screen, /export function SettingsScreen(?:<[^>]+>)?\(/);
   assert.match(screen, /export type SettingsActions(?:<[^>]+>)?\s*=\s*\{/);
   assert.match(screen, /export type SettingsForm\s*=\s*\{/);
+  assert.match(screen, /diagnosticLogEnabled/);
+  assert.match(screen, /openLogFolder/);
+  assert.doesNotMatch(screen, /最近日志|LogsPanel/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
   assert.doesNotMatch(screen, /toggleTheme|\btheme\s*:|界面主题|切换主题/);
   assert.doesNotMatch(

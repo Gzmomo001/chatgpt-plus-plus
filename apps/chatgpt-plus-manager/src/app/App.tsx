@@ -36,7 +36,6 @@ import {
 import { numberOrDefault } from "@/shared/lib/settings";
 import type {
   DiagnosticsResult,
-  LogsResult,
   UpdateResult,
 } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
@@ -171,7 +170,6 @@ export function App() {
       viewChanged: (view) => sessionsControllerPortsRef.current.viewChanged(view),
     });
   }
-  const [logs, setLogs] = useState<LogsResult | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
   const [update, setUpdate] = useState<UpdateResult | null>(null);
   const [updateInstallProgress, setUpdateInstallProgress] = useState<TaskProgress>({
@@ -436,14 +434,6 @@ export function App() {
   const executeSessionsAction = (intent: SessionsIntent) =>
     sessionsControllerRef.current!.execute(intent);
 
-  const refreshLogs = async (silent = false) => {
-    const result = await run(() => managerActions.diagnostics.readLogs());
-    if (result) {
-      setLogs(result);
-      if (!silent) showResultNotice(t("日志已刷新"), result, { silentSuccess: true });
-    }
-  };
-
   const refreshDiagnostics = async (silent = false) => {
     const result = await run(() => managerActions.diagnostics.copy());
     if (result) {
@@ -456,7 +446,6 @@ export function App() {
     await Promise.all([
       refreshSettings(true),
       refreshOverview(true),
-      refreshLogs(true),
       refreshDiagnostics(true),
     ]);
   };
@@ -1062,6 +1051,13 @@ export function App() {
     }
   };
 
+  const openLogFolder = async () => {
+    const result = await run(() => managerActions.diagnostics.openLogFolder());
+    if (result) {
+      showResultNotice(t("日志文件夹"), result, { silentSuccess: true });
+    }
+  };
+
   const showNotice = (title: string, message: string, status?: Status) => {
     setNotice({ title, message: t(message), status });
   };
@@ -1217,6 +1213,7 @@ export function App() {
       refreshCcsProviders,
       importCcsProviders,
       openExternalUrl,
+      openLogFolder,
       applyRelayInjection,
       applyPureApiInjection,
       clearRelayInjection,
@@ -1229,10 +1226,8 @@ export function App() {
       relaySwitching,
       switchOfficialMode,
       switchPureApiMode,
-      refreshLogs,
       refreshDiagnostics,
       showMessage: async (title: string, message: string, status?: Status) => showNotice(title, message, status),
-      copyLogs: () => copyText(logs?.text ?? "", t("日志已复制。")),
       copyDiagnostics: () => copyText(diagnostics?.report ?? "", t("诊断报告已复制。")),
       checkHealth: async () => {
         await refreshOverview(true);
@@ -1241,7 +1236,7 @@ export function App() {
       },
       toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     }),
-    [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, logs, diagnostics, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
+    [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, diagnostics, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
   );
   const sessionsView: SessionsView = {
     ...sessionsControllerView,
@@ -1457,6 +1452,7 @@ export function App() {
               <section className="settings-page-section" id="settings-preferences">
                 <SettingsScreen
                   settingsPath={settings?.settingsPath ?? ""}
+                  logPath={overview?.logsPath ?? ""}
                   form={settingsForm}
                   onFormChange={(form) => setSettingsForm((current) => ({ ...current, ...form }))}
                   actions={actions}
@@ -1470,7 +1466,6 @@ export function App() {
                   overview={overview}
                   update={update}
                   updateInstallProgress={updateInstallProgress}
-                  logs={logs}
                   diagnostics={diagnostics}
                   actions={actions}
                 />
@@ -1537,6 +1532,7 @@ type Actions = {
   refreshCcsProviders: (silent?: boolean) => Promise<CcsProvidersResult | null>;
   importCcsProviders: () => Promise<void>;
   openExternalUrl: (url: string) => Promise<void>;
+  openLogFolder: () => Promise<void>;
   applyRelayInjection: () => Promise<boolean>;
   applyPureApiInjection: () => Promise<boolean>;
   clearRelayInjection: () => Promise<boolean>;
@@ -1549,10 +1545,8 @@ type Actions = {
   relaySwitching: boolean;
   switchOfficialMode: () => Promise<void>;
   switchPureApiMode: () => Promise<void>;
-  refreshLogs: () => Promise<void>;
   refreshDiagnostics: () => Promise<void>;
   showMessage: (title: string, message: string, status?: Status) => Promise<void>;
-  copyLogs: () => Promise<void>;
   copyDiagnostics: () => Promise<void>;
   toggleTheme: () => void;
   checkHealth: () => Promise<void>;

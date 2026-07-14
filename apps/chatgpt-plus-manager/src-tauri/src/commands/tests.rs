@@ -4,7 +4,7 @@ use chatgpt_plus_core::codex_home_apply::CodexHomeReconcileIntent;
 use chatgpt_plus_core::settings::{BackendSettings, RelayProfile, normalize_settings_before_save};
 use serde_json::json;
 
-use super::diagnostics::{self, check_env_conflicts, read_latest_logs};
+use super::diagnostics::check_env_conflicts;
 use super::install::{self, ads_payload, open_external_url, perform_update};
 use super::relay::*;
 use super::sessions::{self, delete_local_session, list_local_sessions};
@@ -145,15 +145,6 @@ fn update_install_requires_release_payload() {
 
     assert_eq!(result.status, "failed");
     assert!(result.message.contains("请先检查更新"));
-}
-
-#[test]
-fn missing_logs_return_failed_status() {
-    let result = read_latest_logs(diagnostics::LogRequest { lines: 25 });
-
-    if result.payload.text.is_empty() {
-        assert_eq!(result.status, "failed");
-    }
 }
 
 #[test]

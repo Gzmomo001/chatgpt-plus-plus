@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 #[test]
 fn wire_contract_uses_camel_case_and_omits_derived_profile_fields() {
     let settings = BackendSettings {
+        diagnostic_log_enabled: false,
         active_relay_id: "relay-a".to_string(),
         relay_profiles: vec![RelayProfile {
             id: "relay-a".to_string(),
@@ -24,6 +25,7 @@ fn wire_contract_uses_camel_case_and_omits_derived_profile_fields() {
 
     let value = serde_json::to_value(settings).unwrap();
     assert_eq!(value["activeRelayId"], "relay-a");
+    assert_eq!(value["diagnosticLogEnabled"], false);
     assert!(value.get("active_relay_id").is_none());
     assert_eq!(
         value["relayProfiles"][0]["upstreamBaseUrl"],
@@ -34,6 +36,21 @@ fn wire_contract_uses_camel_case_and_omits_derived_profile_fields() {
     assert!(value["relayProfiles"][0].get("apiKey").is_none());
     assert!(value["relayProfiles"][0].get("contextSelection").is_none());
     assert!(value.get("relayContextConfigContents").is_none());
+}
+
+#[test]
+fn store_update_persists_diagnostic_log_setting() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("settings.json");
+    let store = SettingsStore::new(path);
+
+    store.save(&BackendSettings::default()).unwrap();
+    let updated = store
+        .update(json!({ "diagnosticLogEnabled": false }))
+        .unwrap();
+
+    assert!(!updated.diagnostic_log_enabled);
+    assert!(!store.load().unwrap().diagnostic_log_enabled);
 }
 
 #[test]

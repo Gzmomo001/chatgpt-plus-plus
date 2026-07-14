@@ -1,6 +1,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 fn main() {
+    chatgpt_plus_core::diagnostic_log::initialize_diagnostic_log_setting();
     focus_existing_manager_window();
     for arg in std::env::args() {
         if arg.starts_with("chatgptplusplus://") || arg.starts_with("codexplusplus://") {

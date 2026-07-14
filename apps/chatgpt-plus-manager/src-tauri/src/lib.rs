@@ -43,6 +43,7 @@ fn tray_label(label: &str) -> String {
 }
 
 pub fn run() {
+    chatgpt_plus_core::diagnostic_log::initialize_diagnostic_log_setting();
     install_panic_logger();
     if !cfg!(debug_assertions) {
         if let Err(error) = chatgpt_plus_core::install::cleanup_legacy_user_entrypoints() {
@@ -131,7 +132,7 @@ pub fn run() {
             commands::install::repair_remote_plugin_marketplace,
             commands::install::check_update,
             commands::install::perform_update,
-            commands::diagnostics::read_latest_logs,
+            commands::diagnostics::open_log_folder,
             commands::diagnostics::copy_diagnostics,
             commands::settings::reset_settings,
             commands::relay::relay_status,
