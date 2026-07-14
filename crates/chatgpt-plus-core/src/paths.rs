@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 const APP_STATE_DIR: &str = ".chatgpt-plus-plus";
+const DEVELOPMENT_APP_STATE_DIR: &str = ".chatgpt-plus-plus-dev";
 const LEGACY_APP_STATE_DIR: &str = ".codex-session-delete";
 const SETTINGS_FILE: &str = "settings.json";
 const LATEST_STATUS_FILE: &str = "latest-status.json";
@@ -10,10 +11,21 @@ const PENDING_PROVIDER_IMPORT_FILE: &str = "pending-provider-import.json";
 
 pub fn default_app_state_dir() -> PathBuf {
     if let Some(home_dir) = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_path_buf()) {
-        return app_state_dir_from_home(&home_dir);
+        return app_state_dir_for_build(&home_dir, cfg!(debug_assertions));
     }
 
-    PathBuf::from(APP_STATE_DIR)
+    PathBuf::from(if cfg!(debug_assertions) {
+        DEVELOPMENT_APP_STATE_DIR
+    } else {
+        APP_STATE_DIR
+    })
+}
+
+fn app_state_dir_for_build(home_dir: &Path, development: bool) -> PathBuf {
+    if development {
+        return home_dir.join(DEVELOPMENT_APP_STATE_DIR);
+    }
+    app_state_dir_from_home(home_dir)
 }
 
 fn app_state_dir_from_home(home_dir: &Path) -> PathBuf {
@@ -77,6 +89,20 @@ mod tests {
 
         assert_eq!(
             app_state_dir_from_home(home.path()),
+            home.path().join(".chatgpt-plus-plus")
+        );
+    }
+
+    #[test]
+    fn development_state_directory_isolated_from_release_state() {
+        let home = tempfile::tempdir().unwrap();
+
+        assert_eq!(
+            app_state_dir_for_build(home.path(), true),
+            home.path().join(".chatgpt-plus-plus-dev")
+        );
+        assert_eq!(
+            app_state_dir_for_build(home.path(), false),
             home.path().join(".chatgpt-plus-plus")
         );
     }

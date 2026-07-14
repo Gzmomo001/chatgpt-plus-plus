@@ -23,30 +23,10 @@ fn windows_entrypoint_plan_exposes_only_the_main_app_shortcut() {
         plan.legacy_management_shortcut
             .ends_with("ChatGPT++ 管理工具.lnk")
     );
-    assert_eq!(plan.app_path, "C:/Tools/chatgpt-plus-plus-manager.exe");
-    assert_eq!(plan.app_icon_path, "C:/Tools/chatgpt-plus-plus-manager.exe");
-    assert_eq!(plan.uninstall_key, "ChatGPTPlusPlus");
-    assert_eq!(plan.legacy_uninstall_key, "CodexPlusPlus");
-    assert_eq!(
-        plan.uninstaller_path.replace('\\', "/"),
-        "C:/Tools/uninstall.exe"
-    );
-    assert_eq!(
-        plan.uninstall_command.replace('\\', "/"),
-        "\"C:/Tools/uninstall.exe\""
-    );
-    assert_eq!(
-        plan.quiet_uninstall_command.replace('\\', "/"),
-        "\"C:/Tools/uninstall.exe\" /S"
-    );
-    assert_ne!(
-        plan.uninstall_command,
-        "\"C:/Tools/chatgpt-plus-plus-manager.exe\""
-    );
 }
 
 #[test]
-fn windows_entrypoint_plan_can_request_owned_data_removal_without_shell_script() {
+fn windows_entrypoint_plan_is_independent_from_owned_data_removal() {
     let options = InstallOptions {
         install_root: Some("C:/Users/A/Desktop".into()),
         manager_path: None,
@@ -56,7 +36,6 @@ fn windows_entrypoint_plan_can_request_owned_data_removal_without_shell_script()
     let plan = build_windows_entrypoint_plan(&options);
 
     assert!(plan.app_shortcut.ends_with("ChatGPT++.lnk"));
-    assert!(plan.remove_owned_data);
 }
 
 #[test]
@@ -148,6 +127,18 @@ fn windows_installer_exposes_only_the_main_app_and_cleans_legacy_shortcuts() {
     assert!(!script.contains("File \"${ROOT}\\dist\\windows\\app\\chatgpt-plus-plus.exe\""));
     assert!(script.contains("File \"${ROOT}\\dist\\windows\\app\\chatgpt-plus-plus-manager.exe\""));
     assert!(script.contains("Delete \"$INSTDIR\\chatgpt-plus-plus.exe\""));
+    assert_eq!(
+        script
+            .matches("DeleteRegValue HKCU \"Software\\Microsoft\\Windows\\CurrentVersion\\Run\" \"ChatGPTPlusPlusWatcher\"")
+            .count(),
+        2
+    );
+    assert_eq!(
+        script
+            .matches("Delete \"$SMSTARTUP\\ChatGPTPlusPlusWatcher.lnk\"")
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -197,4 +188,23 @@ fn retired_launcher_cleanup_targets_only_the_old_companion_binary() {
             "/Applications/ChatGPT++.app/Contents/Helpers/chatgpt-plus-plus"
         )]
     );
+}
+
+#[test]
+fn windows_entrypoint_flows_only_manage_shortcuts() {
+    let windows_source = include_str!("../src/install/windows.rs");
+    let install_source = include_str!("../src/install/mod.rs");
+
+    assert!(windows_source.contains("ChatGPTPlusPlusWatcher"));
+    assert!(windows_source.contains("delete_current_user_value"));
+    assert_eq!(
+        windows_source
+            .matches("cleanup_legacy_autostart()?")
+            .count(),
+        0
+    );
+    assert!(!windows_source.contains("fn register_url_protocol"));
+    assert!(!windows_source.contains("fn write_uninstall_registration"));
+    assert!(!windows_source.contains("fn uninstall_shortcuts"));
+    assert!(install_source.contains("removed.extend(windows::cleanup_legacy_autostart()?)"));
 }

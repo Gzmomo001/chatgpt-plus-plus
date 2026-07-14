@@ -30,7 +30,8 @@ ChatGPT++.app/
 
 - Install only `chatgpt-plus-plus-manager.exe`.
 - Desktop and Start Menu expose only `ChatGPT++.lnk`, targeting the manager executable.
-- Watcher/autostart targets the main application.
+- On Windows, in-app entrypoint maintenance only creates that shortcut; installer and uninstall registration remain owned by the NSIS package.
+- No separate login-autostart background process is installed.
 - The uninstaller remains visible only as the normal uninstall entry.
 
 ## Upgrade migration
@@ -43,6 +44,6 @@ ChatGPT++.app/
 
 1. Characterize one-binary install plans and legacy cleanup.
 2. Move the launch lifecycle and proxy ownership into the manager.
-3. Convert macOS/Windows packaging, watcher, and CI checks to one binary.
+3. Convert macOS/Windows packaging and CI checks to one binary.
 4. Remove helper-only protocols and stale documentation.
 5. Run installer, core, manager, frontend, formatting, and workspace gates.

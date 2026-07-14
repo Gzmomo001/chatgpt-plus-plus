@@ -34,15 +34,12 @@ export const TAURI_COMMAND_NAMES = [
   "copy_diagnostics",
   "delete_local_session",
   "diagnose_relay_profile",
-  "disable_watcher",
   "dismiss_pending_provider_import",
-  "enable_watcher",
   "export_local_session_markdown",
   "extract_relay_common_config",
   "fetch_relay_profile_models",
   "import_ccs_providers",
   "install_entrypoints",
-  "install_watcher",
   "launch_chatgpt_plus",
   "list_local_sessions",
   "load_ads",
@@ -52,7 +49,6 @@ export const TAURI_COMMAND_NAMES = [
   "load_pending_provider_import",
   "load_provider_sync_targets",
   "load_settings",
-  "load_watcher_state",
   "manager_exit_app",
   "manager_hide_to_tray",
   "mutate_plugin",
@@ -79,7 +75,6 @@ export const TAURI_COMMAND_NAMES = [
   "sync_providers_now",
   "test_relay_profile",
   "uninstall_entrypoints",
-  "uninstall_watcher",
   "update_tray_labels",
   "write_diagnostic_event",
 ] as const;
@@ -150,7 +145,6 @@ export type ProviderSyncPayload = {
   encryptedContentWarning?: string | null;
 };
 
-export type WatcherResult = CommandResult<{ enabled: boolean; disabledFlag: string }>;
 export type InstallResult = CommandResult<{
   appShortcut: { installed: boolean; path: string | null };
 }>;
@@ -182,15 +176,6 @@ export type UpdateRelease = {
   assetUrl: string;
 };
 export type TrayLabels = { showLabel: string; quitLabel: string; windowTitle: string };
-export type WatcherAction = "install" | "uninstall" | "enable" | "disable";
-
-const watcherCommands: Record<WatcherAction, TauriCommandName> = {
-  install: "install_watcher",
-  uninstall: "uninstall_watcher",
-  enable: "enable_watcher",
-  disable: "disable_watcher",
-};
-
 type WireSettingsResult = Omit<SettingsResult, "settingsPath"> & {
   settings_path: string;
 };
@@ -211,7 +196,6 @@ type WireOverviewResult = CommandResult<{
   settings_path: string;
   logs_path: string;
 }>;
-type WireWatcherResult = Omit<WatcherResult, "disabledFlag"> & { disabled_flag: string };
 type WireInstallResult = Omit<InstallResult, "appShortcut"> & {
   app_shortcut: InstallResult["appShortcut"];
   legacy_management_shortcut: { installed: boolean; path: string | null };
@@ -258,10 +242,6 @@ const mapOverviewResult = ({
   updateStatus: update_status,
   settingsPath: settings_path,
   logsPath: logs_path,
-});
-const mapWatcherResult = ({ disabled_flag, ...result }: WireWatcherResult): WatcherResult => ({
-  ...result,
-  disabledFlag: disabled_flag,
 });
 const mapInstallResult = ({
   app_shortcut,
@@ -405,9 +385,6 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<WireInstallResult>("uninstall_entrypoints", { options: { removeOwnedData } }).then(mapInstallResult),
       repairShortcuts: () =>
         call<WireInstallResult>("repair_shortcuts").then(mapInstallResult),
-      loadWatcher: () => call<WireWatcherResult>("load_watcher_state").then(mapWatcherResult),
-      changeWatcher: (action: WatcherAction) =>
-        call<WireWatcherResult>(watcherCommands[action]).then(mapWatcherResult),
     },
   } as const;
 }

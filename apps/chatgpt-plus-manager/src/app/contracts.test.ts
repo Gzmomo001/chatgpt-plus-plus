@@ -20,7 +20,14 @@ test("owns application composition under app without a root forwarding wrapper",
   assert.match(app, /export function App\(\)/);
   assert.equal(existsSync(brandMarkPath), false);
   assert.doesNotMatch(app, /BrandMark|brand-mark/);
-  assert.match(app, /className=["']brand-title["']>ChatGPT\+\+</);
+  assert.match(app, /className=["']brand-title["']>[\s\S]*?ChatGPT\+\+/);
+  assert.match(app, /DEVELOPMENT_RUNTIME[\s\S]*?development-badge/);
+  assert.match(app, /className=["']topbar-navigation["'][\s\S]*?<nav[^>]+className=["']nav["']/);
+  assert.doesNotMatch(app, /className=["']nav-label["']|className=["']nav-badge["']/);
+  assert.doesNotMatch(
+    app,
+    /<aside\b|sidebarCollapsed|sidebarWidth|sidebar-resize-handle|PanelLeft(?:Open|Close)/,
+  );
   assert.doesNotMatch(
     app,
     /function (?:FeatureItem|GuideList|PendingProviderImportDialog|providerImportWireApiLabel|providerImportRelayModeLabel|maskSecret|truncateSessionDeletePreview|providerSyncProgressMessage|formatDuration|formatBytes)\b/,
@@ -37,12 +44,9 @@ test("owns application composition under app without a root forwarding wrapper",
 
 test("publishes the manager routes in navigation order", () => {
   assert.deepEqual(ROUTE_IDS, [
-    "overview",
     "relay",
     "sessions",
     "enhance",
-    "maintenance",
-    "about",
     "settings",
   ]);
 });
@@ -58,15 +62,12 @@ test("publishes every frontend-known Tauri command name", () => {
     "copy_diagnostics",
     "delete_local_session",
     "diagnose_relay_profile",
-    "disable_watcher",
     "dismiss_pending_provider_import",
-    "enable_watcher",
     "export_local_session_markdown",
     "extract_relay_common_config",
     "fetch_relay_profile_models",
     "import_ccs_providers",
     "install_entrypoints",
-    "install_watcher",
     "launch_chatgpt_plus",
     "list_local_sessions",
     "load_ads",
@@ -76,7 +77,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "load_pending_provider_import",
     "load_provider_sync_targets",
     "load_settings",
-    "load_watcher_state",
     "manager_exit_app",
     "manager_hide_to_tray",
     "mutate_plugin",
@@ -103,7 +103,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "sync_providers_now",
     "test_relay_profile",
     "uninstall_entrypoints",
-    "uninstall_watcher",
     "update_tray_labels",
     "write_diagnostic_event",
   ]);
@@ -308,10 +307,10 @@ test("keeps retained app-wide settings outside the Relay feature", () => {
   assert.doesNotMatch(app, /relaySettings\s+as\s+BackendSettings/);
 });
 
-test("composes Overview through its screen-owned vertical slice", () => {
+test("keeps Overview health projection in the topbar without an Overview page", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  const screen = readFileSync(
-    new URL("../screens/overview/OverviewScreen.tsx", import.meta.url),
+  const indicators = readFileSync(
+    new URL("../screens/overview/OverviewHealthIndicators.tsx", import.meta.url),
     "utf8",
   );
   const relayEditor = readFileSync(
@@ -332,12 +331,15 @@ test("composes Overview through its screen-owned vertical slice", () => {
     "utf8",
   );
 
-  assert.match(app, /import \{ OverviewScreen \} from ["']@\/screens\/overview\/OverviewScreen["']/);
-  assert.match(app, /<OverviewScreen\b/);
-  assert.match(screen, /export function OverviewScreen(?:<[^>]+>)?\(/);
-  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(/);
-  assert.doesNotMatch(screen, /JOJO Code|jojocode\.com|官方中转站|jojocode-overview/);
-  assert.doesNotMatch(screen, /ChatGPT\+\+ 应用入口|repairShortcuts/);
+  assert.match(app, /<OverviewHealthIndicators\s+overview=\{overview\}\s+onRefresh=\{actions\.checkHealth\}/);
+  assert.match(indicators, /export function OverviewHealthIndicators(?:<[^>]+>)?\(/);
+  assert.doesNotMatch(app, /OverviewScreen|route === ["']overview["']/);
+  assert.doesNotMatch(indicators, /最近启动|LatestLaunch|<Panel\b|<CardHead\b/);
+  assert.doesNotMatch(indicators, /BadgeCheck|codex-version/);
+  assert.match(indicators, /find\(\(item\) => item\.id === ["']codex-app["']\)/);
+  assert.doesNotMatch(indicators, /@tauri-apps\/api|\binvoke\s*\(/);
+  assert.doesNotMatch(indicators, /JOJO Code|jojocode\.com|官方中转站|jojocode-overview/);
+  assert.doesNotMatch(indicators, /ChatGPT\+\+ 应用入口|repairShortcuts/);
 
   for (const definition of ["OverviewScreen", "LatestLaunch", "healthItems"]) {
     assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
@@ -396,17 +398,31 @@ test("composes diagnostics through its screen-owned vertical slice", () => {
 
 test("composes Settings through its screen-owned vertical slice", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const hubPath = new URL(
+    "../screens/settings/SettingsHubScreen.tsx",
+    import.meta.url,
+  );
   const screen = readFileSync(
     new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
     "utf8",
   );
 
+  assert.equal(existsSync(hubPath), false, "Settings must no longer use a subsection hub");
   assert.match(app, /import \{ SettingsScreen \} from ["']@\/screens\/settings\/SettingsScreen["']/);
-  assert.match(app, /<SettingsScreen\b/);
+  assert.match(
+    app,
+    /<div className=["']settings-page["']>[\s\S]*?<SettingsScreen\b[\s\S]*?<MaintenanceScreen\b[\s\S]*?<AboutScreen\b[\s\S]*?<\/div>/,
+    "Settings must render preferences, maintenance, and diagnostics as one continuous page",
+  );
+  assert.doesNotMatch(
+    app,
+    /\bSettingsHubScreen\b|\bSettingsSection\b|\bsettingsSection\b|\bloadInitialSettingsSection\b/,
+  );
   assert.match(screen, /export function SettingsScreen(?:<[^>]+>)?\(/);
   assert.match(screen, /export type SettingsActions(?:<[^>]+>)?\s*=\s*\{/);
   assert.match(screen, /export type SettingsForm\s*=\s*\{/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
+  assert.doesNotMatch(screen, /toggleTheme|\btheme\s*:|界面主题|切换主题/);
   assert.doesNotMatch(
     app,
     /from ["']@\/screens\/settings\/(?:presentation|[^"']*\/[^"']+)["']/,
@@ -515,7 +531,7 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
   assert.match(screen, /export type MaintenanceActions\s*=\s*\{/);
   assert.doesNotMatch(
     screen,
-    /\b(?:OverviewResult|SettingsResult|BackendSettings|WatcherResult|Actions)\b(?!\s*=)|@tauri-apps\/api|\binvoke\s*\(/,
+    /\b(?:OverviewResult|SettingsResult|BackendSettings|Actions)\b(?!\s*=)|@tauri-apps\/api|\binvoke\s*\(/,
   );
   assert.doesNotMatch(screen, /from ["']@\/app(?:\/|["'])/);
 
@@ -529,8 +545,6 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
   };
   assert.deepEqual(typeKeys("MaintenanceView"), [
     "codexApp",
-    "appShortcut",
-    "watcher",
     "savedCodexAppPath",
     "launchForm",
     "removeOwnedData",
@@ -542,15 +556,13 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
     "repairShortcuts",
     "installEntrypoints",
     "uninstallEntrypoints",
-    "installWatcher",
-    "uninstallWatcher",
-    "enableWatcher",
-    "disableWatcher",
     "chooseCodexAppPath",
     "clearCodexAppPath",
     "launch",
     "saveManualCodexAppPath",
   ]);
+  assert.match(screen, /navigator\.userAgent\.toLowerCase\(\)\.includes\(["']windows["']\)/);
+  assert.match(screen, /isWindows[\s\S]*?创建快捷方式/);
 });
 
 test("does not publish the removed remote-project integration", () => {

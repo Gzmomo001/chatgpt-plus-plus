@@ -1,45 +1,7 @@
-use chatgpt_plus_core::watcher::{
-    build_spawn_app_command, build_watcher_install_plan, codex_process_ids, disable_watcher_at,
-    enable_watcher_at, filter_killable_legacy_launcher_processes, process_ids_still_running,
-    watcher_disabled_flag,
-};
+use chatgpt_plus_core::codex_processes::{codex_process_ids, process_ids_still_running};
 
 #[cfg(windows)]
-use chatgpt_plus_core::watcher::{WindowsProcessInfo, find_codex_processes_from_snapshot};
-
-#[test]
-fn watcher_enable_and_disable_toggle_flag() {
-    let dir = tempfile::tempdir().unwrap();
-    let flag = watcher_disabled_flag(dir.path());
-
-    disable_watcher_at(dir.path()).unwrap();
-    assert!(flag.exists());
-
-    enable_watcher_at(dir.path()).unwrap();
-    assert!(!flag.exists());
-}
-
-#[test]
-fn watcher_install_plan_registers_main_app_at_logon() {
-    let plan = build_watcher_install_plan("C:/Tools/chatgpt-plus-plus-manager.exe".into());
-
-    assert_eq!(plan.run_value_name, "ChatGPTPlusPlusWatcher");
-    assert_eq!(plan.run_value, "\"C:/Tools/chatgpt-plus-plus-manager.exe\"");
-    assert_eq!(plan.shortcut_name, "ChatGPTPlusPlusWatcher.lnk");
-    assert_eq!(
-        plan.shortcut_target,
-        "C:/Tools/chatgpt-plus-plus-manager.exe"
-    );
-    assert_eq!(plan.shortcut_arguments, "");
-}
-
-#[test]
-fn spawn_app_command_points_to_main_binary_only() {
-    let command = build_spawn_app_command("C:/Tools/chatgpt-plus-plus-manager.exe");
-
-    assert_eq!(command[0], "C:/Tools/chatgpt-plus-plus-manager.exe");
-    assert_eq!(command.len(), 1);
-}
+use chatgpt_plus_core::codex_processes::{WindowsProcessInfo, find_codex_processes_from_snapshot};
 
 #[test]
 fn codex_process_filter_keeps_only_windowsapps_codex_processes() {
@@ -80,23 +42,6 @@ fn codex_process_filter_keeps_chatgpt_desktop_package_processes() {
     ];
 
     assert_eq!(codex_process_ids(processes), vec![21, 22]);
-}
-
-#[test]
-fn legacy_launcher_process_filter_protects_current_process_ancestry() {
-    let processes = [
-        (10, 0, "chatgpt-plus-plus.exe"),
-        (20, 10, "chatgpt-plus-plus.exe"),
-        (30, 20, "chatgpt-plus-plus.exe"),
-        (40, 10, "chatgpt-plus-plus.exe"),
-        (50, 10, "chatgpt-plus-plus-manager.exe"),
-        (60, 10, "codex-plus-plus.exe"),
-    ];
-
-    assert_eq!(
-        filter_killable_legacy_launcher_processes(processes, 30),
-        vec![40, 60]
-    );
 }
 
 #[test]

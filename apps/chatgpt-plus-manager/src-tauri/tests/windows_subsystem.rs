@@ -55,6 +55,42 @@ fn manager_uses_single_instance_guard_before_starting_tauri() {
 }
 
 #[test]
+fn development_runtime_isolated_from_installed_production_app() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let package = std::fs::read_to_string(manifest_dir.parent().unwrap().join("package.json"))
+        .expect("read manager package.json");
+    let release_config =
+        std::fs::read_to_string(manifest_dir.join("tauri.conf.json")).expect("read release config");
+    let development_config = std::fs::read_to_string(manifest_dir.join("tauri.dev.conf.json"))
+        .expect("read development config");
+    let lib_rs =
+        std::fs::read_to_string(manifest_dir.join("src/lib.rs")).expect("read manager lib.rs");
+    let core_paths = std::fs::read_to_string(
+        manifest_dir
+            .parent()
+            .and_then(std::path::Path::parent)
+            .and_then(std::path::Path::parent)
+            .unwrap()
+            .join("crates/chatgpt-plus-core/src/paths.rs"),
+    )
+    .expect("read core paths");
+
+    assert!(package.contains("tauri dev --config src-tauri/tauri.dev.conf.json"));
+    assert!(release_config.contains("com.gzmomo001.chatgptplusplus\""));
+    assert!(development_config.contains("com.gzmomo001.chatgptplusplus.dev"));
+    assert!(development_config.contains("ChatGPT++ Dev"));
+    assert!(lib_rs.contains("manager_window_title()"));
+    assert!(lib_rs.contains("ChatGPT++ Dev"));
+    assert!(lib_rs.contains("if !cfg!(debug_assertions)"));
+    assert!(core_paths.contains(".chatgpt-plus-plus-dev"));
+    assert!(
+        std::fs::read_to_string(manifest_dir.parent().unwrap().join("src/app/App.tsx"))
+            .expect("read manager App.tsx")
+            .contains("DEVELOPMENT_RUNTIME")
+    );
+}
+
+#[test]
 fn unified_app_focuses_an_existing_window_and_cleans_only_legacy_entrypoints() {
     let main_rs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"))
         .expect("read manager main.rs");
@@ -80,6 +116,20 @@ fn manager_main_window_uses_default_window_icon_explicitly() {
     assert!(lib_rs.contains("main_window_builder"));
     assert!(lib_rs.contains("app.default_window_icon().cloned()"));
     assert!(lib_rs.contains("main_window_builder = main_window_builder.icon(icon)?"));
+}
+
+#[test]
+fn macos_overlay_titlebar_has_an_authorized_native_drag_path() {
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let app_tsx = manifest_dir.parent().unwrap().join("src/app/App.tsx");
+    let app_tsx = std::fs::read_to_string(&app_tsx).expect("read manager App.tsx");
+    let capability = std::fs::read_to_string(manifest_dir.join("capabilities/default.json"))
+        .expect("read manager default capability");
+
+    assert!(app_tsx.contains("getCurrentWindow"));
+    assert!(app_tsx.contains("startDragging"));
+    assert!(app_tsx.contains("onMouseDown={handleWindowDragMouseDown}"));
+    assert!(capability.contains("core:window:allow-start-dragging"));
 }
 
 #[test]
@@ -156,7 +206,7 @@ fn windows_main_binary_requests_administrator_privileges() {
 }
 
 #[test]
-fn windows_entrypoints_register_chatgptplusplus_url_protocol() {
+fn windows_entrypoints_only_manage_shortcuts() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let windows_install = manifest_dir
         .parent()
@@ -167,10 +217,10 @@ fn windows_entrypoints_register_chatgptplusplus_url_protocol() {
     let windows_install =
         std::fs::read_to_string(&windows_install).expect("read windows install source");
 
-    assert!(windows_install.contains("Software\\Classes\\chatgptplusplus"));
-    assert!(windows_install.contains("Software\\Classes\\codexplusplus"));
-    assert!(windows_install.contains("URL Protocol"));
-    assert!(windows_install.contains("%1"));
+    assert!(windows_install.contains("create_entrypoint_shortcut"));
+    assert!(!windows_install.contains("Software\\Classes\\chatgptplusplus"));
+    assert!(!windows_install.contains("Software\\Classes\\codexplusplus"));
+    assert!(!windows_install.contains("URL Protocol"));
 }
 
 #[test]
@@ -236,7 +286,7 @@ fn manager_does_not_register_the_removed_remote_project_commands() {
         .next()
         .expect("manager handler registration end");
 
-    assert_eq!(handler.matches("commands::").count(), 57);
+    assert_eq!(handler.matches("commands::").count(), 52);
     assert!(!commands_rs.contains(&command_stem));
     assert!(!handler.contains(&command_stem));
 }
@@ -318,15 +368,15 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(annotated.len(), 57, "Manager domain command count changed");
+    assert_eq!(annotated.len(), 52, "Manager domain command count changed");
     assert_eq!(
         lib_annotated, tray_commands,
         "lib.rs must own only the three tray commands"
     );
     assert_eq!(
         registered.len(),
-        60,
-        "handler must include 57 domain and three tray commands"
+        55,
+        "handler must include 52 domain and three tray commands"
     );
     assert_eq!(
         registered_paths, expected_registered_paths,
@@ -336,9 +386,9 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         registered_manager, annotated_paths,
         "generate_handler must register every domain command exactly once",
     );
-    assert_eq!(frontend.len(), 57, "frontend-known command count changed");
+    assert_eq!(frontend.len(), 52, "frontend-known command count changed");
     assert!(frontend.is_superset(&tray_commands));
-    assert_eq!(frontend_manager.len(), 54);
+    assert_eq!(frontend_manager.len(), 49);
     assert!(
         annotated.is_superset(&frontend_manager),
         "every frontend manager command must have an annotated backend command"

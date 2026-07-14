@@ -50,12 +50,6 @@ pub struct RegisterPluginMarketplaceRequest {
     pub source: String,
 }
 #[derive(Debug, Clone, Serialize)]
-pub struct WatcherPayload {
-    pub enabled: bool,
-    pub disabled_flag: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
 pub struct AdsPayload {
     pub version: u64,
     pub ads: Vec<Value>,
@@ -531,44 +525,6 @@ pub async fn perform_update(
     }
 }
 
-#[tauri::command]
-pub fn load_watcher_state() -> CommandResult<WatcherPayload> {
-    ok("watcher 状态已加载。", watcher_payload())
-}
-
-#[tauri::command]
-pub fn install_watcher() -> CommandResult<WatcherPayload> {
-    let app_path = std::env::current_exe().unwrap_or_default();
-    match chatgpt_plus_core::watcher::install_watcher(&app_path) {
-        Ok(()) => ok("watcher 已安装。", watcher_payload()),
-        Err(error) => failed(&format!("安装 watcher 失败：{error}"), watcher_payload()),
-    }
-}
-
-#[tauri::command]
-pub fn uninstall_watcher() -> CommandResult<WatcherPayload> {
-    match chatgpt_plus_core::watcher::uninstall_watcher() {
-        Ok(()) => ok("watcher 已移除。", watcher_payload()),
-        Err(error) => failed(&format!("移除 watcher 失败：{error}"), watcher_payload()),
-    }
-}
-
-#[tauri::command]
-pub fn enable_watcher() -> CommandResult<WatcherPayload> {
-    match chatgpt_plus_core::watcher::enable_watcher() {
-        Ok(()) => ok("watcher 已启用。", watcher_payload()),
-        Err(error) => failed(&format!("启用 watcher 失败：{error}"), watcher_payload()),
-    }
-}
-
-#[tauri::command]
-pub fn disable_watcher() -> CommandResult<WatcherPayload> {
-    match chatgpt_plus_core::watcher::disable_watcher() {
-        Ok(()) => ok("watcher 已禁用。", watcher_payload()),
-        Err(error) => failed(&format!("禁用 watcher 失败：{error}"), watcher_payload()),
-    }
-}
-
 pub(super) fn ads_payload(payload: Value) -> AdsPayload {
     AdsPayload {
         version: payload.get("version").and_then(Value::as_u64).unwrap_or(1),
@@ -605,13 +561,5 @@ pub(super) fn install_background_failure(
         message: format!("{action}后台任务失败：{error}"),
         app_shortcut: state.app_shortcut,
         legacy_management_shortcut: state.legacy_management_shortcut,
-    }
-}
-
-pub(super) fn watcher_payload() -> WatcherPayload {
-    let flag = chatgpt_plus_core::watcher::default_watcher_disabled_flag();
-    WatcherPayload {
-        enabled: !flag.exists(),
-        disabled_flag: flag.to_string_lossy().to_string(),
     }
 }

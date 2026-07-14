@@ -183,7 +183,8 @@ fn platform_install(options: &InstallOptions) -> anyhow::Result<()> {
 fn platform_uninstall(options: &InstallOptions) -> anyhow::Result<()> {
     #[cfg(windows)]
     {
-        windows::uninstall_shortcuts(options)
+        let _ = options;
+        anyhow::bail!("Windows 仅支持创建 ChatGPT++ 快捷方式")
     }
 
     #[cfg(target_os = "macos")]
@@ -263,6 +264,7 @@ pub fn cleanup_legacy_user_entrypoints() -> anyhow::Result<Vec<PathBuf>> {
 
     #[cfg(windows)]
     {
+        removed.extend(windows::cleanup_legacy_autostart()?);
         let mut roots = Vec::new();
         if let Some(desktop) = crate::windows_integration::desktop_dir() {
             roots.push(desktop);

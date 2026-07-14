@@ -64,7 +64,7 @@ impl ManagedLaunchRuntime {
             previous.handle.shutdown_owned_resources().await;
         }
         if action == LaunchAction::Restart {
-            chatgpt_plus_core::watcher::stop_codex_processes_and_wait();
+            chatgpt_plus_core::codex_processes::stop_codex_processes_and_wait();
         }
 
         let hooks = ManagerLaunchHooks::default();

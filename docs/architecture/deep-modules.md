@@ -113,7 +113,7 @@ The adapters are grouped by business domain:
 - `relay`: Relay status, files, activation, tests, and diagnostics;
 - `context`: managed context inventory and synchronization;
 - `diagnostics`: logs and environment conflict repair;
-- `install`: entrypoints, updates, watcher, and marketplace maintenance;
+- `install`: entrypoints, updates, and marketplace maintenance;
 - `sessions`: local sessions and provider synchronization.
 
 **Invariants:** Every registered name remains the frontend wire command name.

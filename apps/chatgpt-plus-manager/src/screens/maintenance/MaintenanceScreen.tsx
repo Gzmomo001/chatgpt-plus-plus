@@ -17,8 +17,6 @@ export type MaintenanceLaunchForm = {
 
 export type MaintenanceView = {
   codexApp: MaintenanceStatusView;
-  appShortcut: MaintenanceStatusView;
-  watcher: MaintenanceStatusView;
   savedCodexAppPath: string;
   launchForm: MaintenanceLaunchForm;
   removeOwnedData: boolean;
@@ -31,10 +29,6 @@ export type MaintenanceActions = {
   repairShortcuts: () => Promise<void>;
   installEntrypoints: () => Promise<void>;
   uninstallEntrypoints: () => Promise<void>;
-  installWatcher: () => Promise<void>;
-  uninstallWatcher: () => Promise<void>;
-  enableWatcher: () => Promise<void>;
-  disableWatcher: () => Promise<void>;
   chooseCodexAppPath: (mode: "folder" | "file") => Promise<void>;
   clearCodexAppPath: () => Promise<void>;
   launch: () => Promise<void>;
@@ -43,16 +37,16 @@ export type MaintenanceActions = {
 
 export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; actions: MaintenanceActions }) {
   const { codexApp, launchForm, savedCodexAppPath } = view;
+  const isWindows =
+    typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
 
   return (
     <>
       <Panel>
-        <CardHead title={t("检查与修复")} detail={t("检查入口、Codex 应用和 Watcher 状态")} />
+        <CardHead title={t("检查与修复")} detail={t("检查 Codex 应用状态")} />
         <CardContent>
           <div className="status-table">
             <StatusRow title={t("Codex 应用")} {...codexApp} />
-            <StatusRow title={t("ChatGPT++ 应用入口")} {...view.appShortcut} />
-            <StatusRow title={t("Watcher 自动接管")} {...view.watcher} />
           </div>
           <Toolbar>
             <Button onClick={() => void actions.checkHealth()}>{t("检查")}</Button>
@@ -100,38 +94,41 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
         </CardContent>
       </Panel>
       <Panel>
-        <CardHead title={t("入口与自动接管")} detail={t("安装入口后，可用 Watcher 持续保持 ChatGPT++ 接管状态")} />
+        <CardHead
+          title={t("入口管理")}
+          detail={
+            isWindows
+              ? t("创建 ChatGPT++ 桌面快捷方式")
+              : t("安装、卸载或修复 ChatGPT++ 系统入口")
+          }
+        />
         <CardContent>
           <section className="feature-group">
             <div className="feature-group-head">
               <strong>{t("入口管理")}</strong>
               <small>{t("快捷方式写入系统实际桌面位置，不使用写死桌面路径")}</small>
             </div>
-            <label className="check-row">
-              <input
-                checked={view.removeOwnedData}
-                onChange={(event) => actions.setRemoveOwnedData(event.currentTarget.checked)}
-                type="checkbox"
-              />
-              <span>{t("卸载时移除 ChatGPT++ 托管数据")}</span>
-            </label>
             <Toolbar>
-              <Button onClick={() => void actions.installEntrypoints()}>{t("安装入口")}</Button>
-              <Button variant="secondary" onClick={() => void actions.uninstallEntrypoints()}>{t("卸载入口")}</Button>
-              <Button variant="secondary" onClick={() => void actions.repairShortcuts()}>{t("修复入口")}</Button>
+              {isWindows ? (
+                <Button onClick={() => void actions.installEntrypoints()}>{t("创建快捷方式")}</Button>
+              ) : (
+                <>
+                  <Button onClick={() => void actions.installEntrypoints()}>{t("安装入口")}</Button>
+                  <Button variant="secondary" onClick={() => void actions.uninstallEntrypoints()}>{t("卸载入口")}</Button>
+                  <Button variant="secondary" onClick={() => void actions.repairShortcuts()}>{t("修复入口")}</Button>
+                </>
+              )}
             </Toolbar>
-          </section>
-          <section className="feature-group">
-            <div className="feature-group-head">
-              <strong>{t("自动接管")}</strong>
-              <small>{t("Watcher 用于保持 ChatGPT++ 接管状态")}</small>
-            </div>
-            <Toolbar>
-              <Button variant="secondary" onClick={() => void actions.installWatcher()}>{t("安装 watcher")}</Button>
-              <Button variant="secondary" onClick={() => void actions.uninstallWatcher()}>{t("移除 watcher")}</Button>
-              <Button variant="secondary" onClick={() => void actions.enableWatcher()}>{t("启用")}</Button>
-              <Button variant="secondary" onClick={() => void actions.disableWatcher()}>{t("禁用")}</Button>
-            </Toolbar>
+            {!isWindows ? (
+              <label className="check-row">
+                <input
+                  checked={view.removeOwnedData}
+                  onChange={(event) => actions.setRemoveOwnedData(event.currentTarget.checked)}
+                  type="checkbox"
+                />
+                <span>{t("卸载时移除 ChatGPT++ 托管数据")}</span>
+              </label>
+            ) : null}
           </section>
         </CardContent>
       </Panel>

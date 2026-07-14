@@ -199,5 +199,19 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
 }
 
 function FeatureToggle({ title, detail, checked, disabled = false, onChange }: { title: string; detail: string; checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
-  return <label className={`feature-toggle ${disabled ? "disabled" : ""}`}><input checked={checked} disabled={disabled} onChange={(event) => onChange(event.currentTarget.checked)} type="checkbox" /><span><strong>{title}</strong><small>{detail}</small></span><Badge status={!disabled && checked ? "ok" : "disabled"} /></label>;
+  return (
+    <label className={`feature-toggle ${disabled ? "disabled" : ""}`}>
+      <span>
+        <strong>{title}</strong>
+        <small>{detail}</small>
+      </span>
+      <input
+        aria-label={title}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.checked)}
+        type="checkbox"
+      />
+    </label>
+  );
 }

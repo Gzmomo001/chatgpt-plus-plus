@@ -5,6 +5,7 @@ pub mod branding;
 pub mod ccs_import;
 pub mod codex_home;
 pub mod codex_home_apply;
+pub mod codex_processes;
 pub mod codex_sqlite;
 mod computer_use_guard;
 pub mod diagnostic_log;
@@ -30,7 +31,6 @@ pub mod settings;
 pub mod status;
 pub mod update;
 pub mod version;
-pub mod watcher;
 #[cfg(windows)]
 mod windows_integration;
 

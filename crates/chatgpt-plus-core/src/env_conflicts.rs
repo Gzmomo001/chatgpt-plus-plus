@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::path::PathBuf;
 
+#[cfg(windows)]
 const WINDOWS_USER_ENV_KEY: &str = "Environment";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -161,11 +162,12 @@ fn timestamp_millis() -> u128 {
 
 #[cfg(windows)]
 fn detect_user_env_conflicts() -> Vec<EnvConflict> {
-    crate::windows_integration::read_current_user_string_values(WINDOWS_USER_ENV_KEY)
+    let pairs = crate::windows_integration::read_current_user_string_values(WINDOWS_USER_ENV_KEY)
         .unwrap_or_default()
         .into_iter()
         .map(|(name, value)| (name, value.unwrap_or_default()))
-        .pipe(|pairs| detected_env_conflicts_from_pairs(pairs, EnvConflictSource::User))
+        .collect::<Vec<_>>();
+    detected_env_conflicts_from_pairs(pairs, EnvConflictSource::User)
 }
 
 #[cfg(not(windows))]
@@ -183,14 +185,6 @@ fn remove_user_env_value(name: &str) -> anyhow::Result<bool> {
 fn remove_user_env_value(_name: &str) -> anyhow::Result<bool> {
     Ok(false)
 }
-
-trait Pipe: Sized {
-    fn pipe<T>(self, f: impl FnOnce(Self) -> T) -> T {
-        f(self)
-    }
-}
-
-impl<T> Pipe for T {}
 
 #[cfg(test)]
 mod tests {

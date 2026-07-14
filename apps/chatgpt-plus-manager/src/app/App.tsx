@@ -1,16 +1,15 @@
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   CircleArrowUp,
   Languages,
   Moon,
-  RefreshCw,
   Rocket,
   Sun,
 } from "lucide-react";
 import { RelayProfilesScreen } from "@/screens/relay-profiles/RelayProfilesScreen";
-import { OverviewScreen } from "@/screens/overview/OverviewScreen";
-import type { OverviewActions } from "@/screens/overview/OverviewScreen";
+import { OverviewHealthIndicators } from "@/screens/overview/OverviewHealthIndicators";
 import { detectLaunchCrash } from "@/screens/overview/presentation";
 import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
 import { SettingsScreen } from "@/screens/settings/SettingsScreen";
@@ -43,7 +42,13 @@ import type {
 import type { OverviewResult } from "@/shared/contracts/overview";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 import type { LocalSession, ProviderSyncTargetsResult } from "@/shared/contracts/sessions";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 
 import type {
   BackendSettings,
@@ -63,8 +68,6 @@ import {
   type ProviderSyncPayload,
   type RelayResult,
   type RemotePluginMarketplaceResult,
-  type WatcherAction,
-  type WatcherResult,
 } from "@/app/actions";
 import {
   ConfirmDialog,
@@ -73,13 +76,16 @@ import {
 import {
   isSuccessStatus,
   loadInitialTheme,
-  navigationGroups,
+  navigationRoutes,
   routeSubtitle,
   routeTitle,
   stringifyError,
   type Theme,
 } from "@/app/presentation";
-import { loadInitialRoute, type Route } from "@/app/routes";
+import {
+  loadInitialRoute,
+  type Route,
+} from "@/app/routes";
 import {
   activeRelayProfile,
   defaultSettings,
@@ -104,6 +110,8 @@ import {
 
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
 const CHAT_UPSTREAM_BASE_URL_KEY = "chatgpt_plus_chat_base_url";
+const DEVELOPMENT_RUNTIME =
+  typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 type ProviderSyncProgress = {
   active: boolean;
@@ -165,7 +173,6 @@ export function App() {
   }
   const [logs, setLogs] = useState<LogsResult | null>(null);
   const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
-  const [watcher, setWatcher] = useState<WatcherResult | null>(null);
   const [update, setUpdate] = useState<UpdateResult | null>(null);
   const [updateInstallProgress, setUpdateInstallProgress] = useState<TaskProgress>({
     active: false,
@@ -445,12 +452,21 @@ export function App() {
     }
   };
 
-  const refreshWatcher = async (silent = false) => {
-    const result = await run(() => managerActions.maintenance.loadWatcher());
-    if (result) {
-      setWatcher(result);
-      if (!silent) showResultNotice(t("Watcher 状态"), result, { silentSuccess: true });
-    }
+  const refreshSettingsPage = async () => {
+    await Promise.all([
+      refreshSettings(true),
+      refreshOverview(true),
+      refreshLogs(true),
+      refreshDiagnostics(true),
+    ]);
+  };
+
+  const scrollToSettingsSection = (sectionId: string) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        document.getElementById(sectionId)?.scrollIntoView({ block: "start" });
+      });
+    });
   };
 
   const navigate = async (next: Route) => {
@@ -458,7 +474,6 @@ export function App() {
       sessionsControllerRef.current!.reset();
     }
     setRoute(next);
-    if (next === "overview") await refreshOverview(true);
     if (next === "relay") {
       await refreshSettings(true);
       await refreshRelay(true);
@@ -471,30 +486,24 @@ export function App() {
       await refreshLocalSessions(true);
       await refreshProviderSyncTargets(true);
     }
-    if (next === "settings") await refreshSettings(true);
-    if (next === "about") {
-      await refreshOverview(true);
-      await refreshLogs(true);
-      await refreshDiagnostics(true);
+    if (next === "enhance") {
+      await refreshSettings(true);
+      await refreshRemotePluginMarketplace(true);
+      await refreshPluginInventory(true);
     }
-    if (next === "maintenance") {
-      await refreshOverview(true);
-      await refreshWatcher(true);
-    }
+    if (next === "settings") await refreshSettingsPage();
+  };
+
+  const openSettingsPage = async (sectionId?: string) => {
+    setRoute("settings");
+    await refreshSettingsPage();
+    if (sectionId) scrollToSettingsSection(sectionId);
   };
 
   const launch = async () => {
     const result = await launchCommand("launch");
     if (result) {
       showNotice(t("启动任务"), result.message, result.status);
-      await refreshOverview(true);
-    }
-  };
-
-  const restart = async () => {
-    const result = await launchCommand("restart");
-    if (result) {
-      showNotice(t("重启 ChatGPT++"), result.message, result.status);
       await refreshOverview(true);
     }
   };
@@ -691,14 +700,6 @@ export function App() {
     if (result) {
       showNotice(t("快捷方式修复"), result.message, result.status);
       await refreshOverview(true);
-    }
-  };
-
-  const watcherAction = async (action: WatcherAction) => {
-    const result = await run(() => managerActions.maintenance.changeWatcher(action));
-    if (result) {
-      setWatcher(result);
-      showNotice(t("Watcher 操作"), result.message, result.status);
     }
   };
 
@@ -1086,7 +1087,8 @@ export function App() {
     void (async () => {
       const startup = await run(() => managerActions.app.startup());
       if (startup?.showUpdate) {
-        setRoute("about");
+        setRoute("settings");
+        scrollToSettingsSection("settings-diagnostics");
         void checkUpdate(false);
       } else {
         void checkUpdate(true);
@@ -1140,9 +1142,7 @@ export function App() {
 
   const actions = useMemo(
     () => ({
-      refreshCurrent: () => navigate(route),
       launch,
-      restart,
       repairPluginMarketplace,
       refreshRemotePluginMarketplace,
       repairRemotePluginMarketplace,
@@ -1234,27 +1234,15 @@ export function App() {
       showMessage: async (title: string, message: string, status?: Status) => showNotice(title, message, status),
       copyLogs: () => copyText(logs?.text ?? "", t("日志已复制。")),
       copyDiagnostics: () => copyText(diagnostics?.report ?? "", t("诊断报告已复制。")),
-      goLogs: () => navigate("about"),
       checkHealth: async () => {
         await refreshOverview(true);
         await refreshRelay(true);
-        await refreshWatcher(true);
-        showNotice(t("检查完成"), t("已刷新 Codex 应用、入口和 Watcher 状态。"), "ok");
+        showNotice(t("检查完成"), t("已刷新 Codex 应用状态。"), "ok");
       },
-      installWatcher: () => watcherAction("install"),
-      uninstallWatcher: () => watcherAction("uninstall"),
-      enableWatcher: () => watcherAction("enable"),
-      disableWatcher: () => watcherAction("disable"),
       toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     }),
     [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, logs, diagnostics, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
   );
-  const overviewActions: OverviewActions = {
-    checkHealth: actions.checkHealth,
-    repairPluginMarketplace: actions.repairPluginMarketplace,
-    launch: actions.launch,
-    goAbout: actions.goLogs,
-  };
   const sessionsView: SessionsView = {
     ...sessionsControllerView,
     providerSync: {
@@ -1324,14 +1312,6 @@ export function App() {
       status: overview?.codexApp.status,
       path: overview?.codexApp.path,
     },
-    appShortcut: {
-      status: overview?.appShortcut.status,
-      path: overview?.appShortcut.path,
-    },
-    watcher: {
-      status: watcher?.enabled ? "ok" : "disabled",
-      path: watcher?.disabledFlag,
-    },
     savedCodexAppPath: settings?.settings.codexAppPath ?? "",
     launchForm,
     removeOwnedData,
@@ -1343,10 +1323,6 @@ export function App() {
     repairShortcuts: actions.repairShortcuts,
     installEntrypoints: actions.installEntrypoints,
     uninstallEntrypoints: actions.uninstallEntrypoints,
-    installWatcher: actions.installWatcher,
-    uninstallWatcher: actions.uninstallWatcher,
-    enableWatcher: actions.enableWatcher,
-    disableWatcher: actions.disableWatcher,
     chooseCodexAppPath: actions.chooseCodexAppPath,
     clearCodexAppPath: actions.clearCodexAppPath,
     launch: actions.launch,
@@ -1354,38 +1330,51 @@ export function App() {
   };
   const hasUpdate = update?.updateAvailable === true;
 
+  const handleWindowDragMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.detail !== 1) return;
+    event.preventDefault();
+    void getCurrentWindow().startDragging().catch((error) => {
+      console.error("Failed to start native window dragging", error);
+    });
+  };
+
   return (
     <div className={`shell ${theme}`}>
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-copy">
-            <div className="brand-title-row">
-              <div className="brand-title">ChatGPT++</div>
-              {hasUpdate ? (
-                <button
-                  className="update-dot"
-                  onClick={() => {
-                    setRoute("about");
-                    void checkUpdate(false);
-                  }}
-                  title={tf("发现新版本 {0}", [update?.latestVersion ?? ""])}
-                  type="button"
-                >
-                  <CircleArrowUp className="h-4 w-4" aria-hidden="true" />
-                </button>
-              ) : null}
+      <div
+        aria-hidden="true"
+        className="window-drag-region"
+        onMouseDown={handleWindowDragMouseDown}
+      />
+      <main className="workspace">
+        <header className="topbar" data-tauri-drag-region key={`topbar-${route}`}>
+          <div className="topbar-navigation">
+            <div className="brand">
+              <div className="brand-title-row">
+                <div className="brand-title">
+                  ChatGPT++
+                  {DEVELOPMENT_RUNTIME ? <span className="development-badge">DEV</span> : null}
+                </div>
+                {hasUpdate ? (
+                  <button
+                    className="update-dot"
+                    onClick={() => {
+                      void openSettingsPage("settings-diagnostics");
+                      void checkUpdate(false);
+                    }}
+                    title={tf("发现新版本 {0}", [update?.latestVersion ?? ""])}
+                    type="button"
+                  >
+                    <CircleArrowUp className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <div className="brand-subtitle">{t("管理控制台")}</div>
-          </div>
-        </div>
-        <nav className="nav">
-          {navigationGroups.map((group) => (
-            <div className="nav-group" key={group.label}>
-              <div className="nav-section-label">{group.label}</div>
-              {group.routes.map((item) => {
+            <nav aria-label={t("主导航")} className="nav">
+              {navigationRoutes.map((item) => {
                 const Icon = item.icon;
                 return (
                   <button
+                    aria-label={item.label}
                     aria-current={route === item.id ? "page" : undefined}
                     className={`nav-item ${route === item.id ? "active" : ""}`}
                     key={item.id}
@@ -1396,61 +1385,51 @@ export function App() {
                     <span className="nav-icon">
                       <Icon className="h-4 w-4" aria-hidden="true" />
                     </span>
-                    <span className="nav-label">{item.label}</span>
-                    {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
                   </button>
                 );
               })}
+            </nav>
+            <div className="topbar-actions">
+              <OverviewHealthIndicators overview={overview} onRefresh={actions.checkHealth} />
+              <Button
+                aria-label={getLanguage() === "en" ? t("切换到中文") : t("切换到英文")}
+                onClick={() => toggleLanguage()}
+                size="icon"
+                title={getLanguage() === "en" ? t("切换到中文") : t("切换到英文")}
+                variant="ghost"
+              >
+                <Languages className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <Button
+                aria-label={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
+                onClick={actions.toggleTheme}
+                size="icon"
+                title={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
+                variant="ghost"
+              >
+                {theme === "dark" ? (
+                  <Sun className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Moon className="h-4 w-4" aria-hidden="true" />
+                )}
+              </Button>
+              <Button
+                aria-label={t("启动 ChatGPT++")}
+                onClick={() => void actions.launch()}
+                size="icon"
+                title={t("启动 ChatGPT++")}
+                variant="ghost"
+              >
+                <Rocket className="h-4 w-4" aria-hidden="true" />
+              </Button>
             </div>
-          ))}
-        </nav>
-        <div className="sidebar-footer">
-          <span className="connection-dot" aria-hidden="true" />
-          <span>{t("本地工作区")}</span>
-          <kbd>⌘ K</kbd>
-        </div>
-      </aside>
-      <main className="workspace">
-        <header className="topbar" key={`topbar-${route}`}>
+          </div>
           <div className="page-heading">
-            <span className="page-kicker">ChatGPT++</span>
             <h1>{routeTitle(route)}</h1>
             <p>{routeSubtitle(route)}</p>
           </div>
-          <div className="topbar-actions">
-            <Button
-              onClick={() => toggleLanguage()}
-              size="icon"
-              title={getLanguage() === "en" ? t("切换到中文") : t("切换到英文")}
-              variant="outline"
-            >
-              <Languages className="h-4 w-4" />
-            </Button>
-            <Button
-              onClick={actions.toggleTheme}
-              size="icon"
-              title={theme === "dark" ? t("切换到浅色") : t("切换到深色")}
-              variant="outline"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-            <Button onClick={() => void actions.restart()} title={t("重启 ChatGPT++")} variant="outline">
-              <Rocket className="h-4 w-4" />
-              <span className="restart-label">{t("重启 ChatGPT++")}</span>
-            </Button>
-            <Button onClick={() => void actions.refreshCurrent()} size="icon" title={t("刷新当前页面")} variant="outline">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
         </header>
         <section className="screen" key={route}>
-          {route === "overview" ? (
-            <OverviewScreen
-              overview={overview}
-              pluginMarketplaceProgress={pluginMarketplaceProgress}
-              actions={overviewActions}
-            />
-          ) : null}
           {route === "relay" ? (
             <RelayProfilesScreen
               relayFiles={relayFiles}
@@ -1473,27 +1452,30 @@ export function App() {
               actions={enhanceActions}
             />
           ) : null}
-          {route === "maintenance" ? (
-            <MaintenanceScreen view={maintenanceView} actions={maintenanceActions} />
-          ) : null}
-          {route === "about" ? (
-            <AboutScreen
-              overview={overview}
-              update={update}
-              updateInstallProgress={updateInstallProgress}
-              logs={logs}
-              diagnostics={diagnostics}
-              actions={actions}
-            />
-          ) : null}
           {route === "settings" ? (
-            <SettingsScreen
-              settingsPath={settings?.settingsPath ?? ""}
-              theme={theme}
-              form={settingsForm}
-              onFormChange={(form) => setSettingsForm((current) => ({ ...current, ...form }))}
-              actions={actions}
-            />
+            <div className="settings-page">
+              <section className="settings-page-section" id="settings-preferences">
+                <SettingsScreen
+                  settingsPath={settings?.settingsPath ?? ""}
+                  form={settingsForm}
+                  onFormChange={(form) => setSettingsForm((current) => ({ ...current, ...form }))}
+                  actions={actions}
+                />
+              </section>
+              <section className="settings-page-section" id="settings-maintenance">
+                <MaintenanceScreen view={maintenanceView} actions={maintenanceActions} />
+              </section>
+              <section className="settings-page-section" id="settings-diagnostics">
+                <AboutScreen
+                  overview={overview}
+                  update={update}
+                  updateInstallProgress={updateInstallProgress}
+                  logs={logs}
+                  diagnostics={diagnostics}
+                  actions={actions}
+                />
+              </section>
+            </div>
           ) : null}
         </section>
       </main>
@@ -1529,9 +1511,7 @@ export function App() {
 }
 
 type Actions = {
-  refreshCurrent: () => Promise<void>;
   launch: () => Promise<void>;
-  restart: () => Promise<void>;
   repairPluginMarketplace: () => Promise<void>;
   refreshRemotePluginMarketplace: (silent?: boolean) => Promise<RemotePluginMarketplaceResult | null>;
   repairRemotePluginMarketplace: () => Promise<void>;
@@ -1574,11 +1554,6 @@ type Actions = {
   showMessage: (title: string, message: string, status?: Status) => Promise<void>;
   copyLogs: () => Promise<void>;
   copyDiagnostics: () => Promise<void>;
-  goLogs: () => Promise<void>;
-  installWatcher: () => Promise<void>;
-  uninstallWatcher: () => Promise<void>;
-  enableWatcher: () => Promise<void>;
-  disableWatcher: () => Promise<void>;
   toggleTheme: () => void;
   checkHealth: () => Promise<void>;
 };

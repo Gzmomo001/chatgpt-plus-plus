@@ -143,12 +143,6 @@ test("adapters honor each command's Rust wire casing before callers observe it",
         settings: {},
         settings_path: "/tmp/settings.json",
       },
-      load_watcher_state: {
-        status: "ok",
-        message: "ok",
-        enabled: true,
-        disabled_flag: "/tmp/disabled",
-      },
       install_entrypoints: {
         status: "ok",
         message: "ok",
@@ -182,7 +176,6 @@ test("adapters honor each command's Rust wire casing before callers observe it",
 
   const overview = await actions.overview.load();
   const settings = await actions.settings.load();
-  const watcher = await actions.maintenance.loadWatcher();
   const entrypoints = await actions.maintenance.installEntrypoints();
   const deleted = await actions.sessions.delete({ id: "session-a", title: "A", dbPath: "/tmp/db" });
   const sessions = await actions.sessions.list();
@@ -207,7 +200,6 @@ test("adapters honor each command's Rust wire casing before callers observe it",
   assert.equal("latest_launch" in overview, false);
   assert.equal(settings.settingsPath, "/tmp/settings.json");
   assert.equal("user_scripts" in settings, false);
-  assert.equal(watcher.disabledFlag, "/tmp/disabled");
   assert.deepEqual(entrypoints.appShortcut, {
     installed: true,
     path: "/tmp/ChatGPT++.lnk",

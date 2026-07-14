@@ -3,15 +3,17 @@ import test from "node:test";
 
 import { loadInitialRoute } from "./routes.ts";
 
-test("opens about when the update query flag is set", () => {
-  assert.equal(loadInitialRoute({ search: "?showUpdate=1", hash: "" }), "about");
+test("opens the unified settings page when the update query flag is set", () => {
+  const location = { search: "?showUpdate=1", hash: "" };
+  assert.equal(loadInitialRoute(location), "settings");
 });
 
-test("opens about for the about hash", () => {
-  assert.equal(loadInitialRoute({ search: "", hash: "#about" }), "about");
+test("keeps the legacy about hash as a unified settings deep link", () => {
+  const location = { search: "", hash: "#about" };
+  assert.equal(loadInitialRoute(location), "settings");
 });
 
-test("opens overview for every other startup location", () => {
-  assert.equal(loadInitialRoute({ search: "?showUpdate=0", hash: "#settings" }), "overview");
-  assert.equal(loadInitialRoute({ search: "", hash: "" }), "overview");
+test("opens Relay for every other startup location", () => {
+  assert.equal(loadInitialRoute({ search: "?showUpdate=0", hash: "#settings" }), "relay");
+  assert.equal(loadInitialRoute({ search: "", hash: "" }), "relay");
 });

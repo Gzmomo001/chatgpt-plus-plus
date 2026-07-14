@@ -1,18 +1,13 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use super::{
-    InstallOptions, LEGACY_MANAGER_NAME, MANAGER_BINARY, SILENT_NAME, install_root_or_default,
-    option_or_current_exe,
-};
+use super::{InstallOptions, MANAGER_BINARY, install_root_or_default, option_or_current_exe};
 
-const UNINSTALL_SUBKEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\ChatGPTPlusPlus";
-const LEGACY_UNINSTALL_SUBKEY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\CodexPlusPlus";
-const LEGACY_UNINSTALL_SUBKEY_DISPLAY: &str =
-    r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Codex++";
-const URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\chatgptplusplus";
-const LEGACY_URL_PROTOCOL_SUBKEY: &str = r"Software\Classes\codexplusplus";
+#[cfg(windows)]
+const LEGACY_AUTOSTART_RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
+#[cfg(windows)]
+const LEGACY_AUTOSTART_RUN_VALUE: &str = "ChatGPTPlusPlusWatcher";
+#[cfg(windows)]
+const LEGACY_AUTOSTART_SHORTCUT_NAME: &str = "ChatGPTPlusPlusWatcher.lnk";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsEntrypointPlan {
@@ -20,28 +15,11 @@ pub struct WindowsEntrypointPlan {
     pub app_shortcut: String,
     pub legacy_management_shortcut: String,
     pub app_shortcut_target: String,
-    pub app_path: String,
-    pub icon_path: String,
-    pub app_icon_path: String,
-    pub uninstaller_path: String,
-    pub uninstall_command: String,
-    pub quiet_uninstall_command: String,
-    pub uninstall_key: String,
-    pub legacy_uninstall_key: String,
-    pub remove_owned_data: bool,
 }
 
 pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypointPlan {
     let install_root = install_root_or_default(options);
     let manager_path = option_or_current_exe(&options.manager_path, MANAGER_BINARY);
-    let icon_path = default_icon_path();
-    let install_location = manager_path
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| install_root.clone());
-    let uninstaller_path = install_location.join("uninstall.exe");
-    let uninstall_command = format!("\"{}\"", uninstaller_path.to_string_lossy());
-    let quiet_uninstall_command = format!("{uninstall_command} /S");
     WindowsEntrypointPlan {
         app_shortcut: install_root
             .join("ChatGPT++.lnk")
@@ -53,15 +31,6 @@ pub fn build_windows_entrypoint_plan(options: &InstallOptions) -> WindowsEntrypo
             .to_string(),
         app_shortcut_target: manager_path.to_string_lossy().to_string(),
         install_root: install_root.to_string_lossy().to_string(),
-        app_path: manager_path.to_string_lossy().to_string(),
-        icon_path: icon_path.to_string_lossy().to_string(),
-        app_icon_path: manager_path.to_string_lossy().to_string(),
-        uninstaller_path: uninstaller_path.to_string_lossy().to_string(),
-        uninstall_command,
-        quiet_uninstall_command,
-        uninstall_key: "ChatGPTPlusPlus".to_string(),
-        legacy_uninstall_key: "CodexPlusPlus".to_string(),
-        remove_owned_data: options.remove_owned_data,
     }
 }
 
@@ -75,41 +44,8 @@ pub fn install_shortcuts(options: &InstallOptions) -> anyhow::Result<()> {
         PathBuf::from(&plan.app_shortcut),
         PathBuf::from(&plan.app_shortcut_target),
         "Open ChatGPT++",
-        PathBuf::from(&plan.app_icon_path),
+        PathBuf::from(&plan.app_shortcut_target),
     )?;
-    register_url_protocol(&plan.app_path)?;
-    write_uninstall_registration(&plan)?;
-    Ok(())
-}
-
-#[cfg(windows)]
-pub fn uninstall_shortcuts(options: &InstallOptions) -> anyhow::Result<()> {
-    let plan = build_windows_entrypoint_plan(options);
-    let _ = std::fs::remove_file(&plan.app_shortcut);
-    let _ = std::fs::remove_file(&plan.legacy_management_shortcut);
-    let _ = crate::windows_integration::delete_current_user_key(&format!(
-        r"{URL_PROTOCOL_SUBKEY}\shell\open\command"
-    ));
-    let _ = crate::windows_integration::delete_current_user_key(&format!(
-        r"{URL_PROTOCOL_SUBKEY}\shell\open"
-    ));
-    let _ = crate::windows_integration::delete_current_user_key(&format!(
-        r"{URL_PROTOCOL_SUBKEY}\shell"
-    ));
-    let _ = crate::windows_integration::delete_current_user_key(URL_PROTOCOL_SUBKEY);
-    let _ = crate::windows_integration::delete_current_user_key(&format!(
-        r"{LEGACY_URL_PROTOCOL_SUBKEY}\shell\open\command"
-    ));
-    let _ = crate::windows_integration::delete_current_user_key(&format!(
-        r"{LEGACY_URL_PROTOCOL_SUBKEY}\shell\open"
-    ));
-    let _ = crate::windows_integration::delete_current_user_key(&format!(
-        r"{LEGACY_URL_PROTOCOL_SUBKEY}\shell"
-    ));
-    let _ = crate::windows_integration::delete_current_user_key(LEGACY_URL_PROTOCOL_SUBKEY);
-    let _ = crate::windows_integration::delete_current_user_key(LEGACY_UNINSTALL_SUBKEY);
-    let _ = crate::windows_integration::delete_current_user_key(LEGACY_UNINSTALL_SUBKEY_DISPLAY);
-    let _ = crate::windows_integration::delete_current_user_key(UNINSTALL_SUBKEY);
     Ok(())
 }
 
@@ -118,9 +54,32 @@ pub fn install_shortcuts(_options: &InstallOptions) -> anyhow::Result<()> {
     anyhow::bail!("Windows shortcuts are only supported on Windows")
 }
 
+#[cfg(windows)]
+pub fn cleanup_legacy_autostart() -> anyhow::Result<Vec<PathBuf>> {
+    crate::windows_integration::delete_current_user_value(
+        LEGACY_AUTOSTART_RUN_KEY,
+        LEGACY_AUTOSTART_RUN_VALUE,
+    )?;
+    let Some(app_data) = std::env::var_os("APPDATA") else {
+        return Ok(Vec::new());
+    };
+    let shortcut = PathBuf::from(app_data)
+        .join("Microsoft")
+        .join("Windows")
+        .join("Start Menu")
+        .join("Programs")
+        .join("Startup")
+        .join(LEGACY_AUTOSTART_SHORTCUT_NAME);
+    if !shortcut.exists() {
+        return Ok(Vec::new());
+    }
+    std::fs::remove_file(&shortcut)?;
+    Ok(vec![shortcut])
+}
+
 #[cfg(not(windows))]
-pub fn uninstall_shortcuts(_options: &InstallOptions) -> anyhow::Result<()> {
-    anyhow::bail!("Windows shortcuts are only supported on Windows")
+pub fn cleanup_legacy_autostart() -> anyhow::Result<Vec<PathBuf>> {
+    Ok(Vec::new())
 }
 
 #[cfg(windows)]
@@ -139,67 +98,4 @@ fn create_entrypoint_shortcut(
         icon: Some(icon),
         show_minimized: false,
     })
-}
-
-#[cfg(windows)]
-fn write_uninstall_registration(plan: &WindowsEntrypointPlan) -> anyhow::Result<()> {
-    let _ = crate::windows_integration::delete_current_user_key(LEGACY_UNINSTALL_SUBKEY);
-    let _ = crate::windows_integration::delete_current_user_key(LEGACY_UNINSTALL_SUBKEY_DISPLAY);
-    let install_location = Path::new(&plan.app_path)
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from(&plan.install_root))
-        .to_string_lossy()
-        .to_string();
-    for (name, value) in [
-        ("DisplayName", "ChatGPT++".to_string()),
-        ("DisplayVersion", crate::version::VERSION.to_string()),
-        ("Publisher", "Gzmomo001".to_string()),
-        ("DisplayIcon", plan.app_icon_path.clone()),
-        ("InstallLocation", install_location),
-        ("UninstallString", plan.uninstall_command.clone()),
-        ("QuietUninstallString", plan.quiet_uninstall_command.clone()),
-    ] {
-        crate::windows_integration::set_current_user_string_value(UNINSTALL_SUBKEY, name, &value)?;
-    }
-    Ok(())
-}
-
-#[cfg(windows)]
-fn register_url_protocol(manager_path: &str) -> anyhow::Result<()> {
-    register_url_protocol_at(URL_PROTOCOL_SUBKEY, "ChatGPT++", manager_path)?;
-    register_url_protocol_at(LEGACY_URL_PROTOCOL_SUBKEY, "Codex++", manager_path)
-}
-
-#[cfg(windows)]
-fn register_url_protocol_at(
-    subkey: &str,
-    display_name: &str,
-    manager_path: &str,
-) -> anyhow::Result<()> {
-    crate::windows_integration::set_current_user_string_value(
-        subkey,
-        "",
-        &format!("URL:{display_name} Import Protocol"),
-    )?;
-    crate::windows_integration::set_current_user_string_value(subkey, "URL Protocol", "")?;
-    crate::windows_integration::set_current_user_string_value(
-        &format!(r"{subkey}\shell\open\command"),
-        "",
-        &format!("\"{manager_path}\" \"%1\""),
-    )?;
-    Ok(())
-}
-
-fn default_icon_path() -> PathBuf {
-    std::env::current_exe()
-        .ok()
-        .and_then(|path| path.parent().map(Path::to_path_buf))
-        .map(|path| path.join("chatgpt-plus-plus.ico"))
-        .unwrap_or_else(|| PathBuf::from("chatgpt-plus-plus.ico"))
-}
-
-#[allow(dead_code)]
-fn _entrypoint_names() -> (&'static str, &'static str) {
-    (SILENT_NAME, LEGACY_MANAGER_NAME)
 }

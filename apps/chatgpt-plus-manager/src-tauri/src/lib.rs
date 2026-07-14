@@ -9,24 +9,56 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Manager, WindowEvent};
 
+#[cfg(debug_assertions)]
+const TRAY_ID: &str = "chatgpt_plus_dev_tray";
+#[cfg(not(debug_assertions))]
 const TRAY_ID: &str = "chatgpt_plus_tray";
 
 static APP_EXITING: AtomicBool = AtomicBool::new(false);
 const TRAY_MENU_SHOW: &str = "tray_show_main";
 const TRAY_MENU_QUIT: &str = "tray_quit_app";
 
+fn manager_window_title() -> &'static str {
+    if cfg!(debug_assertions) {
+        "ChatGPT++ Dev"
+    } else {
+        "ChatGPT++"
+    }
+}
+
+fn manager_environment() -> &'static str {
+    if cfg!(debug_assertions) {
+        "development"
+    } else {
+        "production"
+    }
+}
+
+fn tray_label(label: &str) -> String {
+    if cfg!(debug_assertions) {
+        format!("{label} (Dev)")
+    } else {
+        label.to_string()
+    }
+}
+
 pub fn run() {
     install_panic_logger();
-    if let Err(error) = chatgpt_plus_core::install::cleanup_legacy_user_entrypoints() {
-        let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
-            "app.legacy_entrypoint_cleanup_failed",
-            serde_json::json!({ "error": error.to_string() }),
-        );
+    if !cfg!(debug_assertions) {
+        if let Err(error) = chatgpt_plus_core::install::cleanup_legacy_user_entrypoints() {
+            let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
+                "app.legacy_entrypoint_cleanup_failed",
+                serde_json::json!({ "error": error.to_string() }),
+            );
+        }
     }
     let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
         "manager.start",
         serde_json::json!({
-            "version": env!("CARGO_PKG_VERSION")
+            "version": env!("CARGO_PKG_VERSION"),
+            "environment": manager_environment(),
+            "guard_port": chatgpt_plus_core::ports::manager_guard_port(),
+            "state_dir": chatgpt_plus_core::paths::default_app_state_dir()
         }),
     );
     let Some(_guard) = acquire_single_instance_guard() else {
@@ -44,9 +76,18 @@ pub fn run() {
             };
             let mut main_window_builder =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
-                    .title("ChatGPT++")
+                    .title(manager_window_title())
                     .inner_size(1180.0, 820.0)
                     .min_inner_size(960.0, 720.0);
+            #[cfg(target_os = "macos")]
+            {
+                main_window_builder = main_window_builder
+                    .title_bar_style(tauri::TitleBarStyle::Overlay)
+                    .hidden_title(true)
+                    .initialization_script(
+                        "document.addEventListener('DOMContentLoaded', () => document.documentElement.classList.add('macos-overlay-titlebar'));",
+                    );
+            }
             if let Some(icon) = app.default_window_icon().cloned() {
                 main_window_builder = main_window_builder.icon(icon)?;
             }
@@ -90,11 +131,6 @@ pub fn run() {
             commands::install::repair_remote_plugin_marketplace,
             commands::install::check_update,
             commands::install::perform_update,
-            commands::install::load_watcher_state,
-            commands::install::install_watcher,
-            commands::install::uninstall_watcher,
-            commands::install::enable_watcher,
-            commands::install::disable_watcher,
             commands::diagnostics::read_latest_logs,
             commands::diagnostics::copy_diagnostics,
             commands::settings::reset_settings,
@@ -138,8 +174,20 @@ pub fn run() {
 }
 
 fn install_tray<R: tauri::Runtime>(app: &tauri::App<R>) -> tauri::Result<()> {
-    let show_item = MenuItem::with_id(app, TRAY_MENU_SHOW, "显示主窗口", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, TRAY_MENU_QUIT, "退出程序", true, None::<&str>)?;
+    let show_item = MenuItem::with_id(
+        app,
+        TRAY_MENU_SHOW,
+        tray_label("显示主窗口"),
+        true,
+        None::<&str>,
+    )?;
+    let quit_item = MenuItem::with_id(
+        app,
+        TRAY_MENU_QUIT,
+        tray_label("退出程序"),
+        true,
+        None::<&str>,
+    )?;
     let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
 
     let mut tray_builder = TrayIconBuilder::with_id(TRAY_ID)
@@ -227,6 +275,13 @@ fn update_tray_labels<R: tauri::Runtime>(
     quit_label: String,
     window_title: String,
 ) {
+    let show_label = tray_label(&show_label);
+    let quit_label = tray_label(&quit_label);
+    let window_title = if cfg!(debug_assertions) {
+        manager_window_title().to_string()
+    } else {
+        window_title
+    };
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
         let show_item = MenuItem::with_id(&app, TRAY_MENU_SHOW, &show_label, true, None::<&str>);
         let quit_item = MenuItem::with_id(&app, TRAY_MENU_QUIT, &quit_label, true, None::<&str>);

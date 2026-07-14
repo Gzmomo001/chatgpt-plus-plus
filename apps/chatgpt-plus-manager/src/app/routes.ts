@@ -1,17 +1,14 @@
 export const ROUTE_IDS = [
-  "overview",
   "relay",
   "sessions",
   "enhance",
-  "maintenance",
-  "about",
   "settings",
 ] as const;
 
 export type Route = (typeof ROUTE_IDS)[number];
 
 export function loadInitialRoute(location?: { search: string; hash: string }): Route {
-  if (!location) return "overview";
+  if (!location) return "relay";
   const params = new URLSearchParams(location.search);
-  return params.get("showUpdate") === "1" || location.hash === "#about" ? "about" : "overview";
+  return params.get("showUpdate") === "1" || location.hash === "#about" ? "settings" : "relay";
 }

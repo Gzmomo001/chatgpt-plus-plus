@@ -5,7 +5,7 @@ use chatgpt_plus_core::settings::{BackendSettings, RelayProfile, normalize_setti
 use serde_json::json;
 
 use super::diagnostics::{self, check_env_conflicts, read_latest_logs};
-use super::install::{self, ads_payload, load_watcher_state, open_external_url, perform_update};
+use super::install::{self, ads_payload, open_external_url, perform_update};
 use super::relay::*;
 use super::sessions::{self, delete_local_session, list_local_sessions};
 use super::settings::{backend_version, load_overview, should_show_update, startup_options};
@@ -145,14 +145,6 @@ fn update_install_requires_release_payload() {
 
     assert_eq!(result.status, "failed");
     assert!(result.message.contains("请先检查更新"));
-}
-
-#[test]
-fn watcher_state_returns_disabled_flag_path() {
-    let result = load_watcher_state();
-
-    assert_eq!(result.status, "ok");
-    assert!(result.payload.disabled_flag.contains("watcher.disabled"));
 }
 
 #[test]

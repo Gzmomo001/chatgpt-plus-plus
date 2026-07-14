@@ -17,19 +17,16 @@ export type SettingsForm = {
 };
 
 export type SettingsActions = {
-  toggleTheme: () => void;
   saveSettings: () => Promise<void>;
 };
 
 export function SettingsScreen({
   settingsPath,
-  theme,
   form,
   onFormChange,
   actions,
 }: {
   settingsPath: string;
-  theme: "dark" | "light";
   form: SettingsForm;
   onFormChange: (value: SettingsForm) => void;
   actions: SettingsActions;
@@ -38,13 +35,6 @@ export function SettingsScreen({
     <Panel>
       <CardHead title={t("偏好设置")} detail={settingsPath} />
       <CardContent>
-        <div className="theme-row">
-          <div>
-            <strong>{t("界面主题")}</strong>
-            <span>{t("当前为")}{theme === "dark" ? t("深色") : t("浅色")}{t("模式。")}</span>
-          </div>
-          <Button variant="secondary" onClick={actions.toggleTheme}>{t("切换主题")}</Button>
-        </div>
         <Field label={t("供应商测试模型")}>
           <Input
             value={form.relayTestModel}

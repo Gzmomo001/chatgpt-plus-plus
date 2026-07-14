@@ -665,7 +665,7 @@ impl LaunchHooks for DefaultLaunchHooks {
         }
         let mut empty_streak = 0u32;
         loop {
-            if crate::watcher::find_codex_processes().is_empty() {
+            if crate::codex_processes::find_codex_processes().is_empty() {
                 empty_streak = empty_streak.saturating_add(1);
                 if empty_streak >= 3 {
                     break;

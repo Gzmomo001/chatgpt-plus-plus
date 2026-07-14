@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   isSuccessStatus,
   loadInitialTheme,
-  navigationGroups,
   navigationRoutes,
   routeSubtitle,
   routeTitle,
@@ -12,28 +11,14 @@ import {
 } from "./presentation.ts";
 
 test("projects every application route and its shell copy through one interface", () => {
-  assert.equal(navigationRoutes.length, 7);
+  assert.equal(navigationRoutes.length, 4);
   assert.deepEqual(
     navigationRoutes.map(({ id }) => id),
     [
-      "overview",
+      "settings",
       "relay",
       "sessions",
       "enhance",
-      "maintenance",
-      "about",
-      "settings",
-    ],
-  );
-  assert.deepEqual(
-    navigationGroups.map(({ label, routes }) => ({
-      label,
-      routes: routes.map(({ id }) => id),
-    })),
-    [
-      { label: "日常使用", routes: ["overview", "relay", "sessions"] },
-      { label: "Codex 配置", routes: ["enhance"] },
-      { label: "系统管理", routes: ["maintenance", "about", "settings"] },
     ],
   );
 });
