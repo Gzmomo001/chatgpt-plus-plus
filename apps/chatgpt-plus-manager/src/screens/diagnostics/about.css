@@ -197,7 +197,6 @@
 }
 
 .topbar .nav-item.update-nav-item {
-  position: relative;
   border: 0;
   background: transparent;
   color: hsl(211 100% 68%);
@@ -225,18 +224,6 @@
 
 .topbar .nav-item.update-nav-item:focus-visible .nav-icon {
   color: hsl(207 100% 82%);
-}
-
-.topbar .nav-item.update-nav-item::after {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 6px;
-  height: 6px;
-  border: 1px solid hsl(var(--shell-bg));
-  border-radius: 999px;
-  background: hsl(10 88% 58%);
-  content: "";
 }
 
 @keyframes about-update-spin {
