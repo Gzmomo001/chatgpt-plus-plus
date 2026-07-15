@@ -1,3 +1,5 @@
+#[cfg(windows)]
+use std::path::Path;
 use std::path::PathBuf;
 
 use super::{InstallOptions, MANAGER_BINARY, install_root_or_default, option_or_current_exe};
