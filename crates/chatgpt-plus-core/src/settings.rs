@@ -51,7 +51,6 @@ mod tests {
         assert!(settings.relay_api_key.is_empty());
         assert_eq!(settings.relay_profiles[0].relay_mode, RelayMode::Official);
         assert!(settings.relay_common_config_contents.is_empty());
-        assert_eq!(settings.relay_test_model, default_relay_test_model());
     }
 
     #[test]
@@ -124,7 +123,6 @@ mod tests {
 
         assert_eq!(profile.relay_mode, RelayMode::Official);
         assert!(!profile.official_mix_api_key);
-        assert!(profile.test_model.is_empty());
     }
 
     #[test]
@@ -647,8 +645,7 @@ experimental_bearer_token = "sk-existing""#
                         "apiKey": "sk-b"
                     }
                 ],
-                "activeRelayId": "relay-b",
-                "relayTestModel": "claude-sonnet-4"
+                "activeRelayId": "relay-b"
             }))
             .unwrap();
 
@@ -656,13 +653,33 @@ experimental_bearer_token = "sk-existing""#
         assert_eq!(updated.relay_profiles.len(), 2);
         assert_eq!(active.id, "relay-b");
         assert_eq!(active.name, "中转 B");
-        assert_eq!(updated.relay_test_model, "claude-sonnet-4");
 
         let saved: Value =
             serde_json::from_str(&std::fs::read_to_string(dir.join("settings.json")).unwrap())
                 .unwrap();
         assert!(saved["relayProfiles"][1].get("baseUrl").is_none());
         assert!(saved["relayProfiles"][1].get("apiKey").is_none());
+    }
+
+    #[test]
+    fn settings_store_update_drops_removed_test_model_fields() {
+        let dir = temp_dir();
+        let path = dir.join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"relayTestModel":"legacy-global","relayProfiles":[{"id":"relay-a","name":"Relay A","testModel":"legacy-profile"}],"unknownKey":"preserved"}"#,
+        )
+        .unwrap();
+        let store = SettingsStore::new(path.clone());
+
+        store
+            .update(json!({ "diagnosticLogEnabled": true }))
+            .unwrap();
+
+        let saved: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert!(saved.get("relayTestModel").is_none());
+        assert!(saved["relayProfiles"][0].get("testModel").is_none());
+        assert_eq!(saved["unknownKey"], "preserved");
     }
 
     #[test]

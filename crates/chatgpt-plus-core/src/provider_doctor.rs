@@ -58,13 +58,12 @@ impl ProviderDoctorProbe for LiveProviderDoctorProbe {
     }
 }
 
-pub async fn diagnose(profile: &RelayProfile, fallback_model: &str) -> ProviderDoctorOutcome {
-    diagnose_with_probe(profile, fallback_model, &LiveProviderDoctorProbe).await
+pub async fn diagnose(profile: &RelayProfile) -> ProviderDoctorOutcome {
+    diagnose_with_probe(profile, &LiveProviderDoctorProbe).await
 }
 
 pub async fn diagnose_with_probe(
     profile: &RelayProfile,
-    fallback_model: &str,
     probe: &dyn ProviderDoctorProbe,
 ) -> ProviderDoctorOutcome {
     let profile_name = if profile.name.trim().is_empty() {
@@ -72,16 +71,7 @@ pub async fn diagnose_with_probe(
     } else {
         profile.name.trim().to_string()
     };
-    let test_model = if !profile.test_model.trim().is_empty() {
-        profile.test_model.trim().to_string()
-    } else {
-        let from_profile = crate::relay_config::relay_profile_model(profile);
-        if from_profile.trim().is_empty() {
-            fallback_model.trim().to_string()
-        } else {
-            from_profile
-        }
-    };
+    let default_model = crate::relay_config::relay_profile_model(profile);
     let mut checks = Vec::new();
 
     if profile.relay_mode == RelayMode::Official && !profile.official_mix_api_key {
@@ -95,7 +85,7 @@ pub async fn diagnose_with_probe(
             "ok",
             "Provider Doctor：官方登录供应商无需 API 诊断。",
             profile_name,
-            test_model,
+            default_model,
             "官方登录供应商无需 API 诊断。",
             "如果 Codex 官方账号可用，直接使用官方登录模式即可。",
             checks,
@@ -119,7 +109,7 @@ pub async fn diagnose_with_probe(
             "failed",
             "Provider Doctor：配置不完整。",
             profile_name,
-            test_model,
+            default_model,
             "配置不完整，无法发起上游诊断。",
             "先填写 Base URL 和 API Key；如果是官方账号，请切换到官方登录模式。",
             checks,
@@ -160,24 +150,24 @@ pub async fn diagnose_with_probe(
 
     match probe.fetch_models(profile).await {
         Ok((models, endpoint)) => {
-            let contains_model = !test_model.trim().is_empty()
-                && models.iter().any(|model| model == test_model.trim());
+            let contains_model = !default_model.trim().is_empty()
+                && models.iter().any(|model| model == default_model.trim());
             let status = if models.is_empty() {
                 "failed"
-            } else if contains_model || test_model.trim().is_empty() {
+            } else if contains_model || default_model.trim().is_empty() {
                 "ok"
             } else {
                 "warning"
             };
             let detail = if models.is_empty() {
                 format!("{endpoint} 返回 0 个模型。")
-            } else if contains_model || test_model.trim().is_empty() {
+            } else if contains_model || default_model.trim().is_empty() {
                 format!("{endpoint} 返回 {} 个模型。", models.len())
             } else {
                 format!(
-                    "{endpoint} 返回 {} 个模型，但未看到测试模型「{}」。",
+                    "{endpoint} 返回 {} 个模型，但未看到默认模型「{}」。",
                     models.len(),
-                    test_model
+                    default_model
                 )
             };
             checks.push(check("models", "模型列表", status, detail));
@@ -185,7 +175,7 @@ pub async fn diagnose_with_probe(
         Err(error) => checks.push(check("models", "模型列表", "failed", error.to_string())),
     }
 
-    match probe.test_request(profile, &test_model).await {
+    match probe.test_request(profile, &default_model).await {
         Ok(result) => {
             let status = if result.http_status < 400 {
                 "ok"
@@ -232,7 +222,7 @@ pub async fn diagnose_with_probe(
         message,
         payload: ProviderDoctorPayload {
             profile_name,
-            model: test_model,
+            model: default_model,
             summary,
             recommendation,
             checks,
@@ -264,10 +254,10 @@ pub fn recommendation(checks: &[ProviderDoctorCheck]) -> String {
         .iter()
         .any(|check| check.id == "request" && check.status == "failed")
     {
-        return "优先检查测试模型名称、上游协议选择和 Key 权限；如果 Chat Completions 可用，请切到对应协议。".to_string();
+        return "优先检查默认模型名称、上游协议选择和 Key 权限；如果 Chat Completions 可用，请切到对应协议。".to_string();
     }
     if checks.iter().any(|check| check.status == "warning") {
-        return "连接可用，但测试模型没有出现在模型列表里；建议改用上游返回的模型名。".to_string();
+        return "连接可用，但默认模型没有出现在模型列表里；建议把供应商默认模型改为上游返回的模型名。".to_string();
     }
     "可以作为 Codex 供应商使用；如果真实对话仍失败，请查看协议代理日志里的上游响应。".to_string()
 }

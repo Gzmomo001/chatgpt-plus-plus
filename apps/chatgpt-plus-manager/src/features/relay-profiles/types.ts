@@ -53,7 +53,6 @@ export type RelayProfile = {
   nativeImageGenerationEnabled: boolean;
   relayMode: RelayMode;
   officialMixApiKey: boolean;
-  testModel: string;
   configContents: string;
   authContents: string;
   useCommonConfig: boolean;

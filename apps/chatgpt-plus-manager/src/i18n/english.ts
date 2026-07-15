@@ -339,7 +339,6 @@ export const EN_PLAIN: Record<string, string> = {
     "One argument per line, e.g. --force_high_performance_gpu. No need to include open or --args.",
   "每行一个模型；上下文窗口可填": "One model per line; the context window can be",
   "没有匹配「": "No providers matching “",
-  "测试模型": "Test model",
   "混入 API": "Mixed-in API",
   "混入 API KEY": "Mix in API KEY",
   "混入 API Key": "Mix in API Key",
@@ -383,8 +382,6 @@ export const EN_PLAIN: Record<string, string> = {
   "设置": "Settings",
   "设置保存": "Settings saved",
   "设置自动保存": "Settings autosave",
-  "测试和供应商诊断会使用所选模型；先从上游获取，再在这里选择。":
-    "Tests and provider diagnostics use the selected model. Fetch models from upstream, then choose one here.",
   "设置已加载": "Settings loaded",
   "设置重置": "Settings reset",
   "诊断报告已复制，现在可以前往反馈问题并粘贴到 Issue。":
@@ -418,7 +415,6 @@ export const EN_PLAIN: Record<string, string> = {
   "正在检查配置完整性…": "Checking configuration integrity…",
   "该步骤未执行。": "This step was not run.",
   "请先填写或选择应用路径。": "Fill in or select an app path first.",
-  "请先从上游获取模型": "Fetch models from upstream first",
   "读取 Codex 本地 SQLite 会话库，会删除数据库记录和对应 rollout 文件":
     "Reads Codex's local SQLite session database; deletes database records and the corresponding rollout files",
   "读取 cc-switch 供应商失败。": "Failed to read cc-switch providers.",
@@ -436,7 +432,6 @@ export const EN_PLAIN: Record<string, string> = {
   "选择 Codex.exe 或 Codex.app": "Select Codex.exe or Codex.app",
   "选择 Codex.exe、Codex.app、app 目录或解包目录": "Select Codex.exe, Codex.app, the app directory or the unpacked directory",
   "选择会话": "Select session",
-  "选择测试模型": "Select a test model",
   "选择已有供应商作为成员，保存后写入 settings payload": "Select existing providers as members; saving writes them to the settings payload",
   "选择应用目录": "Select app directory",
   "通用配置文件": "Common config file",

@@ -7,7 +7,6 @@ import {
   edit,
   open as openRequest,
 } from "./editor.ts";
-import { relayTestModelOptions } from "./model-options.ts";
 import { createPresetIntent } from "./preset-intent.ts";
 import type {
   RelayProfile,
@@ -64,7 +63,6 @@ function profile(patch: RelayProfileFixturePatch = {}): RelayProfile {
     nativeImageGenerationEnabled: false,
     relayMode: "pureApi",
     officialMixApiKey: false,
-    testModel: "",
     configContents: [
       'model = "model-a"',
       'model_provider = "custom"',
@@ -107,28 +105,13 @@ function context(profiles: RelayProfile[]): RelayProfileEditorContext {
 }
 
 describe("Relay profile editor", () => {
-  it("offers fetched test models while preserving a legacy selection", () => {
-    assert.deepEqual(
-      relayTestModelOptions(
-        [
-          { model: "zeta-model", window: "" },
-          { model: "alpha-model", window: "" },
-          { model: "zeta-model", window: "200K" },
-          { model: "  ", window: "" },
-        ],
-        "legacy-model",
-      ),
-      ["zeta-model", "alpha-model", "legacy-model"],
-    );
-
+  it("uses the provider default model without a separate test-model control", () => {
     const relayEditor = readFileSync(
       new URL("./components/RelayProfileEditor.tsx", import.meta.url),
       "utf8",
     );
-    assert.match(relayEditor, /className="relay-test-model-picker"/);
-    assert.match(relayEditor, /<select[\s\S]*?value=\{profile\.testModel\.trim\(\)\}/);
     assert.match(relayEditor, /fetchRelayProfileModels[\s\S]*?type: "mergeModels"/);
-    assert.doesNotMatch(relayEditor, /<Input value=\{profile\.testModel\}/);
+    assert.doesNotMatch(relayEditor, /relay-test-model-picker|testModel|测试模型/);
   });
 
   it("keeps Relay profile switching available without a master switch", () => {
@@ -523,7 +506,6 @@ describe("Relay profile editor", () => {
     assert.equal(committed.profile.upstreamBaseUrl, preset.baseUrl);
     assert.equal(committed.profile.protocol, preset.protocol);
     assert.equal(committed.profile.model, preset.model);
-    assert.equal(committed.profile.testModel, preset.model);
     assert.equal(committed.profile.modelList, preset.modelList?.join("\n"));
     assert.equal(committed.profile.modelWindows, "{}");
     assert.equal(committed.profile.relayMode, "pureApi");

@@ -283,12 +283,12 @@ pub async fn test_relay_profile(
         RelayProtocol::Responses => format!("{base_url}/responses"),
         RelayProtocol::ChatCompletions => format!("{base_url}/chat/completions"),
     };
-    let test_model = model.trim();
-    if test_model.is_empty() {
-        anyhow::bail!("测试模型不能为空");
+    let default_model = model.trim();
+    if default_model.is_empty() {
+        anyhow::bail!("供应商默认模型不能为空");
     }
 
-    let payload = relay_profile_test_payload(profile.protocol, test_model);
+    let payload = relay_profile_test_payload(profile.protocol, default_model);
     let response = client
         .post(&endpoint)
         .bearer_auth(api_key)
@@ -1893,7 +1893,7 @@ mod tests {
 
     #[test]
     fn relay_profile_model_prefers_config_then_field_then_empty() {
-        // 1. 供應商測試的回退第一級：config.toml 的 model = 優先
+        // 1. config.toml 的 model 优先于兼容字段 profile.model。
         let from_config = RelayProfile {
             config_contents: "model = \"deepseek-v4-flash\"\nmodel_provider = \"custom\"\n"
                 .to_string(),
@@ -1902,7 +1902,7 @@ mod tests {
         };
         assert_eq!(relay_profile_model(&from_config), "deepseek-v4-flash");
 
-        // 2. config 沒寫 model 時退回 profile.model 欄位
+        // 2. config 未设置 model 时使用 profile.model。
         let from_field = RelayProfile {
             config_contents: "model_provider = \"custom\"\n".to_string(),
             model: "deepseek-v4-pro".to_string(),
@@ -1910,7 +1910,7 @@ mod tests {
         };
         assert_eq!(relay_profile_model(&from_field), "deepseek-v4-pro");
 
-        // 3. 兩者皆空 → 空字串；呼叫端據此才回退到全域 relayTestModel
+        // 3. 两者皆空时返回空字符串。
         let empty = RelayProfile {
             config_contents: String::new(),
             model: String::new(),

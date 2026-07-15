@@ -206,7 +206,6 @@ fn relay_profile_from_request(
         native_image_generation_enabled: false,
         relay_mode: relay_mode(&request.relay_mode),
         official_mix_api_key: false,
-        test_model: String::new(),
         config_contents: request.config_contents.clone(),
         auth_contents: request.auth_contents.clone(),
         use_common_config: true,

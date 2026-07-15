@@ -7,9 +7,7 @@ use serde_json::{Map, Value};
 use toml_edit::{DocumentMut, Item};
 
 use super::migration::normalize_settings_config_sections;
-use super::types::{
-    BackendSettings, RelayMode, RelayProfile, default_relay_test_model, normalize_codex_extra_args,
-};
+use super::types::{BackendSettings, RelayMode, RelayProfile, normalize_codex_extra_args};
 use crate::atomic_file;
 
 #[derive(Debug, Clone)]
@@ -91,6 +89,7 @@ impl SettingsStore {
 
         let mut raw = self.load_raw_object()?;
         merge_known_setting_fields(&mut raw, &payload);
+        raw.remove("relayTestModel");
         let settings = normalize_settings_config_sections(
             serde_json::from_value(Value::Object(raw.clone())).unwrap_or_default(),
         );
@@ -104,6 +103,7 @@ impl SettingsStore {
                 if let Some(profile) = profile.as_object_mut() {
                     profile.remove("contextSelection");
                     profile.remove("contextSelectionInitialized");
+                    profile.remove("testModel");
                 }
             }
         }
@@ -205,16 +205,6 @@ fn merge_known_setting_fields(target: &mut Map<String, Value>, source: &Map<Stri
         target.insert(
             "activeAggregateRelayId".to_string(),
             Value::String(value.to_string()),
-        );
-    }
-    if let Some(value) = source.get("relayTestModel").and_then(Value::as_str) {
-        target.insert(
-            "relayTestModel".to_string(),
-            Value::String(if value.trim().is_empty() {
-                default_relay_test_model()
-            } else {
-                value.trim().to_string()
-            }),
         );
     }
 }

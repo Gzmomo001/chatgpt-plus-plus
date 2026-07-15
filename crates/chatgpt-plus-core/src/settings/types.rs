@@ -48,8 +48,6 @@ pub struct RelayProfile {
     pub relay_mode: RelayMode,
     #[serde(rename = "officialMixApiKey", default)]
     pub official_mix_api_key: bool,
-    #[serde(rename = "testModel", default)]
-    pub test_model: String,
     #[serde(rename = "configContents", default)]
     pub config_contents: String,
     #[serde(rename = "authContents", default)]
@@ -127,7 +125,6 @@ impl Default for RelayProfile {
             native_image_generation_enabled: false,
             relay_mode: RelayMode::Official,
             official_mix_api_key: false,
-            test_model: String::new(),
             config_contents: String::new(),
             auth_contents: String::new(),
             use_common_config: true,
@@ -206,8 +203,6 @@ pub struct BackendSettings {
     pub aggregate_relay_profiles: Vec<AggregateRelayProfile>,
     #[serde(rename = "activeAggregateRelayId", default)]
     pub active_aggregate_relay_id: String,
-    #[serde(rename = "relayTestModel", default = "default_relay_test_model")]
-    pub relay_test_model: String,
 }
 
 impl Default for BackendSettings {
@@ -230,7 +225,6 @@ impl Default for BackendSettings {
             active_relay_id: default_active_relay_id(),
             aggregate_relay_profiles: Vec::new(),
             active_aggregate_relay_id: String::new(),
-            relay_test_model: default_relay_test_model(),
         }
     }
 }
@@ -261,7 +255,6 @@ impl BackendSettings {
                 native_image_generation_enabled: false,
                 relay_mode: RelayMode::MixedApi,
                 official_mix_api_key: true,
-                test_model: String::new(),
                 config_contents: String::new(),
                 auth_contents: String::new(),
                 use_common_config: true,
@@ -308,7 +301,6 @@ impl BackendSettings {
             native_image_generation_enabled: false,
             relay_mode: RelayMode::Official,
             official_mix_api_key: false,
-            test_model: String::new(),
             config_contents: String::new(),
             auth_contents: String::new(),
             use_common_config: true,
@@ -365,10 +357,6 @@ pub(super) fn default_relay_base_url() -> String {
 
 pub(super) fn default_active_relay_id() -> String {
     "default".to_string()
-}
-
-pub(super) fn default_relay_test_model() -> String {
-    "gpt-5.4-mini".to_string()
 }
 
 pub(super) fn default_relay_profiles() -> Vec<RelayProfile> {

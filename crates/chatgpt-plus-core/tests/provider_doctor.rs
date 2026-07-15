@@ -37,7 +37,7 @@ fn configured_profile() -> RelayProfile {
         relay_mode: RelayMode::PureApi,
         base_url: "https://provider.example/v1".to_string(),
         api_key: "secret".to_string(),
-        test_model: "expected-model".to_string(),
+        model: "expected-model".to_string(),
         ..RelayProfile::default()
     }
 }
@@ -84,9 +84,26 @@ fn recommendation_prioritizes_model_failures_and_reports_model_warnings() {
         id: "models".to_string(),
         title: "模型列表".to_string(),
         status: "warning".to_string(),
-        detail: "未看到测试模型".to_string(),
+        detail: "未看到默认模型".to_string(),
     }];
-    assert!(recommendation(&warning).contains("测试模型"));
+    assert!(recommendation(&warning).contains("默认模型"));
+}
+
+#[tokio::test]
+async fn configured_profile_uses_its_default_model_for_diagnosis() {
+    let outcome = diagnose_with_probe(
+        &configured_profile(),
+        &FakeProbe {
+            models: Ok((
+                vec!["expected-model".to_string()],
+                "https://provider.example/v1/models".to_string(),
+            )),
+            request: Ok(request(200)),
+        },
+    )
+    .await;
+
+    assert_eq!(outcome.payload.model, "expected-model");
 }
 
 #[tokio::test]
@@ -98,11 +115,11 @@ async fn official_login_profile_short_circuits_without_upstream_requests() {
         ..RelayProfile::default()
     };
 
-    let outcome = diagnose(&profile, "fallback-model").await;
+    let outcome = diagnose(&profile).await;
 
     assert_eq!(outcome.status, "ok");
     assert_eq!(outcome.payload.profile_name, "Official");
-    assert_eq!(outcome.payload.model, "fallback-model");
+    assert!(outcome.payload.model.is_empty());
     assert_eq!(outcome.payload.checks.len(), 1);
     assert_eq!(outcome.payload.checks[0].id, "config");
 }
@@ -111,7 +128,6 @@ async fn official_login_profile_short_circuits_without_upstream_requests() {
 async fn configured_profile_reports_empty_models_and_http_failure() {
     let outcome = diagnose_with_probe(
         &configured_profile(),
-        "fallback-model",
         &FakeProbe {
             models: Ok((Vec::new(), "https://provider.example/v1/models".to_string())),
             request: Ok(request(401)),
@@ -158,7 +174,6 @@ async fn missing_configuration_short_circuits_before_probes() {
     };
     let outcome = diagnose_with_probe(
         &profile,
-        "fallback-model",
         &FakeProbe {
             models: Err("models probe must not run"),
             request: Err("request probe must not run"),
@@ -181,7 +196,6 @@ async fn missing_configuration_short_circuits_before_probes() {
 async fn configured_profile_reports_missing_model_as_warning() {
     let outcome = diagnose_with_probe(
         &configured_profile(),
-        "fallback-model",
         &FakeProbe {
             models: Ok((
                 vec!["different-model".to_string()],
@@ -212,14 +226,13 @@ async fn configured_profile_reports_missing_model_as_warning() {
         .expect("image generation capability check");
     assert_eq!(image_generation.status, "ok");
     assert!(image_generation.detail.contains("未启用"));
-    assert!(outcome.payload.recommendation.contains("测试模型"));
+    assert!(outcome.payload.recommendation.contains("默认模型"));
 }
 
 #[tokio::test]
 async fn disabled_native_image_generation_does_not_treat_listed_image_models_as_compatibility() {
     let outcome = diagnose_with_probe(
         &configured_profile(),
-        "fallback-model",
         &FakeProbe {
             models: Ok((
                 vec![
@@ -248,7 +261,6 @@ async fn disabled_native_image_generation_does_not_treat_listed_image_models_as_
 async fn configured_profile_aggregates_model_and_request_errors() {
     let outcome = diagnose_with_probe(
         &configured_profile(),
-        "fallback-model",
         &FakeProbe {
             models: Err("models unavailable"),
             request: Err("request unavailable"),
@@ -293,7 +305,6 @@ async fn explicitly_enabled_native_image_generation_reports_all_registration_con
 
     let outcome = diagnose_with_probe(
         &profile,
-        "fallback-model",
         &FakeProbe {
             models: Ok((
                 vec!["expected-model".to_string()],
@@ -336,7 +347,6 @@ async fn native_image_generation_reports_unsupported_chat_completions_protocol()
 
     let outcome = diagnose_with_probe(
         &profile,
-        "fallback-model",
         &FakeProbe {
             models: Ok((
                 vec!["expected-model".to_string()],
@@ -376,7 +386,6 @@ requires_openai_auth = true
 
     let outcome = diagnose_with_probe(
         &profile,
-        "fallback-model",
         &FakeProbe {
             models: Ok((
                 vec!["expected-model".to_string()],

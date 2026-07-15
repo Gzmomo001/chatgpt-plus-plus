@@ -38,7 +38,6 @@ export const defaultSettings: BackendSettings = {
       nativeImageGenerationEnabled: false,
       relayMode: "official",
       officialMixApiKey: false,
-      testModel: "",
       configContents: "",
       authContents: "",
       useCommonConfig: true,
@@ -56,7 +55,6 @@ export const defaultSettings: BackendSettings = {
   activeRelayId: "default",
   aggregateRelayProfiles: [],
   activeAggregateRelayId: "",
-  relayTestModel: "gpt-5.4-mini",
 };
 
 export function normalizeSettings(settings: BackendSettings): BackendSettings {
@@ -84,7 +82,6 @@ export function normalizeSettings(settings: BackendSettings): BackendSettings {
           nativeImageGenerationEnabled: false,
           relayMode: "official" as RelayMode,
           officialMixApiKey: false,
-          testModel: "",
           configContents: "",
           authContents: "",
           useCommonConfig: true,

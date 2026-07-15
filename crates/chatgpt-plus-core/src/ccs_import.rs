@@ -89,7 +89,6 @@ pub fn relay_profile_from_ccs(
         native_image_generation_enabled: false,
         relay_mode: RelayMode::PureApi,
         official_mix_api_key: false,
-        test_model: String::new(),
         config_contents: provider.config_contents.clone(),
         auth_contents: provider.auth_contents.clone(),
         use_common_config: true,

@@ -33,7 +33,6 @@ export type BackendSettings = {
   relayCommonConfigContents: string;
   relayContextConfigContents: string;
   activeRelayId: string;
-  relayTestModel: string;
 };
 export type SettingsResult = CommandResult<{
   settings: BackendSettings;

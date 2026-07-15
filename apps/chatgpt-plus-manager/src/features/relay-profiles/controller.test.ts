@@ -13,7 +13,7 @@ const profile: RelayProfile = {
   id: "relay-a", name: "Relay A", model: "", baseUrl: "https://a.example/v1",
   upstreamBaseUrl: "https://a.example/v1", apiKey: "sk-a", protocol: "responses",
   nativeImageGenerationEnabled: false,
-  relayMode: "pureApi", officialMixApiKey: false, testModel: "", configContents: "",
+  relayMode: "pureApi", officialMixApiKey: false, configContents: "",
   authContents: "", useCommonConfig: true,
   contextSelection: { mcpServers: [], skills: [], plugins: [] },
   contextSelectionInitialized: true, contextWindow: "", autoCompactLimit: "",

@@ -306,21 +306,8 @@ pub async fn test_relay_profile(profile: RelayProfile) -> CommandResult<RelayPro
     } else {
         profile.name.trim()
     };
-    let settings = SettingsStore::default().load().unwrap_or_default();
-    let test_model: String = if !profile.test_model.trim().is_empty() {
-        // 1. 使用者在該供應商明確填的測試模型
-        profile.test_model.trim().to_string()
-    } else {
-        // 2. 該供應商自己 config.toml 裡的 model（避免串味）
-        let from_profile = chatgpt_plus_core::relay_config::relay_profile_model(&profile);
-        if from_profile.trim().is_empty() {
-            // 3. 最後才用全域預設
-            settings.relay_test_model.trim().to_string()
-        } else {
-            from_profile
-        }
-    };
-    match chatgpt_plus_core::relay_config::test_relay_profile(&profile, &test_model).await {
+    let default_model = chatgpt_plus_core::relay_config::relay_profile_model(&profile);
+    match chatgpt_plus_core::relay_config::test_relay_profile(&profile, &default_model).await {
         Ok(result) => {
             let status = if result.http_status < 400 {
                 "ok"
@@ -336,7 +323,7 @@ pub async fn test_relay_profile(profile: RelayProfile) -> CommandResult<RelayPro
             CommandResult {
                 status: status.to_string(),
                 message: format!(
-                    "已向「{profile_name}」用模型「{test_model}」发送 hi，HTTP {}。{detail}",
+                    "已向「{profile_name}」用默认模型「{default_model}」发送 hi，HTTP {}。{detail}",
                     result.http_status
                 ),
                 payload: RelayProfileTestPayload {
@@ -383,9 +370,7 @@ pub async fn fetch_relay_profile_models(
 
 #[tauri::command]
 pub async fn diagnose_relay_profile(profile: RelayProfile) -> CommandResult<ProviderDoctorPayload> {
-    let settings = SettingsStore::default().load().unwrap_or_default();
-    let outcome =
-        chatgpt_plus_core::provider_doctor::diagnose(&profile, &settings.relay_test_model).await;
+    let outcome = chatgpt_plus_core::provider_doctor::diagnose(&profile).await;
     CommandResult {
         status: outcome.status,
         message: outcome.message,

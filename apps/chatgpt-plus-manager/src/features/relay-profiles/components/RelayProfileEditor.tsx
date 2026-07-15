@@ -10,7 +10,6 @@ import { ProviderPresetSelector } from "./ProviderPresetSelector";
 import { ProviderDoctorModal } from "./RelayFeedback";
 import { runProviderDiagnosis } from "../controller";
 import { commit, edit } from "../editor";
-import { relayTestModelOptions } from "../model-options";
 import { aggregateStrategyHelp, aggregateStrategyLabel, aggregateStrategyOptions, configHasCodexGoalsFeature, relayModeLabel, relayProfileConfigBrief, relayProfileEditorStatus, relayProfileModeHelp, relayProtocolLabel, setCodexGoalsFeatureInConfig } from "../presentation";
 import type { ProviderDoctorResult, RelayProfileActions, RelaySettings } from "../contracts";
 import type { ApplyRelayProfilePresetIntent, ModelWindowRow, RelayAggregateStrategy, RelayProfileEditableMode, RelayProfileEditorState, RelayProfilePatch } from "../types";
@@ -32,7 +31,6 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
   if (state.draft.relayMode === "aggregate")
     return <AggregateRelayProfileEditor state={state} isNew={isNew} onStateChange={onStateChange} />;
   const showApiFields = profile.relayMode !== "official" || profile.officialMixApiKey;
-  const testModelOptions = relayTestModelOptions(modelWindowRows, profile.testModel);
   const updateDraft = (patch: RelayProfilePatch) => onStateChange(edit(state, { type: "patch", patch }));
   const runProviderDoctor = async () => {
     setDoctorOpen(true);
@@ -159,33 +157,15 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
             </Button>
           </div>)}</div>
         <div className="relay-model-list-tools">
-          <div className="relay-model-list-actions">
-            <Button onClick={() => onStateChange(edit(state, { type: "replaceModels", models: [...modelWindowRows, { model: "", window: "" }] }))} size="sm" type="button" variant="secondary">
-              <Plus className="h-4 w-4" />{t("添加模型")}</Button>
-            <Button onClick={async () => {
-              const models = await actions.fetchRelayProfileModels(state.preview.profile);
-              if (models?.length)
-                onStateChange(edit(state, { type: "mergeModels", models: models.map((model): ModelWindowRow => ({ model, window: "" })) }));
-            }} size="sm" type="button" variant="secondary">
-              <Download className="h-4 w-4" />{t("从上游获取")}</Button>
-          </div>
-          <label className="relay-test-model-picker">
-            <span>{t("测试模型")}</span>
-            <select
-              aria-label={t("测试模型")}
-              className="field-select"
-              disabled={!testModelOptions.length}
-              value={profile.testModel.trim()}
-              onChange={(event) => updateDraft({ testModel: event.currentTarget.value })}
-            >
-              <option value="">
-                {testModelOptions.length ? t("选择测试模型") : t("请先从上游获取模型")}
-              </option>
-              {testModelOptions.map((model) => <option key={model} value={model}>{model}</option>)}
-            </select>
-          </label>
+          <Button onClick={() => onStateChange(edit(state, { type: "replaceModels", models: [...modelWindowRows, { model: "", window: "" }] }))} size="sm" type="button" variant="secondary">
+            <Plus className="h-4 w-4" />{t("添加模型")}</Button>
+          <Button onClick={async () => {
+            const models = await actions.fetchRelayProfileModels(state.preview.profile);
+            if (models?.length)
+              onStateChange(edit(state, { type: "mergeModels", models: models.map((model): ModelWindowRow => ({ model, window: "" })) }));
+          }} size="sm" type="button" variant="secondary">
+            <Download className="h-4 w-4" />{t("从上游获取")}</Button>
         </div>
-        <p className="field-hint">{t("测试和供应商诊断会使用所选模型；先从上游获取，再在这里选择。")}</p>
         <p className="field-hint">{t("每行一个模型；上下文窗口可填")} <code>1M</code>{t("、")}<code>200K</code> {t("或")} <code>1000000</code>{t("，留空表示使用 Codex 默认长度。推理档位用英文逗号分隔；留空时不会向模型声明 reasoning 支持。")}</p>
         <p className="field-hint">{t("上游接口不可用时，仍可使用「添加模型」手动配置。")}</p>
       </Field> : null}

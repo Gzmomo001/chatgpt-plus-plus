@@ -45,7 +45,6 @@ function normalizeRelayProfileSettings(
       nativeImageGenerationEnabled: source.nativeImageGenerationEnabled === true,
       relayMode: aggregate ? "aggregate" : legacyMixed ? "official" : source.relayMode,
       officialMixApiKey: source.officialMixApiKey || legacyMixed,
-      testModel: source.testModel ?? "",
       configContents: source.configContents ?? "",
       authContents: source.authContents ?? "",
       useCommonConfig: source.useCommonConfig !== false,
@@ -85,7 +84,7 @@ function seedRelayProfile(
   const defaultBaseUrl = mode === "aggregate" ? "" : settings.relayBaseUrl;
   const base: RelayProfile = {
     id, name, model: "", baseUrl: defaultBaseUrl, upstreamBaseUrl: defaultBaseUrl, apiKey: "",
-    protocol: "responses", relayMode: mode, officialMixApiKey: false, testModel: "",
+    protocol: "responses", relayMode: mode, officialMixApiKey: false,
     nativeImageGenerationEnabled: false,
     configContents: "", authContents: "", useCommonConfig: true,
     contextSelection: structuredClone(defaultContextSelection), contextSelectionInitialized: true,
@@ -279,7 +278,6 @@ export function edit(
       upstreamBaseUrl: intent.preset.baseUrl,
       protocol: intent.preset.protocol,
       model: intent.preset.model,
-      testModel: intent.preset.model,
       relayMode: intent.preset.relayMode,
       officialMixApiKey: false,
       models: canonicalRows(intent.preset.models),
