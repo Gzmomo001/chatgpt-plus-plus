@@ -240,6 +240,7 @@ jobs:
       - prepare_release
       - windows-installer
       - macos-dmg
+    if: ${{ always() && needs.prepare_release.result == 'success' }}
     steps:
       - name: Generate latest.json
         env:

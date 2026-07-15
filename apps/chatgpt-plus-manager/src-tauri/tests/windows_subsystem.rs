@@ -558,6 +558,7 @@ fn github_release_workflow_uploads_static_latest_json() {
     let workflow = std::fs::read_to_string(&workflow).expect("read release assets workflow");
 
     assert!(workflow.contains("latest-json:"));
+    assert!(workflow.contains("if: ${{ always() && needs.prepare_release.result == 'success' }}"));
     assert!(workflow.contains("latest.json"));
     assert!(workflow.contains("gh release upload \"$TAG\" latest.json --clobber"));
     assert!(workflow.contains("branches: [main]"));
@@ -609,9 +610,9 @@ fn relay_settings_keeps_profile_config_and_auth_files_isolated() {
     assert!(!app_tsx.contains("relayProfileSwitchValidation"));
     assert!(editor_ts.contains("缺少独立 config.toml"));
     assert!(!app_tsx.contains("relayProfileSwitchCommand"));
-    assert!(screen_tsx.contains("const openNewProfile = (mode: RelayProfileEditableMode) =>"));
-    assert!(screen_tsx.contains("openNewProfile(\"aggregate\")"));
-    assert!(screen_tsx.contains("已打开聚合供应商详情"));
+    assert!(screen_tsx.contains("const createProfile = () => openProfileEditor({"));
+    assert!(screen_tsx.contains("setNewProfileDraft(createProfile())"));
+    assert!(screen_tsx.contains("mode: \"official\","));
     assert!(!commands_rs.contains("缺少独立 auth.json"));
     assert!(commands_rs.contains("backfill_relay_profile_from_live"));
     assert!(commands_rs.contains("codex_home_apply::activate"));

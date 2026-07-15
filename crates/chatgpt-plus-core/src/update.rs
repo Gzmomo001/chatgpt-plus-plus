@@ -6,6 +6,8 @@ use serde_json::Value;
 pub const DEFAULT_REPOSITORY: &str = "Gzmomo001/chatgpt-plus-plus";
 pub const DEFAULT_LATEST_JSON_URL: &str =
     "https://github.com/Gzmomo001/chatgpt-plus-plus/releases/latest/download/latest.json";
+pub const DEFAULT_GITHUB_LATEST_RELEASE_URL: &str =
+    "https://api.github.com/repos/Gzmomo001/chatgpt-plus-plus/releases/latest";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReleaseAsset {
@@ -167,17 +169,50 @@ pub fn select_update_asset(assets: &[(String, String)]) -> Option<ReleaseAsset> 
 }
 
 pub async fn fetch_latest_release(latest_json_url: &str) -> anyhow::Result<Release> {
+    fetch_latest_release_from_urls(latest_json_url, DEFAULT_GITHUB_LATEST_RELEASE_URL).await
+}
+
+pub async fn fetch_latest_release_from_urls(
+    latest_json_url: &str,
+    github_release_url: &str,
+) -> anyhow::Result<Release> {
     let client =
         crate::http_client::proxied_client(&format!("ChatGPT++/{}", crate::version::VERSION))?;
-    let payload = client
-        .get(latest_json_url)
-        .header(reqwest::header::ACCEPT, "application/json")
+    let static_release = fetch_release_payload(&client, latest_json_url, "application/json")
+        .await
+        .and_then(|payload| release_from_latest_json_payload(&payload));
+    match static_release {
+        Ok(release) => Ok(release),
+        Err(static_error) => {
+            fetch_release_payload(
+                &client,
+                github_release_url,
+                "application/vnd.github+json",
+            )
+            .await
+            .and_then(|payload| release_from_github_payload(&payload))
+            .map_err(|github_error| {
+                anyhow::anyhow!(
+                    "静态更新清单不可用（{static_error}）；GitHub Releases API 回退也失败（{github_error}）"
+                )
+            })
+        }
+    }
+}
+
+async fn fetch_release_payload(
+    client: &reqwest::Client,
+    url: &str,
+    accept: &str,
+) -> anyhow::Result<Value> {
+    Ok(client
+        .get(url)
+        .header(reqwest::header::ACCEPT, accept)
         .send()
         .await?
         .error_for_status()?
         .json::<Value>()
-        .await?;
-    release_from_latest_json_payload(&payload)
+        .await?)
 }
 
 pub async fn check_for_update(current_version: &str) -> anyhow::Result<UpdateCheck> {

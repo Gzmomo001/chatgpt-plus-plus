@@ -1,6 +1,13 @@
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+    thread,
+};
+
 use chatgpt_plus_core::update::{
-    Release, download_asset_to, is_newer_version, parse_version_tag, release_from_github_payload,
-    release_from_latest_json_payload, safe_asset_name, select_update_asset,
+    Release, download_asset_to, fetch_latest_release_from_urls, is_newer_version,
+    parse_version_tag, release_from_github_payload, release_from_latest_json_payload,
+    safe_asset_name, select_update_asset,
 };
 use serde_json::json;
 
@@ -78,6 +85,71 @@ fn latest_json_payload_selects_platform_installer_without_github_api_shape() {
     } else {
         assert_eq!(release.asset_name.as_deref(), None);
     }
+}
+
+#[tokio::test]
+async fn latest_release_falls_back_to_github_api_when_static_manifest_is_missing() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = thread::spawn(move || {
+        for expected_path in ["/latest.json", "/api/releases/latest"] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0; 4096];
+            let read = stream.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..read]);
+            assert!(
+                request.starts_with(&format!("GET {expected_path} ")),
+                "unexpected request: {request}"
+            );
+
+            if expected_path == "/latest.json" {
+                stream
+                    .write_all(
+                        b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    )
+                    .unwrap();
+            } else {
+                let body = json!({
+                    "tag_name": "v1.2.37",
+                    "html_url": "https://github.com/Gzmomo001/chatgpt-plus-plus/releases/tag/v1.2.37",
+                    "body": "fallback release",
+                    "assets": [
+                        {
+                            "name": "ChatGPTPlusPlus-1.2.37-windows-x64-setup.exe",
+                            "browser_download_url": "https://example.test/setup.exe"
+                        },
+                        {
+                            "name": "ChatGPTPlusPlus-1.2.37-macos-x64.dmg",
+                            "browser_download_url": "https://example.test/app-x64.dmg"
+                        },
+                        {
+                            "name": "ChatGPTPlusPlus-1.2.37-macos-arm64.dmg",
+                            "browser_download_url": "https://example.test/app-arm64.dmg"
+                        }
+                    ]
+                })
+                .to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+            stream.flush().unwrap();
+        }
+    });
+
+    let release = fetch_latest_release_from_urls(
+        &format!("http://{address}/latest.json"),
+        &format!("http://{address}/api/releases/latest"),
+    )
+    .await
+    .unwrap();
+    server.join().unwrap();
+
+    assert_eq!(release.version, "v1.2.37");
+    assert_eq!(release.body, "fallback release");
 }
 
 #[test]

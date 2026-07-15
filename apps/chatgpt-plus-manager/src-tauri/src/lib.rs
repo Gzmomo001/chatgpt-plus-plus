@@ -68,6 +68,7 @@ pub fn run() {
     let show_update = commands::settings::startup_should_show_update();
     let app_result = tauri::Builder::default()
         .manage(launch_runtime::ManagedLaunchRuntime::default())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let url = if show_update {

@@ -90,6 +90,9 @@
   --motion-normal: 180ms;
   --motion-slow: 240ms;
   --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --settings-card-gap: 18px;
+  --settings-card-max-width: 880px;
+  --settings-card-radius: 18px;
   font-family:
     Inter, "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 16px;
@@ -935,6 +938,23 @@ body {
   animation: relay-detail-enter 280ms var(--motion-ease) both;
 }
 
+.relay-detail-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin: -16px -20px 0;
+  border-bottom: 1px solid hsl(var(--border));
+  padding: 10px 20px;
+  background: hsl(var(--shell-bg) / 0.94);
+  backdrop-filter: blur(14px);
+  animation: relay-detail-toolbar-enter 220ms var(--motion-ease) both;
+}
+
+.relay-detail-sticky .toolbar {
+  margin-top: 0;
+  padding-top: 0;
+}
+
 .relay-profile-editor {
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
@@ -982,6 +1002,39 @@ body {
   overflow-wrap: anywhere;
   color: hsl(var(--muted-foreground));
   font-size: 12px;
+}
+
+.relay-editor-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.relay-editor-title button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 7px;
+  margin: -4px 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  padding: 4px 7px 4px 3px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
+}
+
+.relay-editor-title button:hover {
+  background: hsl(var(--accent) / 0.7);
+  color: hsl(var(--primary));
+}
+
+.relay-editor-title button:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.72);
+  outline-offset: 2px;
 }
 
 .relay-fields {
@@ -3606,7 +3659,6 @@ textarea:focus-visible {
 }
 
 .settings-page {
-  --settings-card-gap: 24px;
   gap: var(--settings-card-gap);
 }
 
@@ -4389,14 +4441,14 @@ input[type="range"] {
 }
 
 .topbar-actions .provider-create-trigger.active {
-  border: 1px solid hsl(var(--primary) / 0.42);
-  background: hsl(var(--primary) / 0.16);
-  color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.08);
+  border: 0;
+  background: hsl(211 88% 56%);
+  color: hsl(0 0% 100%);
+  box-shadow: none;
 }
 
 .topbar-actions .provider-create-trigger.active:hover {
-  background: hsl(var(--primary) / 0.24);
+  background: hsl(211 88% 62%);
 }
 
 .provider-creation-selector {
@@ -4585,7 +4637,6 @@ input[type="range"] {
 
 .settings-page,
 .settings-page-section {
-  --settings-card-gap: 18px;
   gap: var(--settings-card-gap);
 }
 
@@ -4730,4 +4781,34 @@ textarea {
 .relay-list-content .relay-profile-card:last-child {
   min-height: 72px;
   padding: 14px 15px;
+}
+
+/* One shared geometry for every settings surface, using About as the reference. */
+.settings-card,
+.settings-card-stack,
+.screen > .settings-card,
+.screen > .settings-card-stack {
+  width: min(100%, var(--settings-card-max-width));
+  margin-inline: auto;
+}
+
+.settings-card-stack {
+  display: grid;
+  align-content: start;
+  gap: var(--settings-card-gap);
+}
+
+.settings-card-stack > .settings-card {
+  width: 100%;
+  margin-inline: 0;
+}
+
+.settings-card > [data-slot="card-content"] {
+  border-radius: var(--settings-card-radius);
+}
+
+@media (max-width: 780px) {
+  :root {
+    --settings-card-radius: 15px;
+  }
 }

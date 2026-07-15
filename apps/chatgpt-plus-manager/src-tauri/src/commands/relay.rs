@@ -2,9 +2,11 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use chatgpt_plus_core::codex_home_apply::CodexHomeReconcileIntent;
+use chatgpt_plus_core::codex_home_apply::RelayProfileActivation;
 use chatgpt_plus_core::settings::{
     BackendSettings, RelayProfile, SettingsStore, normalize_settings_before_save,
 };
+use chatgpt_plus_data::ProviderSyncResult;
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -38,6 +40,11 @@ pub struct RelaySwitchPayload {
     pub settings: BackendSettings,
     pub relay: RelayPayload,
     pub settings_path: String,
+}
+
+pub(super) struct RelayProfileSwitchOutcome {
+    pub activation: RelayProfileActivation,
+    pub history_sync: Option<ProviderSyncResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -170,6 +177,30 @@ pub struct RelayProfileSwitchRequest {
     pub target_relay_id: String,
 }
 
+pub(super) async fn activate_relay_profile_with_history_sync(
+    store: &SettingsStore,
+    home: &Path,
+    settings: BackendSettings,
+    target_relay_id: &str,
+) -> anyhow::Result<RelayProfileSwitchOutcome> {
+    let previous_provider = chatgpt_plus_data::current_provider(Some(home));
+    let activation = chatgpt_plus_core::codex_home_apply::activate_with_model_refresh(
+        store,
+        home,
+        settings,
+        target_relay_id,
+    )
+    .await?;
+    let active_provider = chatgpt_plus_data::current_provider(Some(home));
+    let history_sync = (previous_provider != active_provider).then(|| {
+        chatgpt_plus_data::run_provider_sync_with_target(Some(home), Some(&active_provider))
+    });
+    Ok(RelayProfileSwitchOutcome {
+        activation,
+        history_sync,
+    })
+}
+
 #[tauri::command]
 pub async fn switch_relay_profile(
     runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
@@ -187,15 +218,12 @@ pub async fn switch_relay_profile(
         }),
     );
     Ok(
-        match chatgpt_plus_core::codex_home_apply::activate_with_model_refresh(
-            &store,
-            &home,
-            settings,
-            &target_relay_id,
-        )
-        .await
+        match activate_relay_profile_with_history_sync(&store, &home, settings, &target_relay_id)
+            .await
         {
-            Ok(activation) => {
+            Ok(outcome) => {
+                let activation = outcome.activation;
+                let history_sync = outcome.history_sync;
                 let backup_path = activation
                     .home
                     .backup_path
@@ -206,12 +234,29 @@ pub async fn switch_relay_profile(
                     json!({
                         "targetRelayId": activation.settings.active_relay_id,
                         "configured": activation.home.status.configured,
-                        "backupPath": backup_path.as_ref()
+                        "backupPath": backup_path.as_ref(),
+                        "historySyncStatus": history_sync.as_ref().map(|sync| &sync.status),
+                        "historySyncTargetProvider": history_sync.as_ref().map(|sync| &sync.target_provider),
+                        "historySyncChangedSessionFiles": history_sync.as_ref().map(|sync| sync.changed_session_files),
+                        "historySyncSqliteRowsUpdated": history_sync.as_ref().map(|sync| sync.sqlite_rows_updated),
+                        "historySyncMessage": history_sync.as_ref().map(|sync| &sync.message)
                     }),
                 );
                 runtime.restart_after_configuration_change();
+                let message = match history_sync.as_ref() {
+                    Some(sync) if sync.status == chatgpt_plus_data::ProviderSyncStatus::Synced => {
+                        format!(
+                            "供应商已切换，历史会话已自动同步到 {}。",
+                            sync.target_provider
+                        )
+                    }
+                    Some(sync) => {
+                        format!("供应商已切换，但历史会话自动同步未完成：{}", sync.message)
+                    }
+                    None => "供应商已切换；model_provider 未变化，无需同步历史会话。".to_string(),
+                };
                 ok(
-                    "供应商已切换。",
+                    &message,
                     relay_switch_payload(activation.settings, activation.home.status, backup_path),
                 )
             }

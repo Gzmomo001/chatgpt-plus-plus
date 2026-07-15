@@ -7,6 +7,7 @@ import {
   type InvokeManagerCommand,
   type TauriCommandName,
 } from "./actions.ts";
+import { writeTextToClipboard } from "./clipboard.ts";
 import { copyLatestDiagnosticReport } from "./diagnostics-copy.ts";
 
 type Invocation = { command: string; args?: Record<string, unknown> };
@@ -95,6 +96,47 @@ test("diagnostic report copy interaction distinguishes generation and clipboard 
     "clipboard denied",
   );
   assert.equal(clipboardCalls, 1);
+});
+
+test("diagnostic report copy uses the native clipboard when the WebView denies clipboard access", async () => {
+  let nativeClipboardCalls = 0;
+  let webClipboardCalls = 0;
+
+  await assert.doesNotReject(() =>
+    writeTextToClipboard("diagnostic report", {
+      isNativeApp: () => true,
+      writeNative: async () => {
+        nativeClipboardCalls += 1;
+      },
+      writeWeb: async () => {
+        webClipboardCalls += 1;
+        throw new Error(
+          "The request is not allowed by the user agent or the platform in the current context, possibly because the user denied permission.",
+        );
+      },
+    }),
+  );
+
+  assert.equal(nativeClipboardCalls, 1);
+  assert.equal(webClipboardCalls, 0);
+});
+
+test("diagnostic report copy retains the Web Clipboard API for browser-only development", async () => {
+  let nativeClipboardCalls = 0;
+  let webClipboardCalls = 0;
+
+  await writeTextToClipboard("diagnostic report", {
+    isNativeApp: () => false,
+    writeNative: async () => {
+      nativeClipboardCalls += 1;
+    },
+    writeWeb: async () => {
+      webClipboardCalls += 1;
+    },
+  });
+
+  assert.equal(nativeClipboardCalls, 0);
+  assert.equal(webClipboardCalls, 1);
 });
 
 test("publishes domain adapters instead of one flat command bag", () => {

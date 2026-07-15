@@ -15,11 +15,12 @@ import { aggregateStrategyHelp, aggregateStrategyLabel, configHasCodexGoalsFeatu
 import type { ProviderDoctorResult, RelayProfileActions, RelaySettings } from "../contracts";
 import type { ApplyRelayProfilePresetIntent, ModelWindowRow, RelayAggregateStrategy, RelayProfileEditableMode, RelayProfileEditorState, RelayProfilePatch } from "../types";
 
-export function RelayProfileEditor<Settings extends RelaySettings>({ state, form, isNew = false, headerAddon, onStateChange, onSwitch, actions }: {
+export function RelayProfileEditor<Settings extends RelaySettings>({ state, form, isNew = false, headerAddon, headerTitle, onStateChange, onSwitch, actions }: {
   state: RelayProfileEditorState;
   form: Settings;
   isNew?: boolean;
   headerAddon?: ReactNode;
+  headerTitle: ReactNode;
   onStateChange: (value: RelayProfileEditorState) => void;
   onSwitch: () => void;
   actions: RelayProfileActions<Settings>;
@@ -31,7 +32,7 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [doctorRunning, setDoctorRunning] = useState(false);
   if (state.draft.relayMode === "aggregate")
-    return <AggregateRelayProfileEditor state={state} isNew={isNew} headerAddon={headerAddon} onStateChange={onStateChange} />;
+    return <AggregateRelayProfileEditor state={state} isNew={isNew} headerAddon={headerAddon} headerTitle={headerTitle} onStateChange={onStateChange} />;
   const showApiFields = profile.relayMode !== "official" || profile.officialMixApiKey;
   const updateDraft = (patch: RelayProfilePatch) => onStateChange(edit(state, { type: "patch", patch }));
   const runProviderDoctor = async () => {
@@ -46,7 +47,7 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
   return <div className="relay-profile-editor">
     <div className="relay-editor-head">
       <div>
-        <strong>{profile.name || t("未命名供应商")}</strong>
+        {headerTitle}
         <span>{relayProfileEditorStatus(profile, form, isNew)}</span>
       </div>
       {isNew ? null : (
@@ -190,10 +191,11 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
     }} /> : null}
   </div>;
 }
-function AggregateRelayProfileEditor({ state, isNew = false, headerAddon, onStateChange }: {
+function AggregateRelayProfileEditor({ state, isNew = false, headerAddon, headerTitle, onStateChange }: {
   state: RelayProfileEditorState;
   isNew?: boolean;
   headerAddon?: ReactNode;
+  headerTitle: ReactNode;
   onStateChange: (value: RelayProfileEditorState) => void;
 }) {
   const profile = state.preview.profile;
@@ -204,7 +206,7 @@ function AggregateRelayProfileEditor({ state, isNew = false, headerAddon, onStat
   return <div className="relay-profile-editor aggregate-editor">
     <div className="relay-editor-head">
       <div>
-        <strong>{profile.name || t("未命名聚合供应商")}</strong>
+        {headerTitle}
         <span>{isNew ? t("选择已有供应商作为成员，保存后写入 settings payload") : t("聚合配置只引用已有供应商，不复制 Key 和配置文件")}</span>
       </div>
       <UiBadge variant="secondary">{t("聚合")}</UiBadge>

@@ -146,6 +146,10 @@ describe("Relay profile editor", () => {
       new URL("./components/RelayProfileDetail.tsx", import.meta.url),
       "utf8",
     );
+    const relayEditor = readFileSync(
+      new URL("./components/RelayProfileEditor.tsx", import.meta.url),
+      "utf8",
+    );
     const creationSelector = readFileSync(
       new URL("./components/ProviderCreationSelector.tsx", import.meta.url),
       "utf8",
@@ -163,6 +167,9 @@ describe("Relay profile editor", () => {
     assert.match(relayScreen, /setNewProfileDraft\(createProfile\(\)\)/);
     assert.match(relayDetail, /onSaveActionChange/);
     assert.match(relayDetail, /!isNew \? <div className="relay-detail-sticky"/);
+    assert.match(relayDetail, /<h2 className="relay-editor-title">[\s\S]*?onClick=\{onBack\}[\s\S]*?t\("供应商管理"\)/);
+    assert.equal(relayEditor.match(/\{headerTitle\}/g)?.length, 3);
+    assert.doesNotMatch(relayEditor, /<strong>\{profile\.name \|\| t\("未命名(?:聚合)?供应商"\)\}<\/strong>/);
     assert.match(relayScreen, /createRequest: number/);
     assert.match(relayScreen, /handledCreateRequestRef/);
     assert.doesNotMatch(relayScreen, /createPageOpen|provider-create-page|provider-type-option/);
@@ -175,6 +182,8 @@ describe("Relay profile editor", () => {
     assert.match(relayScreen, /className="relay-list-content"/);
     assert.match(styles, /\.provider-type-segmented[\s\S]*?grid-template-columns: repeat\(3/);
     assert.match(styles, /\.provider-type-slider[\s\S]*?transform: translateX/);
+    assert.match(styles, /\.topbar-actions \.provider-create-trigger\.active[\s\S]*?border: 0;[\s\S]*?background: hsl\(211 88% 56%\)[\s\S]*?box-shadow: none;/);
+    assert.match(styles, /\.relay-editor-title button[\s\S]*?cursor: pointer;/);
     assert.match(styles, /\.relay-list-content \.relay-profile-card[\s\S]*?border-radius:/);
   });
 

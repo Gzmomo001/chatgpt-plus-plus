@@ -45,7 +45,7 @@ if (new Set(versions).size !== 1) {
 const lockFile = "Cargo.lock";
 const lockText = fs.readFileSync(lockFile, "utf8");
 const lockPattern =
-  /(\[\[package\]\]\nname = "(?:chatgpt-plus-core|chatgpt-plus-data|chatgpt-plus-manager)"\nversion = ")(\d+\.\d+\.\d+)(")/g;
+  /(\[\[package\]\]\r?\nname = "(?:chatgpt-plus-core|chatgpt-plus-data|chatgpt-plus-manager)"\r?\nversion = ")(\d+\.\d+\.\d+)(")/g;
 const lockMatches = [...lockText.matchAll(lockPattern)];
 const lockVersions = lockMatches.map((match) => match[2]);
 

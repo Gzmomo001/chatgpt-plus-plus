@@ -82,6 +82,7 @@ import {
   normalizeSettings,
 } from "@/app/settings-normalization";
 import { copyLatestDiagnosticReport } from "@/app/diagnostics-copy";
+import { writeTextToClipboard } from "@/app/clipboard";
 import { createSettingsAutosave } from "@/app/settings-autosave";
 import { Button } from "@/shared/ui/button";
 import type { TaskProgress } from "@/shared/ui/task-progress";
@@ -1035,7 +1036,11 @@ export function App() {
         targetRelayId: currentSelected.id,
         status: result.status,
       });
-      showNotice(t("供应商切换"), relayProfileSwitchMessage(currentSelected), result.status);
+      showNotice(
+        t("供应商切换"),
+        `${relayProfileSwitchMessage(currentSelected)} ${t(result.message)}`,
+        result.status,
+      );
     } finally {
       setRelaySwitching(false);
     }
@@ -1044,7 +1049,7 @@ export function App() {
   const copyDiagnostics = async () => {
     const result = await copyLatestDiagnosticReport({
       generate: () => managerActions.diagnostics.copy(),
-      writeClipboard: (report) => navigator.clipboard.writeText(report),
+      writeClipboard: writeTextToClipboard,
     });
     if (result.status === "ok") {
       showNotice(
@@ -1268,6 +1273,17 @@ export function App() {
         settingsAutosaveRef.current?.saveNow({
           mode: "manual",
           settings: next,
+        });
+      },
+      setCodexExtraArgs: (codexExtraArgs: string[]) => {
+        const next = normalizeSettings({ ...settingsForm, codexExtraArgs });
+        setSettingsForm(next);
+        settingsAutosaveRef.current?.schedule({
+          mode: "autosave",
+          form: {
+            codexExtraArgs: next.codexExtraArgs,
+            diagnosticLogEnabled: next.diagnosticLogEnabled,
+          },
         });
       },
       applyRelayInjection,
@@ -1508,6 +1524,7 @@ export function App() {
                   overview={overview}
                   update={update}
                   updateInstallProgress={updateInstallProgress}
+                  codexExtraArgs={settingsForm.codexExtraArgs}
                   diagnosticLogEnabled={settingsForm.diagnosticLogEnabled}
                   actions={actions}
                 />
@@ -1574,6 +1591,7 @@ type Actions = {
   openExternalUrl: (url: string) => Promise<void>;
   openLogFolder: () => Promise<void>;
   setDiagnosticLogEnabled: (enabled: boolean) => void;
+  setCodexExtraArgs: (args: string[]) => void;
   applyRelayInjection: () => Promise<boolean>;
   applyPureApiInjection: () => Promise<boolean>;
   clearRelayInjection: () => Promise<boolean>;

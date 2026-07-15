@@ -26,6 +26,7 @@ chatgpt-plus-data = { path = "../../../crates/chatgpt-plus-data" }
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-clipboard-manager = "2.3.2"
 tauri-plugin-dialog = "2"
 tokio.workspace = true
 

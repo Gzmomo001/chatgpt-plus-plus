@@ -303,7 +303,7 @@ pub fn load_provider_sync_targets(codex_home: Option<&Path>) -> ProviderSyncTarg
     let home = codex_home
         .map(Path::to_path_buf)
         .unwrap_or_else(|| dirs_home().join(".codex"));
-    let current_provider = read_current_provider(&home.join("config.toml"));
+    let current_provider = current_provider(Some(&home));
     let mut sources: HashMap<String, HashSet<ProviderSyncTargetSource>> = HashMap::new();
 
     fn add_sources(
@@ -363,6 +363,13 @@ pub fn load_provider_sync_targets(codex_home: Option<&Path>) -> ProviderSyncTarg
         current_provider,
         targets,
     }
+}
+
+pub fn current_provider(codex_home: Option<&Path>) -> String {
+    let home = codex_home
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| dirs_home().join(".codex"));
+    read_current_provider(&home.join("config.toml"))
 }
 
 pub fn load_provider_sync_targets_with_settings(

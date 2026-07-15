@@ -1,10 +1,11 @@
 {
   "identifier": "default",
-  "description": "Default permissions for the ChatGPT++ main window. Grants the dialog plugin's default permission set so the file/folder picker can be opened from settings (fixes #345).",
+  "description": "Default permissions for the ChatGPT++ main window, including clipboard text writes and the settings file/folder picker.",
   "windows": ["main"],
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
+    "clipboard-manager:allow-write-text",
     "dialog:default"
   ]
 }

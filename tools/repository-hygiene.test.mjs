@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import test from "node:test";
 
 const repositoryRoot = new URL("../", import.meta.url);
@@ -102,6 +114,50 @@ test("frontend build tooling stays out of production dependencies", () => {
       true,
       `${dependency} must remain available to development and release builds`,
     );
+  }
+});
+
+test("release version script accepts a Windows CRLF Cargo.lock", () => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "chatgpt-plus-plus-release-version-"));
+  try {
+    mkdirSync(join(fixtureRoot, "apps/chatgpt-plus-manager/src-tauri"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(fixtureRoot, "Cargo.toml"),
+      '[workspace.package]\nversion = "1.2.35"\n',
+    );
+    writeFileSync(
+      join(fixtureRoot, "apps/chatgpt-plus-manager/package.json"),
+      '{\n  "version": "1.2.35"\n}\n',
+    );
+    writeFileSync(
+      join(fixtureRoot, "apps/chatgpt-plus-manager/src-tauri/tauri.conf.json"),
+      '{\n  "version": "1.2.35"\n}\n',
+    );
+    writeFileSync(
+      join(fixtureRoot, "Cargo.lock"),
+      ["chatgpt-plus-core", "chatgpt-plus-data", "chatgpt-plus-manager"]
+        .map(
+          (name) =>
+            `[[package]]\r\nname = "${name}"\r\nversion = "1.2.35"\r\n`,
+        )
+        .join("\r\n"),
+    );
+
+    const output = execFileSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL("scripts/release/set-version.mjs", repositoryRoot)),
+        "1.2.36",
+        "--dry-run",
+      ],
+      { cwd: fixtureRoot, encoding: "utf8" },
+    );
+
+    assert.match(output, /Would set version 1\.2\.35 -> 1\.2\.36/);
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
   }
 });
 

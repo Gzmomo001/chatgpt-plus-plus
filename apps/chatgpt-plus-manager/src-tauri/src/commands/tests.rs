@@ -1,7 +1,11 @@
 use std::path::Path;
 
 use chatgpt_plus_core::codex_home_apply::CodexHomeReconcileIntent;
-use chatgpt_plus_core::settings::{BackendSettings, RelayProfile, normalize_settings_before_save};
+use chatgpt_plus_core::settings::{
+    BackendSettings, RelayMode, RelayProfile, SettingsStore, normalize_settings_before_save,
+};
+use chatgpt_plus_data::ProviderSyncStatus;
+use rusqlite::Connection;
 use serde_json::json;
 
 use super::diagnostics::check_env_conflicts;
@@ -34,6 +38,212 @@ fn relay_switch_request_contract_names_the_target_and_not_the_previous_profile()
     };
 
     assert_eq!(request.target_relay_id, "relay-b");
+}
+
+#[tokio::test]
+async fn switching_relay_profile_syncs_history_to_the_new_provider() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join(".codex");
+    std::fs::create_dir_all(home.join("sessions/2026")).unwrap();
+    std::fs::write(
+        home.join("config.toml"),
+        r#"model_provider = "custom"
+
+[model_providers.custom]
+name = "custom"
+base_url = "https://relay.example/v1"
+wire_api = "responses"
+requires_openai_auth = true
+"#,
+    )
+    .unwrap();
+    std::fs::write(home.join("auth.json"), r#"{"OPENAI_API_KEY":"sk-old"}"#).unwrap();
+    let rollout = home.join("sessions/2026/rollout-thread-1.jsonl");
+    std::fs::write(
+        &rollout,
+        concat!(
+            r#"{"type":"session_meta","payload":{"id":"thread-1","model_provider":"custom","cwd":"/workspace"}}"#,
+            "\n",
+            r#"{"type":"event_msg","payload":{"type":"user_message"}}"#,
+            "\n"
+        ),
+    )
+    .unwrap();
+    let db_path = home.join("state_5.sqlite");
+    let db = Connection::open(&db_path).unwrap();
+    db.execute(
+        "CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT, archived INTEGER, has_user_event INTEGER, cwd TEXT)",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO threads VALUES ('thread-1', 'custom', 0, 1, '/workspace')",
+        [],
+    )
+    .unwrap();
+    drop(db);
+
+    let pure_api = RelayProfile {
+        id: "api".to_string(),
+        name: "API".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: std::fs::read_to_string(home.join("config.toml")).unwrap(),
+        auth_contents: std::fs::read_to_string(home.join("auth.json")).unwrap(),
+        ..RelayProfile::default()
+    };
+    let official = RelayProfile {
+        id: "official".to_string(),
+        name: "Official".to_string(),
+        relay_mode: RelayMode::Official,
+        auth_contents: r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official"}}"#
+            .to_string(),
+        ..RelayProfile::default()
+    };
+    let original = BackendSettings {
+        active_relay_id: pure_api.id.clone(),
+        relay_profiles: vec![pure_api.clone(), official.clone()],
+        ..BackendSettings::default()
+    };
+    let store = SettingsStore::new(temp.path().join("settings.json"));
+    store.save(&original).unwrap();
+    let requested = BackendSettings {
+        active_relay_id: official.id.clone(),
+        relay_profiles: vec![pure_api, official],
+        ..BackendSettings::default()
+    };
+
+    let outcome = activate_relay_profile_with_history_sync(&store, &home, requested, "official")
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.activation.settings.active_relay_id, "official");
+    let history_sync = outcome.history_sync.as_ref().unwrap();
+    assert_eq!(history_sync.status, ProviderSyncStatus::Synced);
+    assert_eq!(history_sync.target_provider, "openai");
+    let session_meta: serde_json::Value = serde_json::from_str(
+        std::fs::read_to_string(&rollout)
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(session_meta["payload"]["model_provider"], "openai");
+    let db = Connection::open(db_path).unwrap();
+    let provider: String = db
+        .query_row(
+            "SELECT model_provider FROM threads WHERE id = 'thread-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(provider, "openai");
+}
+
+#[tokio::test]
+async fn switching_profiles_with_the_same_provider_skips_history_sync() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join(".codex");
+    std::fs::create_dir(&home).unwrap();
+    std::fs::write(home.join("config.toml"), "model = \"gpt-5\"\n").unwrap();
+    std::fs::write(
+        home.join("auth.json"),
+        r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official-a"}}"#,
+    )
+    .unwrap();
+    let official_a = RelayProfile {
+        id: "official-a".to_string(),
+        name: "Official A".to_string(),
+        relay_mode: RelayMode::Official,
+        auth_contents: r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official-a"}}"#
+            .to_string(),
+        ..RelayProfile::default()
+    };
+    let official_b = RelayProfile {
+        id: "official-b".to_string(),
+        name: "Official B".to_string(),
+        relay_mode: RelayMode::Official,
+        auth_contents: r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official-b"}}"#
+            .to_string(),
+        ..RelayProfile::default()
+    };
+    let original = BackendSettings {
+        active_relay_id: official_a.id.clone(),
+        relay_profiles: vec![official_a.clone(), official_b.clone()],
+        ..BackendSettings::default()
+    };
+    let store = SettingsStore::new(temp.path().join("settings.json"));
+    store.save(&original).unwrap();
+    let requested = BackendSettings {
+        active_relay_id: official_b.id.clone(),
+        relay_profiles: vec![official_a, official_b],
+        ..BackendSettings::default()
+    };
+
+    let outcome = activate_relay_profile_with_history_sync(&store, &home, requested, "official-b")
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.activation.settings.active_relay_id, "official-b");
+    assert!(outcome.history_sync.is_none());
+}
+
+#[tokio::test]
+async fn switching_provider_succeeds_when_history_sync_is_temporarily_locked() {
+    let temp = tempfile::tempdir().unwrap();
+    let home = temp.path().join(".codex");
+    std::fs::create_dir_all(home.join("tmp/provider-sync.lock")).unwrap();
+    std::fs::write(
+        home.join("config.toml"),
+        concat!(
+            "model_provider = \"custom\"\n\n",
+            "[model_providers.custom]\n",
+            "name = \"custom\"\n",
+            "base_url = \"https://relay.example/v1\"\n",
+            "wire_api = \"responses\"\n",
+            "requires_openai_auth = true\n"
+        ),
+    )
+    .unwrap();
+    std::fs::write(home.join("auth.json"), r#"{"OPENAI_API_KEY":"sk-old"}"#).unwrap();
+    let pure_api = RelayProfile {
+        id: "api".to_string(),
+        name: "API".to_string(),
+        relay_mode: RelayMode::PureApi,
+        config_contents: std::fs::read_to_string(home.join("config.toml")).unwrap(),
+        auth_contents: std::fs::read_to_string(home.join("auth.json")).unwrap(),
+        ..RelayProfile::default()
+    };
+    let official = RelayProfile {
+        id: "official".to_string(),
+        name: "Official".to_string(),
+        relay_mode: RelayMode::Official,
+        auth_contents: r#"{"auth_mode":"chatgpt","tokens":{"access_token":"official"}}"#
+            .to_string(),
+        ..RelayProfile::default()
+    };
+    let original = BackendSettings {
+        active_relay_id: pure_api.id.clone(),
+        relay_profiles: vec![pure_api.clone(), official.clone()],
+        ..BackendSettings::default()
+    };
+    let store = SettingsStore::new(temp.path().join("settings.json"));
+    store.save(&original).unwrap();
+    let requested = BackendSettings {
+        active_relay_id: official.id.clone(),
+        relay_profiles: vec![pure_api, official],
+        ..BackendSettings::default()
+    };
+
+    let outcome = activate_relay_profile_with_history_sync(&store, &home, requested, "official")
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.activation.settings.active_relay_id, "official");
+    let history_sync = outcome.history_sync.unwrap();
+    assert_eq!(history_sync.status, ProviderSyncStatus::Skipped);
+    assert!(history_sync.message.contains("provider-sync.lock"));
+    assert_eq!(chatgpt_plus_data::current_provider(Some(&home)), "openai");
 }
 
 #[test]

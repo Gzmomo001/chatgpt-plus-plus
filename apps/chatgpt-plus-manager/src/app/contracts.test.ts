@@ -447,7 +447,8 @@ test("copies a fresh diagnostic report beside the independent GitHub issue actio
 
   assert.match(app, /copyLatestDiagnosticReport\s*\(\s*\{/);
   assert.match(app, /generate:\s*\(\)\s*=>\s*managerActions\.diagnostics\.copy\(\)/);
-  assert.match(app, /writeClipboard:\s*\(report\)\s*=>\s*navigator\.clipboard\.writeText\(report\)/);
+  assert.match(app, /writeClipboard:\s*writeTextToClipboard/);
+  assert.doesNotMatch(app, /navigator\.clipboard\.writeText/);
   assert.match(app, /诊断报告已复制，现在可以前往反馈问题并粘贴到 Issue。/);
   assert.match(app, /生成诊断报告失败：\{0\}/);
   assert.match(app, /复制诊断报告失败：\{0\}/);
@@ -473,7 +474,7 @@ test("publishes one compact About surface instead of the previous Settings stack
     /import \{ (?:SettingsScreen|MaintenanceScreen) \}|<(?:SettingsScreen|MaintenanceScreen)\b/,
   );
   assert.match(presentation, /settings:\s*\{[\s\S]*?label:\s*["']关于["'][\s\S]*?icon:\s*Info/);
-  assert.match(screen, /<CardHead title=\{t\(["']关于["']\)\}/);
+  assert.match(screen, /<SettingsCard[\s\S]*?title=\{t\(["']关于["']\)\}/);
   assert.match(screen, /className=["']about-identity["']/);
   assert.match(screen, /className=["']about-action-list["']/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
@@ -496,6 +497,30 @@ test("uses one dynamic update action and advertises available updates in navigat
   assert.match(app, /setInterval\(\(\) => \{[\s\S]*?checkUpdate\(true\)[\s\S]*?WEEKLY_UPDATE_CHECK_INTERVAL_MS/);
   assert.match(app, /className=["']nav-item update-nav-item["']/);
   assert.match(app, /hasUpdate \? \([\s\S]*?CircleArrowUp/);
+});
+
+test("keeps ChatGPT extra launch arguments behind a collapsed advanced disclosure", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(screen, /<details className=["']about-advanced["']>/);
+  assert.doesNotMatch(screen, /<details[^>]+\bopen=/);
+  assert.match(screen, /<summary className=["']about-advanced-summary["']>/);
+  assert.match(screen, /t\(["']高级功能["']\)/);
+  assert.match(screen, /t\(["']ChatGPT 额外启动参数["']\)/);
+  assert.match(screen, /value=\{codexExtraArgsToInput\(codexExtraArgs\)\}/);
+  assert.match(
+    screen,
+    /actions\.setCodexExtraArgs\(inputToCodexExtraArgs\(event\.currentTarget\.value\)\)/,
+  );
+  assert.match(app, /codexExtraArgs=\{settingsForm\.codexExtraArgs\}/);
+  assert.match(
+    app,
+    /setCodexExtraArgs:\s*\(codexExtraArgs[^]*?settingsAutosaveRef\.current\?\.schedule\(\{[^]*?mode:\s*["']autosave["']/,
+  );
 });
 
 test("composes Enhance through a minimal screen-owned view and action seam", () => {
@@ -561,6 +586,27 @@ test("composes Enhance through a minimal screen-owned view and action seam", () 
   assert.doesNotMatch(screen, /saveSettings|保存增强设置/);
 
   assert.doesNotMatch(screen, /\bzed\b/i);
+});
+
+test("reuses the About card geometry across settings surfaces", () => {
+  const layout = readFileSync(new URL("../shared/ui/layout.tsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(layout, /export function SettingsCard\(/);
+  assert.match(layout, /className=\{cn\(["']settings-card["']/);
+  assert.match(styles, /--settings-card-max-width:\s*880px/);
+  assert.match(styles, /--settings-card-radius:\s*18px/);
+  assert.match(styles, /\.screen > \.settings-card-stack\s*\{[\s\S]*?margin-inline:\s*auto/);
+
+  for (const path of [
+    "../screens/diagnostics/AboutScreen.tsx",
+    "../screens/enhance/EnhanceScreen.tsx",
+    "../screens/settings/SettingsScreen.tsx",
+    "../screens/maintenance/MaintenanceScreen.tsx",
+  ]) {
+    const screen = readFileSync(new URL(path, import.meta.url), "utf8");
+    assert.match(screen, /<SettingsCard\b/, `${path} must use the shared settings card`);
+  }
 });
 
 test("does not expose the removed Recommendations section", () => {

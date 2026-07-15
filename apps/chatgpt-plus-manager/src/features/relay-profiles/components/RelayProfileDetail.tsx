@@ -117,6 +117,14 @@ export function RelayProfileDetail<Settings extends RelaySettings>({ profile, re
       selected={creationKind}
     />
   ) : null;
+  const navigationTitle = (
+    <h2 className="relay-editor-title">
+      <button onClick={onBack} title={t("返回列表")} type="button">
+        <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+        {t("供应商管理")}
+      </button>
+    </h2>
+  );
   return <div className="relay-detail-page" key={profile.id}>
     {!isNew ? <div className="relay-detail-sticky">
       <Toolbar>
@@ -129,12 +137,12 @@ export function RelayProfileDetail<Settings extends RelaySettings>({ profile, re
     {creationKind === "import" ? <div className="relay-profile-editor provider-import-editor">
       <div className="relay-editor-head">
         <div>
-          <strong>{t("从第三方导入")}</strong>
-          <span>{t("选择供应商类型")}</span>
+          {navigationTitle}
+          <span>{t("从第三方导入")}</span>
         </div>
       </div>
       {creationSelector}
-    </div> : <RelayProfileEditor state={editorState} form={form} isNew={isNew} headerAddon={creationSelector} onStateChange={setEditorState} onSwitch={switchDraft} actions={actions} />}
+    </div> : <RelayProfileEditor state={editorState} form={form} isNew={isNew} headerAddon={creationSelector} headerTitle={navigationTitle} onStateChange={setEditorState} onSwitch={switchDraft} actions={actions} />}
     {creationKind === "import" || editorState.draft.relayMode === "aggregate" ? null : (
       <RelayProfileFilesEditor
         profile={draft}
