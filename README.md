@@ -204,6 +204,13 @@ https://cdn.jsdelivr.net/gh/BigPizzaV3/Ad-List@main/ads.json
 
 ChatGPT++ 通过 GitHub Release 发布安装包。Windows 会生成 NSIS 安装程序，macOS 会生成 Intel x64 和 Apple Silicon arm64 两个 DMG。
 
+推送 `v*` 格式的 Git tag 会自动创建 GitHub Release，并构建上传所有安装包：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ChatGPT++ 的“关于”页可以检查并启动更新。
 
 ## 数据位置

@@ -546,6 +546,11 @@ fn github_release_workflow_uploads_static_latest_json() {
     assert!(workflow.contains("latest-json:"));
     assert!(workflow.contains("latest.json"));
     assert!(workflow.contains("gh release upload \"$TAG\" latest.json --clobber"));
+    assert!(workflow.contains("tags:\n      - \"v*\""));
+    assert!(workflow.contains("create-release:"));
+    assert!(workflow.contains("generate_release_notes: true"));
+    assert!(workflow.contains("needs: create-release"));
+    assert!(!workflow.contains("github.event.release.tag_name"));
 }
 
 #[test]

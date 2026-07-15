@@ -1,20 +1,33 @@
 name: Release assets
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
 
 jobs:
+  create-release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release from tag
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+
   windows-installer:
+    needs: create-release
     runs-on: windows-latest
     steps:
       - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.ref_name }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -52,14 +65,14 @@ jobs:
       - name: Build Windows zip asset
         shell: pwsh
         run: |
-          $version = "${{ github.event.release.tag_name }}".TrimStart("v", "V")
+          $version = "${{ github.ref_name }}".TrimStart("v", "V")
           New-Item -ItemType Directory -Force dist/windows | Out-Null
           Compress-Archive -Path dist/windows/app/* -DestinationPath "dist/windows/ChatGPTPlusPlus-$version-windows-x64.zip" -Force
 
       - name: Build Windows installer
         shell: pwsh
         run: |
-          $version = "${{ github.event.release.tag_name }}".TrimStart("v", "V")
+          $version = "${{ github.ref_name }}".TrimStart("v", "V")
           $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
           if (-not (Test-Path $makensis)) {
             $makensis = "makensis"
@@ -71,13 +84,15 @@ jobs:
       - name: Upload Windows installer
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
           files: |
             dist/windows/*.exe
             dist/windows/*.zip
 
   macos-dmg:
     name: macOS DMG (${{ matrix.arch }})
+    needs: create-release
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -93,7 +108,7 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.ref_name }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -152,7 +167,8 @@ jobs:
       - name: Upload macOS DMG
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
           files: |
             dist/macos/*.dmg
             dist/macos/*.zip
@@ -168,7 +184,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -197,7 +213,7 @@ jobs:
       - name: Upload latest.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
         shell: bash
         run: gh release upload "$TAG" latest.json --clobber --repo "$REPO"
