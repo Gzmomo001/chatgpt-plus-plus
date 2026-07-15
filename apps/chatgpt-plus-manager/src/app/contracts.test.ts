@@ -585,6 +585,25 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
   );
 });
 
+test("shows the detected version beside the path in the ChatGPT path panel", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const maintenance = readFileSync(
+    new URL("../screens/maintenance/MaintenanceScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  const about = readFileSync(
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /codexApp:\s*\{[\s\S]*?version:\s*overview\?\.codexVersion/);
+  assert.match(maintenance, /title=\{t\(["']ChatGPT 路径["']\)\}/);
+  assert.match(maintenance, /<code className=["']detected-app-version["']>\{version \?\? t\(["']未检测到["']\)\}<\/code>/);
+  assert.doesNotMatch(maintenance, /t\(["']版本["']\)/);
+  assert.doesNotMatch(maintenance, /t\(["']ChatGPT 版本["']\)/);
+  assert.doesNotMatch(about, /t\(["'](?:Codex|ChatGPT) 版本["']\)/);
+});
+
 test("does not publish the removed remote-project integration", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");

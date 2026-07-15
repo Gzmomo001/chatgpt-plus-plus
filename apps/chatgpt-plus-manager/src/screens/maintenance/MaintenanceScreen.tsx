@@ -9,6 +9,7 @@ import { StatusBadge as Badge } from "@/shared/ui/status-badge";
 type MaintenanceStatusView = {
   status?: string;
   path?: string | null;
+  version?: string | null;
 };
 
 export type MaintenanceLaunchForm = {
@@ -42,7 +43,7 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
   return (
     <>
       <Panel>
-        <CardHead title={t("Codex 应用路径")} detail={t("设置一次默认路径，也可以临时覆盖后启动")} />
+        <CardHead title={t("ChatGPT 路径")} detail={t("设置一次默认路径，也可以临时覆盖后启动")} />
         <CardContent>
           <div className="status-table">
             <StatusRow title={t("保存路径")} status={savedCodexAppPath ? "ok" : "not_checked"} path={savedCodexAppPath || null} />
@@ -98,12 +99,27 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
   );
 }
 
-function StatusRow({ title, status = "unknown", path }: { title: string; status?: string; path?: string | null }) {
+function StatusRow({
+  title,
+  status = "unknown",
+  path,
+  version,
+}: {
+  title: string;
+  status?: string;
+  path?: string | null;
+  version?: string | null;
+}) {
   return (
     <div className="status-row">
       <span>{title}</span>
       <Badge status={status} />
-      <code>{path || t("未记录路径")}</code>
+      <div className="status-row-detail">
+        <code>{path || t("未记录路径")}</code>
+        {version !== undefined ? (
+          <code className="detected-app-version">{version ?? t("未检测到")}</code>
+        ) : null}
+      </div>
     </div>
   );
 }

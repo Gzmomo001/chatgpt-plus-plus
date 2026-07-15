@@ -1388,6 +1388,7 @@ export function App() {
     codexApp: {
       status: overview?.codexApp.status,
       path: overview?.codexApp.path,
+      version: overview?.codexVersion,
     },
     savedCodexAppPath: settings?.settings.codexAppPath ?? "",
     launchForm,

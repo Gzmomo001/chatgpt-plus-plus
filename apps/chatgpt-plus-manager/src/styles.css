@@ -536,6 +536,23 @@ body {
   font-size: 12px;
 }
 
+.status-row-detail {
+  display: flex;
+  gap: 24px;
+  align-items: baseline;
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.status-row-detail code {
+  flex: 0 1 auto;
+}
+
+.detected-app-version {
+  flex: none;
+  white-space: nowrap;
+}
+
 .metric-list {
   display: grid;
   gap: 8px;
@@ -4112,6 +4129,12 @@ input[type="range"] {
 @media (max-width: 780px) {
   .panel > [data-slot="card-content"] {
     padding: 0 16px;
+  }
+
+  .status-row-detail {
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
   }
 
   .feature-action-row,

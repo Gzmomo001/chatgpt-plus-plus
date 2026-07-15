@@ -41,7 +41,6 @@ export function AboutScreen({
         <CardContent>
           <div className="metric-list">
             <Metric label={t("ChatGPT++ 版本")} value={overview?.currentVersion ?? update?.currentVersion ?? "-"} />
-            <Metric label={t("Codex 版本")} value={overview?.codexVersion ?? t("未检测到")} />
             <Metric label={t("项目地址")} value="github.com/Gzmomo001/chatgpt-plus-plus" />
           </div>
           <Toolbar>
