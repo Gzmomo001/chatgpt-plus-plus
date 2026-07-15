@@ -3915,6 +3915,10 @@ input[type="range"] {
   gap: 18px;
 }
 
+.feature-switch-grid .feature-toggle:only-child {
+  border-bottom: 0;
+}
+
 .feature-toggle > span {
   min-width: 0;
 }
