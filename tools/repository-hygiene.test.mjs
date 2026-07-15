@@ -13,6 +13,11 @@ const javascriptDependencyLockfiles = new Set([
   "pnpm-lock.yaml",
   "yarn.lock",
 ]);
+const frontendBuildOnlyDependencies = [
+  "@tauri-apps/cli",
+  "typescript",
+  "vite",
+];
 
 function hasCompetingPackageManagerCommand(source) {
   return competingPackageManagerCommand.test(source);
@@ -81,6 +86,23 @@ test("pnpm is the manager's only dependency-install contract", () => {
 
   assert.match(workflows, /pnpm install --frozen-lockfile/);
   assert.equal(hasCompetingPackageManagerCommand(workflows), false);
+});
+
+test("frontend build tooling stays out of production dependencies", () => {
+  const manifest = JSON.parse(readFileSync(new URL("package.json", managerRoot), "utf8"));
+
+  for (const dependency of frontendBuildOnlyDependencies) {
+    assert.equal(
+      Object.hasOwn(manifest.dependencies, dependency),
+      false,
+      `${dependency} is build-only and must not be installed as a production dependency`,
+    );
+    assert.equal(
+      Object.hasOwn(manifest.devDependencies, dependency),
+      true,
+      `${dependency} must remain available to development and release builds`,
+    );
+  }
 });
 
 test("deep-module ownership and removed compatibility surfaces are documented", () => {

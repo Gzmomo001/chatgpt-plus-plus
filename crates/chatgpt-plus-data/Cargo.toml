@@ -13,7 +13,6 @@ chatgpt-plus-core = { path = "../chatgpt-plus-core" }
 rusqlite.workspace = true
 serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
-thiserror.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

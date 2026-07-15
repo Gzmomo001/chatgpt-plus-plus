@@ -23,7 +23,6 @@ anyhow.workspace = true
 async-trait = "0.1"
 chatgpt-plus-core = { path = "../../../crates/chatgpt-plus-core" }
 chatgpt-plus-data = { path = "../../../crates/chatgpt-plus-data" }
-directories.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }
