@@ -43,11 +43,18 @@ test("adapters own wire command names and nested payload shapes", async () => {
   const { actions, invocations } = recordingActions();
   const settings = {} as never;
   const profile = { id: "relay-a" } as never;
+  const preferences = {
+    relayTestModel: "gpt-test",
+    codexExtraArgs: ["--force_high_performance_gpu"],
+    diagnosticLogEnabled: true,
+  };
 
+  await actions.settings.savePreferences(preferences);
   await actions.overview.launch({ appPath: "/Applications/Codex.app" });
   await actions.relay.switchProfile({ settings, targetRelayId: "relay-a" });
   await actions.relay.saveFile("config", "model = \"gpt-5\"\n");
   await actions.relay.fetchModels(profile);
+  await actions.relay.fetchModelUnion();
   await actions.sessions.delete({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" });
   await actions.sessions.exportMarkdown({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" }, "/tmp/hello.md");
   await actions.sessions.loadUsage({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" });
@@ -58,6 +65,10 @@ test("adapters own wire command names and nested payload shapes", async () => {
   await actions.app.updateTrayLabels({ showLabel: "Show", quitLabel: "Quit", windowTitle: "Manager" });
 
   assert.deepEqual(invocations, [
+    {
+      command: "save_preference_settings",
+      args: { request: preferences },
+    },
     {
       command: "launch_chatgpt_plus",
       args: { request: { appPath: "/Applications/Codex.app" } },
@@ -71,6 +82,7 @@ test("adapters own wire command names and nested payload shapes", async () => {
       args: { request: { kind: "config", contents: "model = \"gpt-5\"\n" } },
     },
     { command: "fetch_relay_profile_models", args: { profile } },
+    { command: "fetch_relay_profile_model_union", args: undefined },
     {
       command: "delete_local_session",
       args: { request: { sessionId: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" } },

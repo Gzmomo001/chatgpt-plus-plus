@@ -66,6 +66,7 @@ test("publishes every frontend-known Tauri command name", () => {
     "export_local_session_markdown",
     "extract_relay_common_config",
     "fetch_relay_profile_models",
+    "fetch_relay_profile_model_union",
     "import_ccs_providers",
     "install_entrypoints",
     "launch_chatgpt_plus",
@@ -96,6 +97,7 @@ test("publishes every frontend-known Tauri command name", () => {
     "repair_shortcuts",
     "reset_settings",
     "restart_chatgpt_plus",
+    "save_preference_settings",
     "save_relay_file",
     "save_settings",
     "startup_options",
@@ -424,6 +426,9 @@ test("composes Settings through its screen-owned vertical slice", () => {
   assert.match(screen, /export type SettingsForm\s*=\s*\{/);
   assert.match(screen, /diagnosticLogEnabled/);
   assert.match(screen, /openLogFolder/);
+  assert.match(screen, /provider-test-model-options/);
+  assert.match(screen, /settings-autosave-status/);
+  assert.doesNotMatch(screen, /saveSettings|保存设置/);
   assert.doesNotMatch(screen, /最近日志|LogsPanel/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
   assert.doesNotMatch(screen, /toggleTheme|\btheme\s*:|界面主题|切换主题/);

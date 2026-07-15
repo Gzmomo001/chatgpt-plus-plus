@@ -13,6 +13,11 @@ import { OverviewHealthIndicators } from "@/screens/overview/OverviewHealthIndic
 import { detectLaunchCrash } from "@/screens/overview/presentation";
 import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
 import { SettingsScreen } from "@/screens/settings/SettingsScreen";
+import type {
+  ProviderTestModelsView,
+  SettingsAutosaveState,
+  SettingsForm,
+} from "@/screens/settings/SettingsScreen";
 import { EnhanceScreen } from "@/screens/enhance/EnhanceScreen";
 import type { EnhanceActions, EnhanceView } from "@/screens/enhance/EnhanceScreen";
 import { MaintenanceScreen } from "@/screens/maintenance/MaintenanceScreen";
@@ -90,6 +95,7 @@ import {
   defaultSettings,
   normalizeSettings,
 } from "@/app/settings-normalization";
+import { createSettingsAutosave } from "@/app/settings-autosave";
 import { Button } from "@/shared/ui/button";
 import type { TaskProgress } from "@/shared/ui/task-progress";
 import { relayProfileSwitchMessage } from "@/features/relay-profiles/presentation";
@@ -182,6 +188,17 @@ export function App() {
   });
   const prevLaunchStatusRef = useRef<string | null>(null);
   const [settingsForm, setSettingsForm] = useState<BackendSettings>({ ...defaultSettings });
+  const [settingsAutosaveState, setSettingsAutosaveState] = useState<SettingsAutosaveState>("idle");
+  const [providerTestModels, setProviderTestModels] = useState<ProviderTestModelsView>({
+    state: "idle",
+    models: [],
+    attemptedProviders: 0,
+    successfulProviders: 0,
+  });
+  const settingsAutosaveRef = useRef<{
+    schedule: (value: SettingsForm) => void;
+    dispose: () => void;
+  } | null>(null);
   const [providerSyncProgress, setProviderSyncProgress] = useState<ProviderSyncProgress>({
     active: false,
     percent: 0,
@@ -248,6 +265,40 @@ export function App() {
       return normalized;
     }
     return null;
+  };
+
+  const refreshProviderTestModels = async () => {
+    setProviderTestModels((current) => ({ ...current, state: "loading" }));
+    try {
+      const result = await managerActions.relay.fetchModelUnion();
+      setProviderTestModels({
+        state: result.models.length
+          ? "ready"
+          : result.attemptedProfiles === 0
+            ? "empty"
+            : "failed",
+        models: result.models,
+        attemptedProviders: result.attemptedProfiles,
+        successfulProviders: result.successfulProfiles,
+      });
+      if (result.failedProfiles.length) {
+        logDiagnostic("settings.provider_test_models.partial_failure", {
+          attemptedProviders: result.attemptedProfiles,
+          successfulProviders: result.successfulProfiles,
+          failedProviders: result.failedProfiles,
+        });
+      }
+    } catch (error) {
+      setProviderTestModels({
+        state: "failed",
+        models: [],
+        attemptedProviders: 0,
+        successfulProviders: 0,
+      });
+      logDiagnostic("settings.provider_test_models.failed", {
+        error: stringifyError(error),
+      });
+    }
   };
 
   const refreshRelay = async (silent = false) => {
@@ -445,6 +496,7 @@ export function App() {
   const refreshSettingsPage = async () => {
     await Promise.all([
       refreshSettings(true),
+      refreshProviderTestModels(),
       refreshOverview(true),
       refreshDiagnostics(true),
     ]);
@@ -1058,6 +1110,38 @@ export function App() {
     setNotice({ title, message: t(message), status });
   };
 
+  if (!settingsAutosaveRef.current) {
+    settingsAutosaveRef.current = createSettingsAutosave<SettingsForm, SettingsResult>({
+      save: async (value) => {
+        const result = await managerActions.settings.savePreferences(value);
+        if (!isSuccessStatus(result.status)) throw new Error(result.message);
+        return result;
+      },
+      onSaved: (result, requested) => {
+        setSettings(result);
+        const normalized = normalizeSettings(result.settings);
+        setSettingsForm((current) => {
+          const stillCurrent =
+            current.relayTestModel === requested.relayTestModel
+            && current.diagnosticLogEnabled === requested.diagnosticLogEnabled
+            && current.codexExtraArgs.length === requested.codexExtraArgs.length
+            && current.codexExtraArgs.every((arg, index) => arg === requested.codexExtraArgs[index]);
+          if (!stillCurrent) return current;
+          return {
+            ...current,
+            relayTestModel: normalized.relayTestModel,
+            codexExtraArgs: normalized.codexExtraArgs,
+            diagnosticLogEnabled: normalized.diagnosticLogEnabled,
+          };
+        });
+      },
+      onError: (error) => {
+        showNotice(t("设置自动保存"), stringifyError(error), "failed");
+      },
+      onStateChange: setSettingsAutosaveState,
+    });
+  }
+
   const exitManagerApp = async () => {
     await managerActions.app.exit();
   };
@@ -1075,6 +1159,8 @@ export function App() {
     showNotice(title, result.message, result.status);
   };
 
+  useEffect(() => () => settingsAutosaveRef.current?.dispose(), []);
+
   useEffect(() => {
     void (async () => {
       const startup = await run(() => managerActions.app.startup());
@@ -1087,6 +1173,7 @@ export function App() {
       }
       await refreshOverview(true);
       await refreshSettings(true);
+      if (route === "settings" || startup?.showUpdate) await refreshProviderTestModels();
       await refreshRelay(true);
       await refreshEnvConflicts(true);
       await refreshProviderSyncTargets(true);
@@ -1449,7 +1536,13 @@ export function App() {
                   settingsPath={settings?.settingsPath ?? ""}
                   logPath={overview?.logsPath ?? ""}
                   form={settingsForm}
-                  onFormChange={(form) => setSettingsForm((current) => ({ ...current, ...form }))}
+                  autosaveState={settingsAutosaveState}
+                  providerTestModels={providerTestModels}
+                  onFormChange={(form) => {
+                    const next = normalizeSettings({ ...settingsForm, ...form });
+                    setSettingsForm(next);
+                    settingsAutosaveRef.current?.schedule(form);
+                  }}
                   actions={actions}
                 />
               </section>

@@ -35,6 +35,14 @@ pub struct StartupPayload {
     pub show_update: bool,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreferenceSettingsRequest {
+    pub relay_test_model: String,
+    pub codex_extra_args: Vec<String>,
+    pub diagnostic_log_enabled: bool,
+}
+
 #[tauri::command]
 pub fn backend_version() -> CommandResult<VersionPayload> {
     ok(
@@ -180,6 +188,29 @@ pub fn save_settings(settings: BackendSettings) -> CommandResult<SettingsPayload
                     .to_string_lossy()
                     .to_string(),
             },
+        ),
+    }
+}
+
+#[tauri::command]
+pub fn save_preference_settings(
+    request: PreferenceSettingsRequest,
+) -> CommandResult<SettingsPayload> {
+    let store = SettingsStore::default();
+    match store.update(json!({
+        "relayTestModel": request.relay_test_model,
+        "codexExtraArgs": request.codex_extra_args,
+        "diagnosticLogEnabled": request.diagnostic_log_enabled,
+    })) {
+        Ok(settings) => {
+            chatgpt_plus_core::diagnostic_log::set_diagnostic_log_enabled(
+                settings.diagnostic_log_enabled,
+            );
+            settings_payload("偏好设置已自动保存。", "偏好设置保存后重新读取失败")
+        }
+        Err(error) => failed(
+            &format!("自动保存偏好设置失败：{error}"),
+            settings_payload_value().unwrap_or_else(|(_, payload)| payload),
         ),
     }
 }

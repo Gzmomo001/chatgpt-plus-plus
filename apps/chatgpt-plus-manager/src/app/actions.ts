@@ -8,6 +8,7 @@ import type {
   EnvConflictsResult,
   ExtractRelayCommonConfigResult,
   ProviderDoctorResult,
+  PreferenceSettings,
   RelayFilesResult,
   RelayProfileView,
   SettingsResult,
@@ -38,6 +39,7 @@ export const TAURI_COMMAND_NAMES = [
   "export_local_session_markdown",
   "extract_relay_common_config",
   "fetch_relay_profile_models",
+  "fetch_relay_profile_model_union",
   "import_ccs_providers",
   "install_entrypoints",
   "launch_chatgpt_plus",
@@ -68,6 +70,7 @@ export const TAURI_COMMAND_NAMES = [
   "repair_shortcuts",
   "reset_settings",
   "restart_chatgpt_plus",
+  "save_preference_settings",
   "save_relay_file",
   "save_settings",
   "startup_options",
@@ -111,6 +114,12 @@ export type RelayProfileTestResult = CommandResult<{
 }>;
 
 export type RelayProfileModelsResult = CommandResult<{ models: string[]; endpoint: string }>;
+export type RelayProfileModelUnionResult = CommandResult<{
+  models: string[];
+  attemptedProfiles: number;
+  successfulProfiles: number;
+  failedProfiles: string[];
+}>;
 
 export type ProviderImportRequest = {
   name: string;
@@ -284,6 +293,8 @@ export function createManagerActions(call: InvokeManagerCommand) {
     },
     settings: {
       load: () => call<WireSettingsResult>("load_settings").then(mapSettingsResult),
+      savePreferences: (request: PreferenceSettings) =>
+        call<WireSettingsResult>("save_preference_settings", { request }).then(mapSettingsResult),
       save: (settings: BackendSettings) =>
         call<WireSettingsResult>("save_settings", { settings }).then(mapSettingsResult),
       reset: () => call<WireSettingsResult>("reset_settings").then(mapSettingsResult),
@@ -317,6 +328,8 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<ProviderDoctorResult>("diagnose_relay_profile", { profile }),
       fetchModels: (profile: RelayProfileView) =>
         call<RelayProfileModelsResult>("fetch_relay_profile_models", { profile }),
+      fetchModelUnion: () =>
+        call<RelayProfileModelUnionResult>("fetch_relay_profile_model_union"),
       switchProfile: (request: { settings: BackendSettings; targetRelayId: string }) =>
         call<RelaySwitchResult>("switch_relay_profile", { request }),
     },

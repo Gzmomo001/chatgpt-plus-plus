@@ -5,7 +5,8 @@ use std::path::Path;
 use std::thread;
 
 use chatgpt_plus_core::model_catalog::{
-    read_codex_model_catalog, read_codex_model_catalog_from_home, refresh_relay_profile_model_specs,
+    fetch_relay_profile_model_union, read_codex_model_catalog, read_codex_model_catalog_from_home,
+    refresh_relay_profile_model_specs,
 };
 use chatgpt_plus_core::model_catalog_materializer::{CustomModelSpec, ReasoningSpec};
 use chatgpt_plus_core::settings::{
@@ -437,6 +438,99 @@ async fn failed_refresh_keeps_last_known_good_manual_specs() {
     assert_eq!(profile, before);
     let requests = server.finish();
     assert_eq!(requests.len(), 1);
+}
+
+#[tokio::test]
+async fn provider_model_union_merges_and_deduplicates_every_configured_profile() {
+    let first_server = spawn_models_server(json!({
+        "data": [
+            {"id": "zeta-model"},
+            {"id": "shared-model"}
+        ]
+    }));
+    let second_server = spawn_models_server(json!({
+        "data": [
+            {"id": "alpha-model"},
+            {"id": "shared-model"}
+        ]
+    }));
+    let profiles = vec![
+        RelayProfile {
+            id: "first".to_string(),
+            name: "First".to_string(),
+            base_url: format!("{}/v1", first_server.base_url),
+            api_key: "sk-first".to_string(),
+            relay_mode: RelayMode::PureApi,
+            ..RelayProfile::default()
+        },
+        RelayProfile {
+            id: "second".to_string(),
+            name: "Second".to_string(),
+            base_url: format!("{}/v1", second_server.base_url),
+            api_key: "sk-second".to_string(),
+            relay_mode: RelayMode::PureApi,
+            ..RelayProfile::default()
+        },
+    ];
+
+    let outcome = fetch_relay_profile_model_union(&profiles).await;
+
+    assert_eq!(
+        outcome.models,
+        ["alpha-model", "shared-model", "zeta-model"]
+    );
+    assert_eq!(outcome.attempted_profiles, 2);
+    assert_eq!(outcome.successful_profiles, 2);
+    assert!(outcome.failed_profiles.is_empty());
+    assert_eq!(first_server.finish().len(), 1);
+    assert_eq!(second_server.finish().len(), 1);
+}
+
+#[tokio::test]
+async fn provider_model_union_keeps_successes_when_another_provider_fails() {
+    let working_server = spawn_models_server(json!({
+        "data": [{"id": "working-model"}]
+    }));
+    let empty_server = spawn_models_server(json!({"data": []}));
+    let profiles = vec![
+        RelayProfile {
+            id: "working".to_string(),
+            name: "Working".to_string(),
+            base_url: format!("{}/v1", working_server.base_url),
+            relay_mode: RelayMode::PureApi,
+            ..RelayProfile::default()
+        },
+        RelayProfile {
+            id: "broken".to_string(),
+            name: "Broken".to_string(),
+            base_url: format!("{}/v1", empty_server.base_url),
+            relay_mode: RelayMode::PureApi,
+            ..RelayProfile::default()
+        },
+        RelayProfile {
+            id: "official".to_string(),
+            name: "Official".to_string(),
+            base_url: "http://127.0.0.1:9/v1".to_string(),
+            relay_mode: RelayMode::Official,
+            ..RelayProfile::default()
+        },
+        RelayProfile {
+            id: "aggregate".to_string(),
+            name: "Aggregate".to_string(),
+            base_url: "http://127.0.0.1:9/v1".to_string(),
+            relay_mode: RelayMode::Aggregate,
+            ..RelayProfile::default()
+        },
+    ];
+
+    let outcome = fetch_relay_profile_model_union(&profiles).await;
+
+    assert_eq!(outcome.models, ["working-model"]);
+    assert_eq!(outcome.attempted_profiles, 2);
+    assert_eq!(outcome.successful_profiles, 1);
+    assert_eq!(outcome.failed_profiles, ["Broken"]);
+    assert_eq!(working_server.finish().len(), 1);
+    assert_eq!(empty_server.finish().len(), 1);
 }
 
 fn write_config(home: &Path, contents: &str) {

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   codexExtraArgsToInput,
   inputToCodexExtraArgs,
+  providerTestModelOptions,
 } from "./presentation.ts";
 
 test("renders Codex extra arguments as one line per array entry", () => {
@@ -27,4 +28,14 @@ test("preserves empty and whitespace-only Codex argument lines", () => {
 
 test("preserves leading and trailing whitespace in Codex argument lines", () => {
   assert.deepEqual(inputToCodexExtraArgs("  --first  \n --second"), ["  --first  ", " --second"]);
+});
+
+test("keeps the current manual test model alongside the fetched provider union", () => {
+  assert.deepEqual(
+    providerTestModelOptions(
+      ["zeta-model", "shared-model", "alpha-model", "shared-model"],
+      "manual-fallback",
+    ),
+    ["alpha-model", "manual-fallback", "shared-model", "zeta-model"],
+  );
 });

@@ -302,7 +302,7 @@ fn manager_does_not_register_the_removed_remote_project_commands() {
         .next()
         .expect("manager handler registration end");
 
-    assert_eq!(handler.matches("commands::").count(), 52);
+    assert_eq!(handler.matches("commands::").count(), 54);
     assert!(!commands_rs.contains(&command_stem));
     assert!(!handler.contains(&command_stem));
 }
@@ -384,15 +384,15 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(annotated.len(), 52, "Manager domain command count changed");
+    assert_eq!(annotated.len(), 54, "Manager domain command count changed");
     assert_eq!(
         lib_annotated, tray_commands,
         "lib.rs must own only the three tray commands"
     );
     assert_eq!(
         registered.len(),
-        55,
-        "handler must include 52 domain and three tray commands"
+        57,
+        "handler must include 54 domain and three tray commands"
     );
     assert_eq!(
         registered_paths, expected_registered_paths,
@@ -402,9 +402,9 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         registered_manager, annotated_paths,
         "generate_handler must register every domain command exactly once",
     );
-    assert_eq!(frontend.len(), 52, "frontend-known command count changed");
+    assert_eq!(frontend.len(), 54, "frontend-known command count changed");
     assert!(frontend.is_superset(&tray_commands));
-    assert_eq!(frontend_manager.len(), 49);
+    assert_eq!(frontend_manager.len(), 51);
     assert!(
         annotated.is_superset(&frontend_manager),
         "every frontend manager command must have an annotated backend command"

@@ -553,6 +553,76 @@ pub async fn fetch_relay_profile_model_ids(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayProfileModelUnionOutcome {
+    pub models: Vec<String>,
+    pub attempted_profiles: usize,
+    pub successful_profiles: usize,
+    pub failed_profiles: Vec<String>,
+}
+
+pub async fn fetch_relay_profile_model_union(
+    profiles: &[RelayProfile],
+) -> RelayProfileModelUnionOutcome {
+    const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+    let candidates = profiles
+        .iter()
+        .filter(|profile| {
+            profile.relay_mode != RelayMode::Aggregate
+                && (profile.relay_mode != RelayMode::Official || profile.official_mix_api_key)
+                && (!profile.upstream_base_url.trim().is_empty()
+                    || !profile.base_url.trim().is_empty())
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let attempted_profiles = candidates.len();
+    let mut successful_profiles = 0;
+    let mut failed_profiles = Vec::new();
+    let mut models = Vec::new();
+    let mut fetches = tokio::task::JoinSet::new();
+
+    for profile in candidates {
+        fetches.spawn(async move {
+            let profile_name = if profile.name.trim().is_empty() {
+                profile.id.trim().to_string()
+            } else {
+                profile.name.trim().to_string()
+            };
+            let result =
+                tokio::time::timeout(FETCH_TIMEOUT, fetch_relay_profile_model_ids(&profile))
+                    .await
+                    .map_err(|_| anyhow::anyhow!("获取模型超时"))
+                    .and_then(|result| result);
+            (profile_name, result)
+        });
+    }
+
+    while let Some(result) = fetches.join_next().await {
+        let Ok((profile_name, result)) = result else {
+            failed_profiles.push("未知供应商".to_string());
+            continue;
+        };
+        match result {
+            Ok((profile_models, _)) => {
+                successful_profiles += 1;
+                models.extend(profile_models);
+            }
+            Err(_) => failed_profiles.push(profile_name),
+        }
+    }
+
+    let mut models = unique_strings(models);
+    models.sort_by_key(|model| model.to_lowercase());
+    failed_profiles.sort_by_key(|profile| profile.to_lowercase());
+    RelayProfileModelUnionOutcome {
+        models,
+        attempted_profiles,
+        successful_profiles,
+        failed_profiles,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModelSpecRefreshOutcome {
     pub attempted: bool,
     pub changed: bool,
