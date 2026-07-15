@@ -1,9 +1,11 @@
 import {
   ArrowUpCircle,
   ClipboardCopy,
+  FolderOpen,
   Github,
   MessageCircleWarning,
   RefreshCw,
+  ScrollText,
 } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
@@ -23,17 +25,21 @@ export type DiagnosticsActions = {
   checkUpdate: () => Promise<void>;
   performUpdate: () => Promise<void>;
   copyDiagnostics: () => Promise<void>;
+  openLogFolder: () => Promise<void>;
+  setDiagnosticLogEnabled: (enabled: boolean) => void;
 };
 
 export function AboutScreen({
   overview,
   update,
   updateInstallProgress,
+  diagnosticLogEnabled,
   actions,
 }: {
   overview: OverviewResult | null;
   update: UpdateResult | null;
   updateInstallProgress: TaskProgress;
+  diagnosticLogEnabled: boolean;
   actions: DiagnosticsActions;
 }) {
   const currentVersion = overview?.currentVersion ?? update?.currentVersion ?? "-";
@@ -101,6 +107,29 @@ export function AboutScreen({
             <Button onClick={() => void actions.copyDiagnostics()} variant="secondary">
               {t("复制诊断报告")}
             </Button>
+          </section>
+
+          <section className="about-action-row">
+            <div className="about-action-icon">
+              <ScrollText aria-hidden="true" className="h-5 w-5" />
+            </div>
+            <label className="about-action-copy" htmlFor="diagnostic-log-enabled">
+              <strong>{t("日志记录")}</strong>
+            </label>
+            <div className="about-action-buttons">
+              <Button onClick={() => void actions.openLogFolder()} variant="secondary">
+                <FolderOpen aria-hidden="true" className="h-4 w-4" />
+                {t("打开日志文件夹")}
+              </Button>
+              <input
+                aria-label={t("启用日志记录")}
+                checked={diagnosticLogEnabled}
+                className="diagnostic-log-switch"
+                id="diagnostic-log-enabled"
+                onChange={(event) => actions.setDiagnosticLogEnabled(event.currentTarget.checked)}
+                type="checkbox"
+              />
+            </div>
           </section>
 
           <section className="about-action-row">

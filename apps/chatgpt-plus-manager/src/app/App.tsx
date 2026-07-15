@@ -1508,6 +1508,7 @@ export function App() {
                   overview={overview}
                   update={update}
                   updateInstallProgress={updateInstallProgress}
+                  diagnosticLogEnabled={settingsForm.diagnosticLogEnabled}
                   actions={actions}
                 />
               </section>

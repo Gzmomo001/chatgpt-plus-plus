@@ -587,15 +587,33 @@ test("keeps shortcut maintenance out of the single About route", () => {
   assert.match(app, /<section className=["']settings-page-section["'] id=["']settings-about["']>/);
 });
 
-test("keeps preferences controls out of the single About route", () => {
+test("keeps the retired SettingsScreen out of the single About route", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(app, /SettingsScreen|settings-preferences|chatGptAppPath=|onFormChange=\{\(form\)/);
   assert.match(app, /<AboutScreen[\s\S]*?overview=\{overview\}[\s\S]*?update=\{update\}/);
 });
 
+test("exposes diagnostic log controls on the visible About settings route", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /diagnosticLogEnabled=\{settingsForm\.diagnosticLogEnabled\}/);
+  assert.match(screen, /diagnosticLogEnabled:\s*boolean/);
+  assert.match(screen, /actions\.openLogFolder\(\)/);
+  assert.match(
+    screen,
+    /actions\.setDiagnosticLogEnabled\(event\.currentTarget\.checked\)/,
+  );
+  assert.match(screen, /checked=\{diagnosticLogEnabled\}/);
+  assert.match(screen, /t\(["']打开日志文件夹["']\)/);
+});
+
 test("presents diagnostic logging as a title-only preference row", () => {
   const settings = readFileSync(
-    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
     "utf8",
   );
 
@@ -607,7 +625,7 @@ test("presents diagnostic logging as a title-only preference row", () => {
 test("persists the diagnostic logging toggle immediately without a success notice", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const settings = readFileSync(
-    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
     "utf8",
   );
 
