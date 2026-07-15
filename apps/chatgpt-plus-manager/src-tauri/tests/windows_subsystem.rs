@@ -1,3 +1,14 @@
+fn normalize_source_text(source: &str) -> String {
+    source.replace("\r\n", "\n")
+}
+
+#[test]
+fn source_contract_assertions_accept_windows_crlf() {
+    let source = "selectedBeforeSave.id,\r\n    );\r\n";
+
+    assert!(normalize_source_text(source).contains("selectedBeforeSave.id,\n    );"));
+}
+
 #[cfg(windows)]
 #[test]
 fn manager_binary_uses_windows_gui_subsystem_in_debug_and_release() {
@@ -542,6 +553,7 @@ fn relay_settings_keeps_profile_config_and_auth_files_isolated() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let app_tsx = manifest_dir.parent().unwrap().join("src/app/App.tsx");
     let app_tsx = std::fs::read_to_string(&app_tsx).expect("read manager App.tsx");
+    let app_tsx = normalize_source_text(&app_tsx);
     let controller_ts = manifest_dir
         .parent()
         .unwrap()
