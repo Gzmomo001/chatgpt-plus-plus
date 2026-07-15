@@ -399,11 +399,6 @@ export const EN_PLAIN: Record<string, string> = {
     "No API providers with model discovery are configured. You can still enter a model manually.",
   "进入此页面后会自动汇总所有已接入供应商的模型；仍可手动输入。":
     "Opening this page merges models from every connected provider automatically. You can still enter one manually.",
-  "等待自动保存…": "Waiting to autosave…",
-  "正在自动保存…": "Autosaving…",
-  "所有更改均已自动保存": "All changes autosaved",
-  "自动保存失败；请检查设置后再次修改。": "Autosave failed. Check the settings and edit again.",
-  "更改会自动保存": "Changes save automatically",
   "设置已加载": "Settings loaded",
   "设置重置": "Settings reset",
   "诊断已生成": "Diagnostics generated",

@@ -15,7 +15,6 @@ import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
 import { SettingsScreen } from "@/screens/settings/SettingsScreen";
 import type {
   ProviderTestModelsView,
-  SettingsAutosaveState,
   SettingsForm,
 } from "@/screens/settings/SettingsScreen";
 import { EnhanceScreen } from "@/screens/enhance/EnhanceScreen";
@@ -188,7 +187,6 @@ export function App() {
   });
   const prevLaunchStatusRef = useRef<string | null>(null);
   const [settingsForm, setSettingsForm] = useState<BackendSettings>({ ...defaultSettings });
-  const [settingsAutosaveState, setSettingsAutosaveState] = useState<SettingsAutosaveState>("idle");
   const [providerTestModels, setProviderTestModels] = useState<ProviderTestModelsView>({
     state: "idle",
     models: [],
@@ -1134,11 +1132,12 @@ export function App() {
             diagnosticLogEnabled: normalized.diagnosticLogEnabled,
           };
         });
+        showNotice(t("设置保存"), result.message, result.status);
       },
       onError: (error) => {
         showNotice(t("设置自动保存"), stringifyError(error), "failed");
       },
-      onStateChange: setSettingsAutosaveState,
+      onStateChange: () => {},
     });
   }
 
@@ -1536,7 +1535,6 @@ export function App() {
                   settingsPath={settings?.settingsPath ?? ""}
                   logPath={overview?.logsPath ?? ""}
                   form={settingsForm}
-                  autosaveState={settingsAutosaveState}
                   providerTestModels={providerTestModels}
                   onFormChange={(form) => {
                     const next = normalizeSettings({ ...settingsForm, ...form });

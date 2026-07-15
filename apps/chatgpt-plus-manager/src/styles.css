@@ -4001,42 +4001,6 @@ input[type="range"] {
   color: hsl(var(--destructive));
 }
 
-.settings-autosave-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-top: 1px solid hsl(var(--border) / 0.72);
-  padding-top: 14px;
-  color: hsl(var(--muted-foreground));
-  font-size: 12px;
-}
-
-.settings-autosave-status > span {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  border-radius: 999px;
-  background: hsl(var(--muted-foreground) / 0.55);
-}
-
-.settings-autosave-status[data-state="pending"] > span,
-.settings-autosave-status[data-state="saving"] > span {
-  background: hsl(211 88% 58%);
-  box-shadow: 0 0 0 3px hsl(211 88% 58% / 0.12);
-}
-
-.settings-autosave-status[data-state="saved"] > span {
-  background: hsl(156 64% 42%);
-}
-
-.settings-autosave-status[data-state="failed"] {
-  color: hsl(var(--destructive));
-}
-
-.settings-autosave-status[data-state="failed"] > span {
-  background: hsl(var(--destructive));
-}
-
 .feature-group,
 .plugin-inventory-panel,
 .aggregate-members {

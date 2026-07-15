@@ -24,8 +24,6 @@ export type SettingsActions = {
   openLogFolder: () => Promise<void>;
 };
 
-export type SettingsAutosaveState = "idle" | "pending" | "saving" | "saved" | "failed";
-
 export type ProviderTestModelsView = {
   state: "idle" | "loading" | "ready" | "empty" | "failed";
   models: string[];
@@ -37,7 +35,6 @@ export function SettingsScreen({
   settingsPath,
   logPath,
   form,
-  autosaveState,
   providerTestModels,
   onFormChange,
   actions,
@@ -45,7 +42,6 @@ export function SettingsScreen({
   settingsPath: string;
   logPath: string;
   form: SettingsForm;
-  autosaveState: SettingsAutosaveState;
   providerTestModels: ProviderTestModelsView;
   onFormChange: (value: SettingsForm) => void;
   actions: SettingsActions;
@@ -121,10 +117,6 @@ export function SettingsScreen({
             </Button>
           </div>
         </section>
-        <div className="settings-autosave-status" data-state={autosaveState} role="status" aria-live="polite">
-          <span aria-hidden="true" />
-          {settingsAutosaveMessage(autosaveState)}
-        </div>
       </CardContent>
     </Panel>
   );
@@ -142,12 +134,4 @@ function providerTestModelsMessage(view: ProviderTestModelsView): string {
     ]);
   }
   return t("进入此页面后会自动汇总所有已接入供应商的模型；仍可手动输入。");
-}
-
-function settingsAutosaveMessage(state: SettingsAutosaveState): string {
-  if (state === "pending") return t("等待自动保存…");
-  if (state === "saving") return t("正在自动保存…");
-  if (state === "saved") return t("所有更改均已自动保存");
-  if (state === "failed") return t("自动保存失败；请检查设置后再次修改。");
-  return t("更改会自动保存");
 }

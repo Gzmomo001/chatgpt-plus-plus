@@ -427,8 +427,13 @@ test("composes Settings through its screen-owned vertical slice", () => {
   assert.match(screen, /diagnosticLogEnabled/);
   assert.match(screen, /openLogFolder/);
   assert.match(screen, /provider-test-model-options/);
-  assert.match(screen, /settings-autosave-status/);
+  assert.doesNotMatch(screen, /settings-autosave-status|settingsAutosaveMessage/);
   assert.doesNotMatch(screen, /saveSettings|保存设置/);
+  assert.match(
+    app,
+    /onSaved:\s*\(result, requested\)\s*=>\s*\{[\s\S]*?showNotice\(t\("设置保存"\), result\.message, result\.status\)/,
+    "a completed autosave must publish the existing success notification",
+  );
   assert.doesNotMatch(screen, /最近日志|LogsPanel/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
   assert.doesNotMatch(screen, /toggleTheme|\btheme\s*:|界面主题|切换主题/);
