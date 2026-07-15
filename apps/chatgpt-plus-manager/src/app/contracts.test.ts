@@ -576,7 +576,13 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
   ]);
   assert.doesNotMatch(screen, /检查与修复|检查 Codex 应用状态/);
   assert.match(screen, /navigator\.userAgent\.toLowerCase\(\)\.includes\(["']windows["']\)/);
-  assert.match(screen, /isWindows[\s\S]*?创建快捷方式/);
+  assert.match(screen, /\{isWindows \? \(\s*<Panel>/);
+  assert.match(screen, /title=\{t\(["']创建 ChatGPT\+\+ 桌面快捷方式["']\)\}/);
+  assert.match(screen, /<Button[\s\S]{0,160}installEntrypoints[\s\S]{0,80}t\(["']创建快捷方式["']\)/);
+  assert.doesNotMatch(
+    screen,
+    /t\(["'](?:入口管理|安装入口|卸载入口|修复入口|卸载时移除 ChatGPT\+\+ 托管数据)["']\)/,
+  );
 });
 
 test("does not publish the removed remote-project integration", () => {

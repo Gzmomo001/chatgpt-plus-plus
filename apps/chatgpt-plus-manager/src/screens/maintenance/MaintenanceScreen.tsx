@@ -81,45 +81,19 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
           </section>
         </CardContent>
       </Panel>
-      <Panel>
-        <CardHead
-          title={t("入口管理")}
-          detail={
-            isWindows
-              ? t("创建 ChatGPT++ 桌面快捷方式")
-              : t("安装、卸载或修复 ChatGPT++ 系统入口")
-          }
-        />
-        <CardContent>
-          <section className="feature-group">
-            <div className="feature-group-head">
-              <strong>{t("入口管理")}</strong>
-              <small>{t("快捷方式写入系统实际桌面位置，不使用写死桌面路径")}</small>
-            </div>
+      {isWindows ? (
+        <Panel>
+          <CardHead
+            title={t("创建 ChatGPT++ 桌面快捷方式")}
+            detail={t("快捷方式写入系统实际桌面位置，不使用写死桌面路径")}
+          />
+          <CardContent>
             <Toolbar>
-              {isWindows ? (
-                <Button onClick={() => void actions.installEntrypoints()}>{t("创建快捷方式")}</Button>
-              ) : (
-                <>
-                  <Button onClick={() => void actions.installEntrypoints()}>{t("安装入口")}</Button>
-                  <Button variant="secondary" onClick={() => void actions.uninstallEntrypoints()}>{t("卸载入口")}</Button>
-                  <Button variant="secondary" onClick={() => void actions.repairShortcuts()}>{t("修复入口")}</Button>
-                </>
-              )}
+              <Button onClick={() => void actions.installEntrypoints()}>{t("创建快捷方式")}</Button>
             </Toolbar>
-            {!isWindows ? (
-              <label className="check-row">
-                <input
-                  checked={view.removeOwnedData}
-                  onChange={(event) => actions.setRemoveOwnedData(event.currentTarget.checked)}
-                  type="checkbox"
-                />
-                <span>{t("卸载时移除 ChatGPT++ 托管数据")}</span>
-              </label>
-            ) : null}
-          </section>
-        </CardContent>
-      </Panel>
+          </CardContent>
+        </Panel>
+      ) : null}
     </>
   );
 }
