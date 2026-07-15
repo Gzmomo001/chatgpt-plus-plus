@@ -119,6 +119,10 @@ type ProviderSyncProgress = {
   result: CommandResult<ProviderSyncPayload> | null;
 };
 
+type SettingsSaveRequest =
+  | { mode: "autosave"; form: SettingsForm }
+  | { mode: "manual"; settings: BackendSettings };
+
 export function App() {
   const [theme, setTheme] = useState<Theme>(() => loadInitialTheme());
   const [route, setRoute] = useState<Route>(() =>
@@ -182,7 +186,8 @@ export function App() {
   const prevLaunchStatusRef = useRef<string | null>(null);
   const [settingsForm, setSettingsForm] = useState<BackendSettings>({ ...defaultSettings });
   const settingsAutosaveRef = useRef<{
-    schedule: (value: SettingsForm) => void;
+    schedule: (request: SettingsSaveRequest) => void;
+    saveNow: (request: SettingsSaveRequest) => void;
     dispose: () => void;
   } | null>(null);
   const [providerSyncProgress, setProviderSyncProgress] = useState<ProviderSyncProgress>({
@@ -1068,20 +1073,23 @@ export function App() {
   };
 
   if (!settingsAutosaveRef.current) {
-    settingsAutosaveRef.current = createSettingsAutosave<SettingsForm, SettingsResult>({
-      save: async (value) => {
-        const result = await managerActions.settings.savePreferences(value);
+    settingsAutosaveRef.current = createSettingsAutosave<SettingsSaveRequest, SettingsResult>({
+      save: async (request) => {
+        const result = request.mode === "manual"
+          ? await managerActions.settings.save(request.settings)
+          : await managerActions.settings.savePreferences(request.form);
         if (!isSuccessStatus(result.status)) throw new Error(result.message);
         return result;
       },
       onSaved: (result, requested) => {
+        const requestedForm = requested.mode === "manual" ? requested.settings : requested.form;
         setSettings(result);
         const normalized = normalizeSettings(result.settings);
         setSettingsForm((current) => {
           const stillCurrent =
-            current.diagnosticLogEnabled === requested.diagnosticLogEnabled
-            && current.codexExtraArgs.length === requested.codexExtraArgs.length
-            && current.codexExtraArgs.every((arg, index) => arg === requested.codexExtraArgs[index]);
+            current.diagnosticLogEnabled === requestedForm.diagnosticLogEnabled
+            && current.codexExtraArgs.length === requestedForm.codexExtraArgs.length
+            && current.codexExtraArgs.every((arg, index) => arg === requestedForm.codexExtraArgs[index]);
           if (!stillCurrent) return current;
           return {
             ...current,
@@ -1089,10 +1097,14 @@ export function App() {
             diagnosticLogEnabled: normalized.diagnosticLogEnabled,
           };
         });
-        showNotice(t("设置保存"), result.message, result.status);
+        if (requested.mode === "autosave") showNotice(t("设置保存"), result.message, result.status);
       },
-      onError: (error) => {
-        showNotice(t("设置自动保存"), stringifyError(error), "failed");
+      onError: (error, requested) => {
+        showNotice(
+          t(requested.mode === "autosave" ? "设置自动保存" : "设置保存"),
+          stringifyError(error),
+          "failed",
+        );
       },
       onStateChange: () => {},
     });
@@ -1252,6 +1264,14 @@ export function App() {
       importCcsProviders,
       openExternalUrl,
       openLogFolder,
+      setDiagnosticLogEnabled: (enabled: boolean) => {
+        const next = normalizeSettings({ ...settingsForm, diagnosticLogEnabled: enabled });
+        setSettingsForm(next);
+        settingsAutosaveRef.current?.saveNow({
+          mode: "manual",
+          settings: next,
+        });
+      },
       applyRelayInjection,
       applyPureApiInjection,
       clearRelayInjection,
@@ -1494,7 +1514,7 @@ export function App() {
                   onFormChange={(form) => {
                     const next = normalizeSettings({ ...settingsForm, ...form });
                     setSettingsForm(next);
-                    settingsAutosaveRef.current?.schedule(form);
+                    settingsAutosaveRef.current?.schedule({ mode: "autosave", form });
                   }}
                   actions={actions}
                 />
@@ -1573,6 +1593,7 @@ type Actions = {
   importCcsProviders: () => Promise<void>;
   openExternalUrl: (url: string) => Promise<void>;
   openLogFolder: () => Promise<void>;
+  setDiagnosticLogEnabled: (enabled: boolean) => void;
   applyRelayInjection: () => Promise<boolean>;
   applyPureApiInjection: () => Promise<boolean>;
   clearRelayInjection: () => Promise<boolean>;

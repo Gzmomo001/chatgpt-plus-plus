@@ -490,6 +490,32 @@ test("composes Settings through its screen-owned vertical slice", () => {
   }
 });
 
+test("keeps diagnostic logging title-only and saves toggles manually without a success notice", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const settings = readFileSync(
+    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(
+    settings,
+    /控制 ChatGPT\+\+ 的运行诊断日志|正在记录运行诊断信息|日志记录已关闭|已关闭；不会写入 chatgpt-plus\.log。/,
+  );
+  assert.match(settings, /onChange=\{\(event\) => actions\.setDiagnosticLogEnabled\(event\.currentTarget\.checked\)\}/);
+  assert.match(
+    app,
+    /setDiagnosticLogEnabled:\s*\(enabled[^]*?settingsAutosaveRef\.current\?\.saveNow\(\{[^]*?mode:\s*"manual"/,
+  );
+  assert.match(
+    app,
+    /request\.mode === "manual"[^]*?managerActions\.settings\.save\(request\.settings\)/,
+  );
+  assert.match(
+    app,
+    /if \(requested\.mode === "autosave"\) showNotice\(t\("设置保存"\), result\.message, result\.status\)/,
+  );
+});
+
 test("composes Enhance through a minimal screen-owned view and action seam", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const screen = readFileSync(

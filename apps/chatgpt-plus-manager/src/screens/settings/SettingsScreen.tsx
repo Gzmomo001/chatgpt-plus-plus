@@ -19,6 +19,7 @@ export type SettingsForm = {
 
 export type SettingsActions = {
   openLogFolder: () => Promise<void>;
+  setDiagnosticLogEnabled: (enabled: boolean) => void;
 };
 
 export function SettingsScreen({
@@ -62,17 +63,15 @@ export function SettingsScreen({
         <section className="feature-group">
           <div className="feature-group-head">
             <strong>{t("日志记录")}</strong>
-            <small>{t("控制 ChatGPT++ 的运行诊断日志；关闭后不再写入 chatgpt-plus.log。")}</small>
           </div>
           <label className="switch-row compact">
             <span>
               <strong>{t("启用日志记录")}</strong>
-              <small>{form.diagnosticLogEnabled ? t("正在记录运行诊断信息") : t("日志记录已关闭")}</small>
             </span>
             <input
               aria-label={t("启用日志记录")}
               checked={form.diagnosticLogEnabled}
-              onChange={(event) => onFormChange({ ...form, diagnosticLogEnabled: event.currentTarget.checked })}
+              onChange={(event) => actions.setDiagnosticLogEnabled(event.currentTarget.checked)}
               type="checkbox"
             />
           </label>

@@ -90,3 +90,59 @@ test("settings autosave serializes a newer edit behind an in-flight write", asyn
   assert.deepEqual(writes, ["first", "second"]);
   assert.deepEqual(completed, ["first", "second"]);
 });
+
+test("settings autosave can persist an explicit save immediately", async () => {
+  const saved: string[] = [];
+  const completed: string[] = [];
+  let scheduled = false;
+  const autosave = createSettingsAutosave<string, string>({
+    save: async (value) => {
+      saved.push(value);
+      return value;
+    },
+    onSaved: (result) => completed.push(result),
+    onError: (error) => assert.fail(String(error)),
+    onStateChange: () => {},
+    scheduleTimer: () => {
+      scheduled = true;
+      return 1;
+    },
+  });
+
+  autosave.saveNow("manual");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(scheduled, false);
+  assert.deepEqual(saved, ["manual"]);
+  assert.deepEqual(completed, ["manual"]);
+});
+
+test("an explicit save replaces a pending debounced value", async () => {
+  let timerId = 0;
+  const timers = new Map<number, () => void>();
+  const saved: string[] = [];
+  const autosave = createSettingsAutosave<string, string>({
+    save: async (value) => {
+      saved.push(value);
+      return value;
+    },
+    onSaved: () => {},
+    onError: (error) => assert.fail(String(error)),
+    onStateChange: () => {},
+    scheduleTimer: (callback) => {
+      const id = ++timerId;
+      timers.set(id, callback);
+      return id;
+    },
+    cancelTimer: (id) => timers.delete(id as number),
+  });
+
+  autosave.schedule("stale autosave");
+  autosave.saveNow("manual");
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(timers.size, 0);
+  assert.deepEqual(saved, ["manual"]);
+});

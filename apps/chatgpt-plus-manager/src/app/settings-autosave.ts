@@ -4,7 +4,7 @@ type SettingsAutosaveOptions<Value, Result> = {
   delayMs?: number;
   save: (value: Value) => Promise<Result>;
   onSaved: (result: Result, value: Value) => void;
-  onError: (error: unknown) => void;
+  onError: (error: unknown, value: Value) => void;
   onStateChange: (state: SettingsAutosaveState) => void;
   scheduleTimer?: (callback: () => void, delayMs: number) => unknown;
   cancelTimer?: (timer: unknown) => void;
@@ -45,7 +45,7 @@ export function createSettingsAutosave<Value, Result>({
       if (!disposed) onSaved(result, value);
     } catch (error) {
       failed = true;
-      if (!disposed) onError(error);
+      if (!disposed) onError(error, value);
     } finally {
       saving = false;
       if (disposed) return;
@@ -65,6 +65,14 @@ export function createSettingsAutosave<Value, Result>({
       emit("pending");
       if (timer !== null) cancelTimer(timer);
       timer = scheduleTimer(() => void drain(), delayMs);
+    },
+    saveNow(value: Value) {
+      if (disposed) return;
+      pending = value;
+      emit("pending");
+      if (timer !== null) cancelTimer(timer);
+      timer = null;
+      void drain();
     },
     dispose() {
       disposed = true;
