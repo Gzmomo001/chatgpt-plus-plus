@@ -546,10 +546,14 @@ fn github_release_workflow_uploads_static_latest_json() {
     assert!(workflow.contains("latest-json:"));
     assert!(workflow.contains("latest.json"));
     assert!(workflow.contains("gh release upload \"$TAG\" latest.json --clobber"));
-    assert!(workflow.contains("tags:\n      - \"v*\""));
-    assert!(workflow.contains("create-release:"));
+    assert!(workflow.contains("branches: [main]"));
+    assert!(workflow.contains("prepare_release:"));
+    assert!(workflow.contains("scripts/release/bump-version.mjs"));
+    assert!(workflow.contains("git add Cargo.toml Cargo.lock"));
+    assert!(workflow.contains("git push --atomic origin HEAD:main"));
+    assert!(workflow.contains("create_release:"));
     assert!(workflow.contains("generate_release_notes: true"));
-    assert!(workflow.contains("needs: create-release"));
+    assert!(workflow.contains("needs: [prepare_release, create_release]"));
     assert!(!workflow.contains("github.event.release.tag_name"));
 }
 
