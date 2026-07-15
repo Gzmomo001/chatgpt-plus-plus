@@ -1,8 +1,8 @@
 import {
   Hammer,
+  Info,
   KeyRound,
   MessageCircle,
-  Settings,
   type LucideIcon,
 } from "lucide-react";
 
@@ -30,9 +30,9 @@ const routePresentation: Record<
     icon: Hammer,
   },
   settings: {
-    label: "设置",
-    subtitle: "偏好、安装维护、更新与诊断",
-    icon: Settings,
+    label: "关于",
+    subtitle: "版本、更新与支持",
+    icon: Info,
   },
 };
 

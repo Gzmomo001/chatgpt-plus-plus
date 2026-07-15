@@ -427,12 +427,8 @@ test("copies a fresh diagnostic report beside the independent GitHub issue actio
   );
 
   assert.doesNotMatch(screen, /DiagnosticsPanel|diagnostics\?\.report|log-view tall/);
-  assert.doesNotMatch(screen, /t\(["'](?:诊断报告|重新生成|复制报告|尚未生成诊断报告。)["']\)/);
   assert.doesNotMatch(screen, /refreshDiagnostics|diagnostics:\s*DiagnosticsResult/);
-  assert.match(
-    screen,
-    /遇到问题时，请先复制诊断报告，再前往 GitHub 反馈，并将报告粘贴到 Issue 中。/,
-  );
+  assert.match(screen, /className=["']about-action-list["']/);
 
   const copyButton = screen.indexOf('{t("复制诊断报告")}');
   const issueButton = screen.indexOf('{t("反馈问题")}');
@@ -442,6 +438,11 @@ test("copies a fresh diagnostic report beside the independent GitHub issue actio
     screen,
     /actions\.openExternalUrl\(["']https:\/\/github\.com\/Gzmomo001\/chatgpt-plus-plus\/issues["']\)/,
     "the issue action remains independently clickable",
+  );
+  assert.match(
+    screen,
+    /actions\.openExternalUrl\(["']https:\/\/github\.com\/Gzmomo001\/chatgpt-plus-plus["']\)/,
+    "the GitHub project action remains independently clickable",
   );
 
   assert.match(app, /copyLatestDiagnosticReport\s*\(\s*\{/);
@@ -454,65 +455,47 @@ test("copies a fresh diagnostic report beside the independent GitHub issue actio
   assert.doesNotMatch(app, /diagnostics=\{diagnostics\}/);
 });
 
-test("composes Settings through its screen-owned vertical slice", () => {
+test("publishes one compact About surface instead of the previous Settings stack", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  const hubPath = new URL(
-    "../screens/settings/SettingsHubScreen.tsx",
-    import.meta.url,
-  );
   const screen = readFileSync(
-    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
+    "utf8",
+  );
+  const presentation = readFileSync(new URL("./presentation.ts", import.meta.url), "utf8");
+
+  assert.match(
+    app,
+    /<div className=["']settings-page["']>[\s\S]*?<section[^>]+id=["']settings-about["'][\s\S]*?<AboutScreen\b[\s\S]*?<\/div>/,
+    "the former Settings route must render only About",
+  );
+  assert.doesNotMatch(
+    app,
+    /import \{ (?:SettingsScreen|MaintenanceScreen) \}|<(?:SettingsScreen|MaintenanceScreen)\b/,
+  );
+  assert.match(presentation, /settings:\s*\{[\s\S]*?label:\s*["']关于["'][\s\S]*?icon:\s*Info/);
+  assert.match(screen, /<CardHead title=\{t\(["']关于["']\)\}/);
+  assert.match(screen, /className=["']about-identity["']/);
+  assert.match(screen, /className=["']about-action-list["']/);
+  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
+});
+
+test("uses one dynamic update action and advertises available updates in navigation", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
     "utf8",
   );
 
-  assert.equal(existsSync(hubPath), false, "Settings must no longer use a subsection hub");
-  assert.match(app, /import \{ SettingsScreen \} from ["']@\/screens\/settings\/SettingsScreen["']/);
   assert.match(
-    app,
-    /<div className=["']settings-page["']>[\s\S]*?<SettingsScreen\b[\s\S]*?<MaintenanceScreen\b[\s\S]*?<AboutScreen\b[\s\S]*?<\/div>/,
-    "Settings must render preferences, maintenance, and diagnostics as one continuous page",
+    screen,
+    /onClick=\{\(\) => void \(hasUpdate \? actions\.performUpdate\(\) : actions\.checkUpdate\(\)\)\}/,
   );
-  assert.doesNotMatch(
-    app,
-    /\bSettingsHubScreen\b|\bSettingsSection\b|\bsettingsSection\b|\bloadInitialSettingsSection\b/,
-  );
-  assert.match(screen, /export function SettingsScreen(?:<[^>]+>)?\(/);
-  assert.match(screen, /export type SettingsActions(?:<[^>]+>)?\s*=\s*\{/);
-  assert.match(screen, /export type SettingsForm\s*=\s*\{/);
-  assert.match(screen, /diagnosticLogEnabled/);
-  assert.match(screen, /chooseChatGptAppPath/);
-  assert.match(screen, /className=["']chatgpt-app-path-value["']/);
-  assert.match(screen, /openLogFolder/);
-  assert.doesNotMatch(screen, /providerTestModels|provider-test-model-options|供应商测试模型/);
-  assert.doesNotMatch(
-    app,
-    /ProviderTestModelsView|providerTestModels|refreshProviderTestModels|fetchModelUnion/,
-  );
-  assert.doesNotMatch(screen, /settings-autosave-status|settingsAutosaveMessage/);
-  assert.doesNotMatch(screen, /saveSettings|保存设置/);
-  assert.match(
-    app,
-    /onSaved:\s*\(result, requested\)\s*=>\s*\{[\s\S]*?showNotice\(t\("设置保存"\), result\.message, result\.status\)/,
-    "a completed autosave must publish the existing success notification",
-  );
-  assert.doesNotMatch(screen, /最近日志|LogsPanel/);
-  assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
-  assert.doesNotMatch(screen, /toggleTheme|\btheme\s*:|界面主题|切换主题/);
-  assert.doesNotMatch(
-    app,
-    /from ["']@\/screens\/settings\/(?:presentation|[^"']*\/[^"']+)["']/,
-    "App may compose SettingsScreen but must not depend on Settings implementation modules",
-  );
-
-  for (const definition of [
-    "SettingsScreen",
-    "clampNumber",
-    "normalizeImageOverlayFitMode",
-    "codexExtraArgsToInput",
-    "inputToCodexExtraArgs",
-  ]) {
-    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
-  }
+  assert.match(screen, /hasUpdate[\s\S]*?tf\(["']更新到 \{0\}["']/);
+  assert.doesNotMatch(screen, /下载并运行安装包|GitHub Release 更新|releaseSummary|assetName/);
+  assert.match(app, /const WEEKLY_UPDATE_CHECK_INTERVAL_MS = 7 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(app, /setInterval\(\(\) => \{[\s\S]*?checkUpdate\(true\)[\s\S]*?WEEKLY_UPDATE_CHECK_INTERVAL_MS/);
+  assert.match(app, /className=["']nav-item update-nav-item["']/);
+  assert.match(app, /hasUpdate \? \([\s\S]*?CircleArrowUp/);
 });
 
 test("composes Enhance through a minimal screen-owned view and action seam", () => {
@@ -598,61 +581,16 @@ test("removes the Renderer user-script surface end to end", () => {
   assert.doesNotMatch(appContracts, /UserScript|userScripts|user-scripts/);
 });
 
-test("keeps Windows shortcut maintenance behind a minimal action seam", () => {
+test("keeps shortcut maintenance out of the single About route", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  const screen = readFileSync(
-    new URL("../screens/maintenance/MaintenanceScreen.tsx", import.meta.url),
-    "utf8",
-  );
-
-  assert.match(
-    app,
-    /import \{ MaintenanceScreen \} from ["']@\/screens\/maintenance\/MaintenanceScreen["']/,
-  );
-  assert.match(app, /<MaintenanceScreen\s+actions=\{maintenanceActions\}/);
-  assert.doesNotMatch(screen, /export type MaintenanceView\s*=\s*\{/);
-  assert.match(screen, /export type MaintenanceActions\s*=\s*\{/);
-  assert.doesNotMatch(
-    screen,
-    /\b(?:OverviewResult|SettingsResult|BackendSettings|Actions)\b(?!\s*=)|@tauri-apps\/api|\binvoke\s*\(/,
-  );
-  assert.doesNotMatch(screen, /from ["']@\/app(?:\/|["'])/);
-
-  assert.doesNotMatch(app, /function MaintenanceScreen\(/);
-
-  const typeKeys = (name: string) => {
-    const body = screen.match(new RegExp(`export type ${name} = \\{([\\s\\S]*?)\\n\\};`))?.[1] ?? "";
-    return [...body.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):/gm)].map((match) => match[1]);
-  };
-  assert.deepEqual(typeKeys("MaintenanceActions"), ["installEntrypoints"]);
-  assert.doesNotMatch(screen, /检查与修复|检查 Codex 应用状态/);
-  assert.match(screen, /navigator\.userAgent\.toLowerCase\(\)\.includes\(["']windows["']\)/);
-  assert.match(screen, /if \(!isWindows\) return null/);
-  assert.match(screen, /title=\{t\(["']创建 ChatGPT\+\+ 桌面快捷方式["']\)\}/);
-  assert.match(screen, /<Button[\s\S]{0,160}installEntrypoints[\s\S]{0,80}t\(["']创建快捷方式["']\)/);
-  assert.doesNotMatch(
-    screen,
-    /t\(["'](?:入口管理|安装入口|卸载入口|修复入口|卸载时移除 ChatGPT\+\+ 托管数据)["']\)/,
-  );
+  assert.doesNotMatch(app, /MaintenanceScreen|maintenanceActions/);
+  assert.match(app, /<section className=["']settings-page-section["'] id=["']settings-about["']>/);
 });
 
-test("shows the selected or detected ChatGPT path as one preferences row", () => {
+test("keeps preferences controls out of the single About route", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  const settings = readFileSync(
-    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
-    "utf8",
-  );
-
-  assert.match(
-    app,
-    /chatGptAppPath=\{settingsForm\.codexAppPath\.trim\(\) \|\| overview\?\.codexApp\.path \|\| ["']["']\}/,
-  );
-  assert.match(settings, /className=["']chatgpt-app-path-copy["'][\s\S]*?<strong>\{t\(["']ChatGPT 路径["']\)\}<\/strong>/);
-  assert.match(settings, /className=["']chatgpt-app-path-value["']/);
-  assert.doesNotMatch(settings, /chatgpt-app-path-pill/);
-  assert.match(settings, /actions\.chooseChatGptAppPath\(\)/);
-  assert.match(settings, /t\(["']选择应用["']\)/);
-  assert.doesNotMatch(settings, /手动启动|保存为默认路径|启动 ChatGPT\+\+|保存的应用路径/);
+  assert.doesNotMatch(app, /SettingsScreen|settings-preferences|chatGptAppPath=|onFormChange=\{\(form\)/);
+  assert.match(app, /<AboutScreen[\s\S]*?overview=\{overview\}[\s\S]*?update=\{update\}/);
 });
 
 test("presents diagnostic logging as a title-only preference row", () => {

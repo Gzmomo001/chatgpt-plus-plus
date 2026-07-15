@@ -13,12 +13,8 @@ import { RelayProfilesScreen } from "@/screens/relay-profiles/RelayProfilesScree
 import { OverviewHealthIndicators } from "@/screens/overview/OverviewHealthIndicators";
 import { detectLaunchCrash } from "@/screens/overview/presentation";
 import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
-import { SettingsScreen } from "@/screens/settings/SettingsScreen";
-import type { SettingsForm } from "@/screens/settings/SettingsScreen";
 import { EnhanceScreen } from "@/screens/enhance/EnhanceScreen";
 import type { EnhanceActions, EnhanceView } from "@/screens/enhance/EnhanceScreen";
-import { MaintenanceScreen } from "@/screens/maintenance/MaintenanceScreen";
-import type { MaintenanceActions } from "@/screens/maintenance/MaintenanceScreen";
 import { SessionsScreen } from "@/screens/sessions/SessionsScreen";
 import type {
   SessionsActions,
@@ -52,6 +48,7 @@ import type {
   EnvConflictsResult,
   ExtractRelayCommonConfigResult,
   ProviderDoctorResult,
+  PreferenceSettings,
   RelayFilesResult,
   RelayProfileView,
   SettingsResult,
@@ -105,6 +102,7 @@ import {
 
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
 const CHAT_UPSTREAM_BASE_URL_KEY = "chatgpt_plus_chat_base_url";
+const WEEKLY_UPDATE_CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEVELOPMENT_RUNTIME =
   typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
@@ -116,7 +114,7 @@ type ProviderSyncProgress = {
 };
 
 type SettingsSaveRequest =
-  | { mode: "autosave"; form: SettingsForm }
+  | { mode: "autosave"; form: PreferenceSettings }
   | { mode: "manual"; settings: BackendSettings };
 
 export function App() {
@@ -1146,7 +1144,7 @@ export function App() {
       const startup = await run(() => managerActions.app.startup());
       if (startup?.showUpdate) {
         setRoute("settings");
-        scrollToSettingsSection("settings-diagnostics");
+        scrollToSettingsSection("settings-about");
         void checkUpdate(false);
       } else {
         void checkUpdate(true);
@@ -1160,6 +1158,13 @@ export function App() {
       await refreshRemotePluginMarketplace(true);
       await refreshPluginInventory(true);
     })();
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void checkUpdate(true);
+    }, WEEKLY_UPDATE_CHECK_INTERVAL_MS);
+    return () => window.clearInterval(timer);
   }, []);
 
   useEffect(() => {
@@ -1358,9 +1363,6 @@ export function App() {
     upgradePluginMarketplace,
     upgradeRemotePluginMarketplace,
   };
-  const maintenanceActions: MaintenanceActions = {
-    installEntrypoints: actions.installEntrypoints,
-  };
   const hasUpdate = update?.updateAvailable === true;
 
   const handleWindowDragMouseDown = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -1387,19 +1389,6 @@ export function App() {
                   ChatGPT++
                   {DEVELOPMENT_RUNTIME ? <span className="development-badge">DEV</span> : null}
                 </div>
-                {hasUpdate ? (
-                  <button
-                    className="update-dot"
-                    onClick={() => {
-                      void openSettingsPage("settings-diagnostics");
-                      void checkUpdate(false);
-                    }}
-                    title={tf("发现新版本 {0}", [update?.latestVersion ?? ""])}
-                    type="button"
-                  >
-                    <CircleArrowUp className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                ) : null}
               </div>
             </div>
             <nav aria-label={t("主导航")} className="nav">
@@ -1421,6 +1410,21 @@ export function App() {
                   </button>
                 );
               })}
+              {hasUpdate ? (
+                <button
+                  aria-label={tf("更新到 {0}", [update?.latestVersion ?? ""])}
+                  className="nav-item update-nav-item"
+                  onClick={() => {
+                    void openSettingsPage("settings-about");
+                  }}
+                  title={tf("发现新版本 {0}", [update?.latestVersion ?? ""])}
+                  type="button"
+                >
+                  <span className="nav-icon">
+                    <CircleArrowUp className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                </button>
+              ) : null}
             </nav>
             <div className="topbar-actions">
               <div className="relay-navbar-action" ref={setRelayNavbarActionHost}>
@@ -1499,23 +1503,7 @@ export function App() {
           ) : null}
           {route === "settings" ? (
             <div className="settings-page">
-              <section className="settings-page-section" id="settings-preferences">
-                <SettingsScreen
-                  settingsPath={settings?.settingsPath ?? ""}
-                  chatGptAppPath={settingsForm.codexAppPath.trim() || overview?.codexApp.path || ""}
-                  form={settingsForm}
-                  onFormChange={(form) => {
-                    const next = normalizeSettings({ ...settingsForm, ...form });
-                    setSettingsForm(next);
-                    settingsAutosaveRef.current?.schedule({ mode: "autosave", form });
-                  }}
-                  actions={actions}
-                />
-              </section>
-              <section className="settings-page-section" id="settings-maintenance">
-                <MaintenanceScreen actions={maintenanceActions} />
-              </section>
-              <section className="settings-page-section" id="settings-diagnostics">
+              <section className="settings-page-section" id="settings-about">
                 <AboutScreen
                   overview={overview}
                   update={update}

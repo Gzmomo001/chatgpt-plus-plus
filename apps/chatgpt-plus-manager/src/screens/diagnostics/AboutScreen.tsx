@@ -1,14 +1,22 @@
-import { ClipboardCopy, ExternalLink, ShieldCheck } from "lucide-react";
+import {
+  ArrowUpCircle,
+  ClipboardCopy,
+  Github,
+  MessageCircleWarning,
+  RefreshCw,
+} from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
-import { Textarea } from "@/shared/ui/textarea";
 import { t, tf } from "@/i18n";
 import type { UpdateResult } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
-import { CardHead, Panel, Toolbar } from "@/shared/ui/layout";
-import { Metric } from "@/shared/ui/metric";
-import { TaskProgressBox, type TaskProgress } from "@/shared/ui/task-progress";
+import { CardHead, Panel } from "@/shared/ui/layout";
+import type { TaskProgress } from "@/shared/ui/task-progress";
+
+import "./about.css";
+
+const appIcon = new URL("../../../src-tauri/icons/icon.png", import.meta.url).href;
 
 export type DiagnosticsActions = {
   openExternalUrl: (url: string) => Promise<void>;
@@ -28,58 +36,98 @@ export function AboutScreen({
   updateInstallProgress: TaskProgress;
   actions: DiagnosticsActions;
 }) {
+  const currentVersion = overview?.currentVersion ?? update?.currentVersion ?? "-";
+  const latestVersion = update?.latestVersion ?? "";
+  const hasUpdate = update?.updateAvailable === true && latestVersion.length > 0;
+  const updateMessage = updateInstallProgress.active
+    ? updateInstallProgress.message
+    : hasUpdate
+      ? tf("新版本 {0} 已可用", [latestVersion])
+      : update
+        ? t(update.message)
+        : t("每次启动时自动检查更新，应用持续运行时每周检查一次。");
+
   return (
     <Panel className="about-panel">
-      <CardHead title={t("关于 ChatGPT++")} />
+      <CardHead title={t("关于")} />
       <CardContent>
-        <section className="about-section">
-          <div className="metric-list">
-            <Metric label={t("ChatGPT++ 版本")} value={overview?.currentVersion ?? update?.currentVersion ?? "-"} />
-            <Metric label={t("项目地址")} value="github.com/Gzmomo001/chatgpt-plus-plus" />
+        <div className="about-identity">
+          <img alt="" className="about-app-icon" src={appIcon} />
+          <div className="about-identity-copy">
+            <h2>ChatGPT++</h2>
+            <p>{tf("版本 {0}", [currentVersion])}</p>
           </div>
-          <Toolbar>
-            <Button onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus")} variant="secondary">
-              <ExternalLink className="h-4 w-4" />
-              {t("打开项目主页")}
-            </Button>
-          </Toolbar>
-          <div className="diagnostic-feedback-flow">
-            <div className="hint-line">
-              <ShieldCheck className="h-4 w-4" />
-              <span>{t("遇到问题时，请先复制诊断报告，再前往 GitHub 反馈，并将报告粘贴到 Issue 中。")}</span>
+        </div>
+
+        <div className="about-action-list">
+          <section className="about-action-row">
+            <div className="about-action-icon about-action-icon-update">
+              {updateInstallProgress.active ? (
+                <RefreshCw aria-hidden="true" className="h-5 w-5 about-update-spinner" />
+              ) : (
+                <ArrowUpCircle aria-hidden="true" className="h-5 w-5" />
+              )}
             </div>
-            <Toolbar>
-              <Button onClick={() => void actions.copyDiagnostics()}>
-                <ClipboardCopy className="h-4 w-4" />
-                {t("复制诊断报告")}
-              </Button>
-              <Button onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus/issues")} variant="secondary">
-                <ExternalLink className="h-4 w-4" />
+            <div className="about-action-copy">
+              <strong>{hasUpdate ? tf("发现新版本 {0}", [latestVersion]) : t("软件更新")}</strong>
+              <small>{updateMessage}</small>
+              {updateInstallProgress.active ? (
+                <span className="about-update-progress" aria-label={tf("更新进度 {0}%", [updateInstallProgress.percent])}>
+                  <span style={{ width: `${updateInstallProgress.percent}%` }} />
+                </span>
+              ) : null}
+            </div>
+            <Button
+              disabled={updateInstallProgress.active}
+              onClick={() => void (hasUpdate ? actions.performUpdate() : actions.checkUpdate())}
+              variant={hasUpdate ? "default" : "secondary"}
+            >
+              {updateInstallProgress.active
+                ? t("正在更新…")
+                : hasUpdate
+                  ? tf("更新到 {0}", [latestVersion])
+                  : t("检查更新")}
+            </Button>
+          </section>
+
+          <section className="about-action-row">
+            <div className="about-action-icon">
+              <ClipboardCopy aria-hidden="true" className="h-5 w-5" />
+            </div>
+            <div className="about-action-copy">
+              <strong>{t("诊断报告")}</strong>
+              <small>{t("复制当前应用与运行环境信息，便于快速定位问题。")}</small>
+            </div>
+            <Button onClick={() => void actions.copyDiagnostics()} variant="secondary">
+              {t("复制诊断报告")}
+            </Button>
+          </section>
+
+          <section className="about-action-row">
+            <div className="about-action-icon">
+              <MessageCircleWarning aria-hidden="true" className="h-5 w-5" />
+            </div>
+            <div className="about-action-copy">
+              <strong>{t("反馈与项目")}</strong>
+              <small>{t("提交问题，或前往 GitHub 查看源码与版本发布。")}</small>
+            </div>
+            <div className="about-action-buttons">
+              <Button
+                onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus/issues")}
+                variant="secondary"
+              >
                 {t("反馈问题")}
               </Button>
-            </Toolbar>
-          </div>
-        </section>
-        <section className="about-section about-update-section">
-          <div className="about-section-head">
-            <h4>{t("GitHub Release 更新")}</h4>
-            <span>{tf("当前版本 {0}", [overview?.currentVersion ?? update?.currentVersion ?? "-"])}</span>
-          </div>
-          <div className="metric-list">
-            <Metric label={t("状态")} value={update?.status ?? "not_checked"} />
-            <Metric label={t("最新版本")} value={update?.latestVersion ?? t("未检查")} />
-            <Metric label={t("资源")} value={update?.assetName ?? "-"} />
-            <Metric label={t("进度")} value={`${update?.progress ?? 0}%`} />
-          </div>
-          <Textarea className="log-view" readOnly value={update?.releaseSummary || update?.message || t("尚未检查 GitHub Release；更新会下载并启动安装包。")} />
-          <TaskProgressBox completedTitle={t("上次更新结果")} progress={updateInstallProgress} title={t("安装包更新进度")} />
-          <Toolbar>
-            <Button onClick={() => void actions.checkUpdate()}>{t("检查更新")}</Button>
-            <Button disabled={updateInstallProgress.active} variant="secondary" onClick={() => void actions.performUpdate()}>
-              {updateInstallProgress.active ? t("正在下载安装包…") : t("下载并运行安装包")}
-            </Button>
-          </Toolbar>
-        </section>
+              <Button
+                onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus")}
+                variant="secondary"
+              >
+                <Github aria-hidden="true" className="h-4 w-4" />
+                GitHub
+              </Button>
+            </div>
+          </section>
+        </div>
       </CardContent>
     </Panel>
   );

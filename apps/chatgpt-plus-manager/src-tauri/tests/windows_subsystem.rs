@@ -742,9 +742,10 @@ fn manager_update_install_keeps_visible_progress_bar() {
         .join("src/screens/diagnostics/AboutScreen.tsx");
     let about_tsx = std::fs::read_to_string(&about_tsx).expect("read About screen");
 
-    assert!(about_tsx.contains("下载并运行安装包"));
+    assert!(about_tsx.contains("更新到 {0}"));
+    assert!(about_tsx.contains("hasUpdate ? actions.performUpdate() : actions.checkUpdate()"));
     assert!(app_tsx.contains("updateInstallProgress"));
-    assert!(about_tsx.contains("安装包更新进度"));
-    assert!(about_tsx.contains("completedTitle={t(\"上次更新结果\")}"));
-    assert!(about_tsx.contains("progress={updateInstallProgress}"));
+    assert!(about_tsx.contains("about-update-progress"));
+    assert!(about_tsx.contains("updateInstallProgress.active"));
+    assert!(about_tsx.contains("updateInstallProgress.percent"));
 }
