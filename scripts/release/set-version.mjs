@@ -1,6 +1,14 @@
 import fs from "node:fs";
 
-const dryRun = process.argv.includes("--dry-run");
+const args = process.argv.slice(2);
+const dryRun = args.includes("--dry-run");
+const nextVersion = args.find((argument) => argument !== "--dry-run");
+
+if (!nextVersion || !/^\d+\.\d+\.\d+$/.test(nextVersion)) {
+  throw new Error(
+    "Usage: node scripts/release/set-version.mjs X.Y.Z [--dry-run]",
+  );
+}
 
 const targets = [
   {
@@ -53,9 +61,6 @@ if (lockVersions[0] !== versions[0]) {
   );
 }
 
-const [major, minor, patch] = versions[0].split(".").map(Number);
-const nextVersion = `${major}.${minor}.${patch + 1}`;
-
 for (const target of contents) {
   const updated = target.text.replace(target.pattern, (line, currentVersion) =>
     line.replace(currentVersion, nextVersion),
@@ -75,5 +80,5 @@ if (!dryRun) {
 }
 
 console.log(
-  `${dryRun ? "Would bump" : "Bumped"} version ${versions[0]} -> ${nextVersion}`,
+  `${dryRun ? "Would set" : "Set"} version ${versions[0]} -> ${nextVersion}`,
 );

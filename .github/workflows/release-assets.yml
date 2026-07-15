@@ -13,16 +13,16 @@ concurrency:
 
 jobs:
   prepare_release:
-    name: Bump version and create tag
+    name: Tag current main commit
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
-      - name: Checkout latest main
+      - name: Checkout triggering main commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Setup Node
@@ -30,30 +30,31 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Bump patch version and publish tag
+      - name: Determine next version and tag current commit
         id: version
         shell: bash
         run: |
           set -euo pipefail
 
-          existing_tag="$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
-          last_subject="$(git log -1 --format=%s)"
+          git fetch --tags --force
+          existing_tag="$(git tag --points-at "$GITHUB_SHA" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
 
-          if [[ "$last_subject" == chore:\ bump\ version\ to\ v* ]] && [[ "$last_subject" == *"[skip ci]" ]] && [[ -n "$existing_tag" ]]; then
+          if [[ -n "$existing_tag" ]]; then
             version="${existing_tag#v}"
             tag="$existing_tag"
-            echo "Reusing existing version commit $tag"
+            echo "Reusing existing tag $tag for $GITHUB_SHA"
           else
-            node scripts/release/bump-version.mjs
-            version="$(node -p "require('./apps/chatgpt-plus-manager/package.json').version")"
+            latest_tag="$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
+            if [[ -n "$latest_tag" ]]; then
+              base_version="${latest_tag#v}"
+            else
+              base_version="$(node -p "require('./apps/chatgpt-plus-manager/package.json').version")"
+            fi
+            IFS=. read -r major minor patch <<< "$base_version"
+            version="$major.$minor.$((patch + 1))"
             tag="v$version"
-
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Cargo.toml Cargo.lock apps/chatgpt-plus-manager/package.json apps/chatgpt-plus-manager/src-tauri/tauri.conf.json
-            git commit -m "chore: bump version to $tag [skip ci]"
-            git tag "$tag"
-            git push --atomic origin HEAD:main "$tag"
+            git tag "$tag" "$GITHUB_SHA"
+            git push origin "$tag"
           fi
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -84,6 +85,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Set release version for build
+        run: node scripts/release/set-version.mjs "${{ needs.prepare_release.outputs.version }}"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -165,6 +169,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Set release version for build
+        run: node scripts/release/set-version.mjs "${{ needs.prepare_release.outputs.version }}"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

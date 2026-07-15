@@ -204,9 +204,9 @@ https://cdn.jsdelivr.net/gh/BigPizzaV3/Ad-List@main/ads.json
 
 ChatGPT++ 通过 GitHub Release 发布安装包。Windows 会生成 NSIS 安装程序，macOS 会生成 Intel x64 和 Apple Silicon arm64 两个 DMG。
 
-每次 `main` 分支有新提交时，GitHub Actions 会自动递增 patch 版本号、提交版本文件、创建 Git tag，并构建上传新的 GitHub Release。版本号会按 `1.2.34 → 1.2.35` 递增。
+每次 `main` 分支有新提交时，GitHub Actions 会根据上一个 Release 自动递增 patch 版本号、为这次 main 提交创建 Git tag，并构建上传新的 GitHub Release。Release tag 会直接指向你推送的 main commit，不会额外提交版本 commit。版本号会按 `1.2.34 → 1.2.35` 递增。
 
-版本号统一维护在 `Cargo.toml`、`Cargo.lock`、`apps/chatgpt-plus-manager/package.json` 和 `apps/chatgpt-plus-manager/src-tauri/tauri.conf.json`。
+构建时会在 CI 临时注入 Release 版本；源码中的版本文件不会被自动提交。
 
 ChatGPT++ 的“关于”页可以检查并启动更新。
 
