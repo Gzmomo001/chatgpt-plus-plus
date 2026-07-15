@@ -22,6 +22,22 @@ fn manager_release_binary_uses_embedded_frontend_assets() {
 }
 
 #[test]
+fn manager_dev_build_keeps_custom_protocol_opt_in() {
+    let cargo_toml = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"))
+        .expect("read manager Cargo.toml");
+
+    assert!(cargo_toml.contains("custom-protocol = [\"tauri/custom-protocol\"]"));
+    let tauri_dependency = cargo_toml
+        .lines()
+        .find(|line| line.trim_start().starts_with("tauri ="))
+        .expect("manager should declare the Tauri dependency");
+    assert!(
+        !tauri_dependency.contains("custom-protocol"),
+        "custom-protocol must stay disabled for tauri dev so Vite HMR remains active"
+    );
+}
+
+#[test]
 fn workspace_and_manager_build_do_not_include_an_independent_launcher() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let repository = manifest_dir

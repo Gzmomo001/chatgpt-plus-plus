@@ -1310,7 +1310,6 @@ export function App() {
   const maintenanceActions: MaintenanceActions = {
     updateLaunchForm: setLaunchForm,
     setRemoveOwnedData,
-    checkHealth: actions.checkHealth,
     repairShortcuts: actions.repairShortcuts,
     installEntrypoints: actions.installEntrypoints,
     uninstallEntrypoints: actions.uninstallEntrypoints,

@@ -309,8 +309,6 @@ export const EN_PLAIN: Record<string, string> = {
     "Weighted round-robin reads each member's weight; members with higher weight receive more requests.",
   "查看、删除和修复 Codex 本地会话": "View, delete and repair Codex local sessions",
   "检查": "Check",
-  "检查与修复": "Check & repair",
-  "检查 Codex 应用状态": "Check Codex app status",
   "检查配置、模型列表和一次真实请求，定位供应商不可用原因。": "Check configuration, model list and one real request to find why a provider is unavailable.",
   "检查完成": "Check complete",
   "检查更新": "Check for updates",

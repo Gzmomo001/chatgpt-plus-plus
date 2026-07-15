@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Tauri's custom protocol is required for packaged builds, but it must remain
+# disabled during `tauri dev` so the window uses the Vite dev server and HMR.
+custom-protocol = ["tauri/custom-protocol"]
+
 [lib]
 name = "chatgpt_plus_manager_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -21,7 +26,7 @@ chatgpt-plus-data = { path = "../../../crates/chatgpt-plus-data" }
 directories.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tauri = { version = "2", features = ["custom-protocol", "tray-icon"] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tokio.workspace = true
 

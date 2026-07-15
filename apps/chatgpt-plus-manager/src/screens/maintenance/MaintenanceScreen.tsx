@@ -25,7 +25,6 @@ export type MaintenanceView = {
 export type MaintenanceActions = {
   updateLaunchForm: (next: MaintenanceLaunchForm) => void;
   setRemoveOwnedData: (value: boolean) => void;
-  checkHealth: () => Promise<void>;
   repairShortcuts: () => Promise<void>;
   installEntrypoints: () => Promise<void>;
   uninstallEntrypoints: () => Promise<void>;
@@ -42,17 +41,6 @@ export function MaintenanceScreen({ view, actions }: { view: MaintenanceView; ac
 
   return (
     <>
-      <Panel>
-        <CardHead title={t("检查与修复")} detail={t("检查 Codex 应用状态")} />
-        <CardContent>
-          <div className="status-table">
-            <StatusRow title={t("Codex 应用")} {...codexApp} />
-          </div>
-          <Toolbar>
-            <Button onClick={() => void actions.checkHealth()}>{t("检查")}</Button>
-          </Toolbar>
-        </CardContent>
-      </Panel>
       <Panel>
         <CardHead title={t("Codex 应用路径")} detail={t("设置一次默认路径，也可以临时覆盖后启动")} />
         <CardContent>

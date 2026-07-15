@@ -556,7 +556,6 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
   assert.deepEqual(typeKeys("MaintenanceActions"), [
     "updateLaunchForm",
     "setRemoveOwnedData",
-    "checkHealth",
     "repairShortcuts",
     "installEntrypoints",
     "uninstallEntrypoints",
@@ -565,6 +564,7 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
     "launch",
     "saveManualCodexAppPath",
   ]);
+  assert.doesNotMatch(screen, /检查与修复|检查 Codex 应用状态/);
   assert.match(screen, /navigator\.userAgent\.toLowerCase\(\)\.includes\(["']windows["']\)/);
   assert.match(screen, /isWindows[\s\S]*?创建快捷方式/);
 });
