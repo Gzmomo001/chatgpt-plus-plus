@@ -1,6 +1,6 @@
 {
   "name": "chatgpt-plus-manager",
-  "version": "1.2.34",
+  "version": "1.2.35",
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "license": "AGPL-3.0-only",

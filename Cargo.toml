@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.2.34"
+version = "1.2.35"
 edition = "2024"
 license = "AGPL-3.0-only"
 repository = "https://github.com/Gzmomo001/chatgpt-plus-plus"

@@ -349,7 +349,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chatgpt-plus-core"
-version = "1.2.34"
+version = "1.2.35"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -370,7 +370,7 @@ dependencies = [
 
 [[package]]
 name = "chatgpt-plus-data"
-version = "1.2.34"
+version = "1.2.35"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -385,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "chatgpt-plus-manager"
-version = "1.2.34"
+version = "1.2.35"
 dependencies = [
  "anyhow",
  "async-trait",
