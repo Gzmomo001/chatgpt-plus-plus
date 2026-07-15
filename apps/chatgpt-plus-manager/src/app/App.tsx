@@ -38,10 +38,7 @@ import {
   type SessionsIntent,
 } from "@/features/sessions/controller";
 import { numberOrDefault } from "@/shared/lib/settings";
-import type {
-  DiagnosticsResult,
-  UpdateResult,
-} from "@/shared/contracts/diagnostics";
+import type { UpdateResult } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 import type { LocalSession, ProviderSyncTargetsResult } from "@/shared/contracts/sessions";
@@ -94,6 +91,7 @@ import {
   defaultSettings,
   normalizeSettings,
 } from "@/app/settings-normalization";
+import { copyLatestDiagnosticReport } from "@/app/diagnostics-copy";
 import { createSettingsAutosave } from "@/app/settings-autosave";
 import { Button } from "@/shared/ui/button";
 import type { TaskProgress } from "@/shared/ui/task-progress";
@@ -175,7 +173,6 @@ export function App() {
       viewChanged: (view) => sessionsControllerPortsRef.current.viewChanged(view),
     });
   }
-  const [diagnostics, setDiagnostics] = useState<DiagnosticsResult | null>(null);
   const [update, setUpdate] = useState<UpdateResult | null>(null);
   const [updateInstallProgress, setUpdateInstallProgress] = useState<TaskProgress>({
     active: false,
@@ -483,20 +480,11 @@ export function App() {
   const executeSessionsAction = (intent: SessionsIntent) =>
     sessionsControllerRef.current!.execute(intent);
 
-  const refreshDiagnostics = async (silent = false) => {
-    const result = await run(() => managerActions.diagnostics.copy());
-    if (result) {
-      setDiagnostics(result);
-      if (!silent) showResultNotice(t("诊断已生成"), result, { silentSuccess: true });
-    }
-  };
-
   const refreshSettingsPage = async () => {
     await Promise.all([
       refreshSettings(true),
       refreshProviderTestModels(),
       refreshOverview(true),
-      refreshDiagnostics(true),
     ]);
   };
 
@@ -1082,12 +1070,27 @@ export function App() {
     }
   };
 
-  const copyText = async (text: string, message: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch (error) {
-      showNotice(t("复制失败"), stringifyError(error), "failed");
+  const copyDiagnostics = async () => {
+    const result = await copyLatestDiagnosticReport({
+      generate: () => managerActions.diagnostics.copy(),
+      writeClipboard: (report) => navigator.clipboard.writeText(report),
+    });
+    if (result.status === "ok") {
+      showNotice(
+        t("复制诊断报告"),
+        t("诊断报告已复制，现在可以前往反馈问题并粘贴到 Issue。"),
+        "ok",
+      );
+      return;
     }
+
+    showNotice(
+      t("复制诊断报告"),
+      result.stage === "generate"
+        ? tf("生成诊断报告失败：{0}", [stringifyError(result.error)])
+        : tf("复制诊断报告失败：{0}", [stringifyError(result.error)]),
+      "failed",
+    );
   };
 
   const openExternalUrl = async (url: string) => {
@@ -1308,9 +1311,8 @@ export function App() {
       relaySwitching,
       switchOfficialMode,
       switchPureApiMode,
-      refreshDiagnostics,
       showMessage: async (title: string, message: string, status?: Status) => showNotice(title, message, status),
-      copyDiagnostics: () => copyText(diagnostics?.report ?? "", t("诊断报告已复制。")),
+      copyDiagnostics,
       checkHealth: async () => {
         await refreshOverview(true);
         await refreshRelay(true);
@@ -1318,7 +1320,7 @@ export function App() {
       },
       toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     }),
-    [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, diagnostics, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
+    [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
   );
   const sessionsView: SessionsView = {
     ...sessionsControllerView,
@@ -1553,7 +1555,6 @@ export function App() {
                   overview={overview}
                   update={update}
                   updateInstallProgress={updateInstallProgress}
-                  diagnostics={diagnostics}
                   actions={actions}
                 />
               </section>
@@ -1632,7 +1633,6 @@ type Actions = {
   relaySwitching: boolean;
   switchOfficialMode: () => Promise<void>;
   switchPureApiMode: () => Promise<void>;
-  refreshDiagnostics: () => Promise<void>;
   showMessage: (title: string, message: string, status?: Status) => Promise<void>;
   copyDiagnostics: () => Promise<void>;
   toggleTheme: () => void;

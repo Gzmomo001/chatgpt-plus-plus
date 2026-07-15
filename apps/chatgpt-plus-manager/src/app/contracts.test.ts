@@ -388,15 +388,48 @@ test("composes diagnostics through its screen-owned vertical slice", () => {
   assert.match(screen, /export type DiagnosticsActions(?:<[^>]+>)?\s*=\s*\{/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
 
-  for (const definition of ["AboutScreen", "DiagnosticsPanel"]) {
-    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
-  }
+  assert.doesNotMatch(app, /function AboutScreen\(/);
   assert.match(
     diagnosticsContracts,
     /export type (?:DiagnosticsResult|UpdateResult)\s*=\s*CommandResult</,
   );
   assert.doesNotMatch(app, /type (?:DiagnosticsResult|UpdateResult)\s*=/);
   assert.doesNotMatch(screen, /LogsPanel|splitLogLines|最近日志/);
+});
+
+test("copies a fresh diagnostic report beside the independent GitHub issue action", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(screen, /DiagnosticsPanel|diagnostics\?\.report|log-view tall/);
+  assert.doesNotMatch(screen, /t\(["'](?:诊断报告|重新生成|复制报告|尚未生成诊断报告。)["']\)/);
+  assert.doesNotMatch(screen, /refreshDiagnostics|diagnostics:\s*DiagnosticsResult/);
+  assert.match(
+    screen,
+    /遇到问题时，请先复制诊断报告，再前往 GitHub 反馈，并将报告粘贴到 Issue 中。/,
+  );
+
+  const copyButton = screen.indexOf('{t("复制诊断报告")}');
+  const issueButton = screen.indexOf('{t("反馈问题")}');
+  assert.ok(copyButton >= 0, "copy diagnostic report button must be rendered");
+  assert.ok(issueButton > copyButton, "copy diagnostic report must appear before report issue");
+  assert.match(
+    screen,
+    /actions\.openExternalUrl\(["']https:\/\/github\.com\/Gzmomo001\/chatgpt-plus-plus\/issues["']\)/,
+    "the issue action remains independently clickable",
+  );
+
+  assert.match(app, /copyLatestDiagnosticReport\s*\(\s*\{/);
+  assert.match(app, /generate:\s*\(\)\s*=>\s*managerActions\.diagnostics\.copy\(\)/);
+  assert.match(app, /writeClipboard:\s*\(report\)\s*=>\s*navigator\.clipboard\.writeText\(report\)/);
+  assert.match(app, /诊断报告已复制，现在可以前往反馈问题并粘贴到 Issue。/);
+  assert.match(app, /生成诊断报告失败：\{0\}/);
+  assert.match(app, /复制诊断报告失败：\{0\}/);
+  assert.doesNotMatch(app, /useState<DiagnosticsResult|setDiagnostics|refreshDiagnostics/);
+  assert.doesNotMatch(app, /diagnostics=\{diagnostics\}/);
 });
 
 test("composes Settings through its screen-owned vertical slice", () => {

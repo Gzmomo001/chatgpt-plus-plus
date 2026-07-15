@@ -1,13 +1,10 @@
-import { ExternalLink, MessageCircle } from "lucide-react";
+import { ClipboardCopy, ExternalLink, MessageCircle, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
 import { Textarea } from "@/shared/ui/textarea";
 import { t, tf } from "@/i18n";
-import type {
-  DiagnosticsResult,
-  UpdateResult,
-} from "@/shared/contracts/diagnostics";
+import type { UpdateResult } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
 import { CardHead, Panel, Toolbar } from "@/shared/ui/layout";
 import { Metric } from "@/shared/ui/metric";
@@ -17,7 +14,6 @@ export type DiagnosticsActions = {
   openExternalUrl: (url: string) => Promise<void>;
   checkUpdate: () => Promise<void>;
   performUpdate: () => Promise<void>;
-  refreshDiagnostics: () => Promise<void>;
   copyDiagnostics: () => Promise<void>;
 };
 
@@ -25,13 +21,11 @@ export function AboutScreen({
   overview,
   update,
   updateInstallProgress,
-  diagnostics,
   actions,
 }: {
   overview: OverviewResult | null;
   update: UpdateResult | null;
   updateInstallProgress: TaskProgress;
-  diagnostics: DiagnosticsResult | null;
   actions: DiagnosticsActions;
 }) {
   return (
@@ -48,10 +42,6 @@ export function AboutScreen({
               <ExternalLink className="h-4 w-4" />
               {t("打开项目主页")}
             </Button>
-            <Button onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus/issues")} variant="secondary">
-              <ExternalLink className="h-4 w-4" />
-              {t("反馈问题")}
-            </Button>
             <Button onClick={() => void actions.openExternalUrl("https://discord.gg/y96kX7A76v")} variant="secondary">
               <MessageCircle className="h-4 w-4" />
               Discord
@@ -61,6 +51,22 @@ export function AboutScreen({
               Telegram
             </Button>
           </Toolbar>
+          <div className="diagnostic-feedback-flow">
+            <div className="hint-line">
+              <ShieldCheck className="h-4 w-4" />
+              <span>{t("遇到问题时，请先复制诊断报告，再前往 GitHub 反馈，并将报告粘贴到 Issue 中。")}</span>
+            </div>
+            <Toolbar>
+              <Button onClick={() => void actions.copyDiagnostics()}>
+                <ClipboardCopy className="h-4 w-4" />
+                {t("复制诊断报告")}
+              </Button>
+              <Button onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus/issues")} variant="secondary">
+                <ExternalLink className="h-4 w-4" />
+                {t("反馈问题")}
+              </Button>
+            </Toolbar>
+          </div>
         </CardContent>
       </Panel>
       <Panel>
@@ -82,24 +88,6 @@ export function AboutScreen({
           </Toolbar>
         </CardContent>
       </Panel>
-      <DiagnosticsPanel diagnostics={diagnostics} actions={actions} />
     </>
-  );
-}
-
-function DiagnosticsPanel({ diagnostics, actions }: { diagnostics: DiagnosticsResult | null; actions: DiagnosticsActions }) {
-  return (
-    <Panel>
-      <CardHead title={t("诊断报告")} detail={t("包含版本、路径、设置和平台信息")} />
-      <CardContent>
-        <Textarea className="log-view tall" readOnly value={diagnostics?.report ?? t("尚未生成诊断报告。")} />
-        <Toolbar>
-          <Button onClick={() => void actions.refreshDiagnostics()}>{t("重新生成")}</Button>
-          <Button variant="secondary" onClick={() => void actions.copyDiagnostics()}>
-            {t("复制报告")}
-          </Button>
-        </Toolbar>
-      </CardContent>
-    </Panel>
   );
 }

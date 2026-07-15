@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chatgpt_plus_core::settings::SettingsStore;
@@ -7,6 +7,8 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::shared::{CommandResult, failed, ok};
+
+const REDACTED: &str = "[REDACTED]";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -140,7 +142,7 @@ pub(super) fn diagnostics_report() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    serde_json::to_string_pretty(&json!({
+    let mut report = json!({
         "generatedAtMs": generated_at_ms,
         "version": chatgpt_plus_core::version::VERSION,
         "overview": overview.payload,
@@ -153,9 +155,167 @@ pub(super) fn diagnostics_report() -> String {
             "os": std::env::consts::OS,
             "arch": std::env::consts::ARCH
         }
-    }))
-    .unwrap_or_else(|error| format!("诊断报告序列化失败：{error}"))
+    });
+    redact_sensitive_values(&mut report);
+    if let Some(home_dir) = diagnostic_home_dir() {
+        redact_home_paths(&mut report, &home_dir);
+    }
+    serde_json::to_string_pretty(&report)
+        .unwrap_or_else(|error| format!("诊断报告序列化失败：{error}"))
 }
+
+fn diagnostic_home_dir() -> Option<PathBuf> {
+    chatgpt_plus_core::paths::default_app_state_dir()
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .map(Path::to_path_buf)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .filter(|value| !value.is_empty())
+                .map(PathBuf::from)
+        })
+}
+
+fn redact_sensitive_values(value: &mut Value) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                redact_sensitive_values(value);
+            }
+        }
+        Value::Object(values) => {
+            for (key, value) in values {
+                if is_sensitive_field(key) && !matches!(value, Value::Bool(_)) {
+                    *value = Value::String(REDACTED.to_string());
+                } else {
+                    redact_sensitive_values(value);
+                }
+            }
+        }
+        Value::String(value) if contains_sensitive_text(value) => {
+            *value = REDACTED.to_string();
+        }
+        _ => {}
+    }
+}
+
+fn is_sensitive_field(key: &str) -> bool {
+    let normalized = key
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .map(|character| character.to_ascii_lowercase())
+        .collect::<String>();
+
+    matches!(
+        normalized.as_str(),
+        "authorization"
+            | "cookie"
+            | "credentials"
+            | "credential"
+            | "password"
+            | "passwd"
+            | "proxyauthorization"
+            | "setcookie"
+            | "token"
+            | "tokens"
+    ) || normalized.ends_with("apikey")
+        || normalized.ends_with("accesstoken")
+        || normalized.ends_with("authorization")
+        || normalized.ends_with("bearertoken")
+        || normalized.ends_with("configcontents")
+        || normalized.ends_with("authcontents")
+        || normalized.ends_with("idtoken")
+        || normalized.ends_with("privatekey")
+        || normalized.ends_with("refreshtoken")
+        || normalized.ends_with("secret")
+}
+
+fn contains_sensitive_text(value: &str) -> bool {
+    let normalized = value.to_ascii_lowercase();
+    [
+        "authorization",
+        "bearer ",
+        "api-key",
+        "api_key",
+        "apikey",
+        "access-token",
+        "access_token",
+        "refresh-token",
+        "refresh_token",
+        "client-secret",
+        "client_secret",
+        "password=",
+        "password:",
+    ]
+    .iter()
+    .any(|marker| normalized.contains(marker))
+        || normalized.trim_start().starts_with("sk-")
+}
+
+fn redact_home_paths(value: &mut Value, home_dir: &Path) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                redact_home_paths(value, home_dir);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values_mut() {
+                redact_home_paths(value, home_dir);
+            }
+        }
+        Value::String(value) => *value = redact_home_path_text(value, home_dir),
+        _ => {}
+    }
+}
+
+fn redact_home_path_text(value: &str, home_dir: &Path) -> String {
+    let home = home_dir.to_string_lossy();
+    if home.is_empty() || home == "/" || home == "\\" {
+        return value.to_string();
+    }
+
+    let redacted = redact_home_path_variant(value, home.as_ref());
+    let alternate_home = if home.contains('\\') {
+        home.replace('\\', "/")
+    } else {
+        home.replace('/', "\\")
+    };
+    if alternate_home == home {
+        redacted
+    } else {
+        redact_home_path_variant(&redacted, &alternate_home)
+    }
+}
+
+fn redact_home_path_variant(value: &str, home: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut remaining = value;
+    let case_insensitive = home.contains('\\') || home.as_bytes().get(1) == Some(&b':');
+    let normalized_home = case_insensitive.then(|| home.to_ascii_lowercase());
+    while let Some(index) = if let Some(normalized_home) = &normalized_home {
+        remaining.to_ascii_lowercase().find(normalized_home)
+    } else {
+        remaining.find(home)
+    } {
+        let after_home = &remaining[index + home.len()..];
+        output.push_str(&remaining[..index]);
+        if after_home.is_empty() {
+            output.push('~');
+            remaining = after_home;
+        } else if after_home.starts_with(['/', '\\']) {
+            output.push_str("~/");
+            remaining = &after_home[1..];
+        } else {
+            output.push_str(home);
+            remaining = after_home;
+        }
+    }
+    output.push_str(remaining);
+    output
+}
+
 fn open_path_in_file_manager(path: &Path) -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
     {
@@ -176,5 +336,123 @@ fn open_path_in_file_manager(path: &Path) -> anyhow::Result<()> {
             .spawn()
             .map(|_| ())
             .map_err(|error| anyhow::anyhow!("启动文件管理器失败：{error}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redact_home_paths_rewrites_nested_report_strings() {
+        let home = Path::new("/Users/example");
+        let mut report = json!({
+            "settingsPath": "/Users/example/.chatgpt-plus-plus/settings.json",
+            "args": ["--catalog=/Users/example/.codex/models.json"],
+            "home": "/Users/example",
+            "unrelated": "/Users/example-other/file"
+        });
+
+        redact_home_paths(&mut report, home);
+
+        assert_eq!(report["settingsPath"], "~/.chatgpt-plus-plus/settings.json");
+        assert_eq!(report["args"][0], "--catalog=~/.codex/models.json");
+        assert_eq!(report["home"], "~");
+        assert_eq!(report["unrelated"], "/Users/example-other/file");
+    }
+
+    #[test]
+    fn redact_home_paths_supports_windows_separators() {
+        assert_eq!(
+            redact_home_path_text(
+                r#"C:\Users\example\.chatgpt-plus-plus\chatgpt-plus.log"#,
+                Path::new(r#"C:\Users\example"#),
+            ),
+            r#"~/.chatgpt-plus-plus\chatgpt-plus.log"#
+        );
+        assert_eq!(
+            redact_home_path_text(
+                "C:/Users/example/.chatgpt-plus-plus/settings.json",
+                Path::new(r#"C:\Users\example"#),
+            ),
+            "~/.chatgpt-plus-plus/settings.json"
+        );
+        assert_eq!(
+            redact_home_path_text(
+                "c:/users/EXAMPLE/.codex/config.toml",
+                Path::new(r#"C:\Users\Example"#),
+            ),
+            "~/.codex/config.toml"
+        );
+    }
+
+    #[test]
+    fn redact_sensitive_values_removes_credentials_and_embedded_config() {
+        let mut report = json!({
+            "settings": {
+                "relayApiKey": "sk-relay-secret",
+                "relayCommonConfigContents": "experimental_bearer_token = \"sk-common-secret\"",
+                "relayProfiles": [{
+                    "officialMixApiKey": true,
+                    "apiKey": "sk-profile-secret",
+                    "authContents": "{\"OPENAI_API_KEY\":\"sk-auth-secret\"}",
+                    "configContents": "authorization = \"Bearer config-secret\""
+                }]
+            },
+            "headers": {
+                "Authorization": "Bearer header-secret",
+                "clientSecret": "client-secret",
+                "numericSecret": 123456,
+                "hasBearerToken": true
+            },
+            "tokens": {
+                "access_token": "access-secret",
+                "refresh_token": "refresh-secret"
+            },
+            "args": [
+                "--api-key=sk-argument-secret",
+                "Authorization: Bearer argument-token",
+                "--safe-flag"
+            ]
+        });
+
+        redact_sensitive_values(&mut report);
+
+        assert_eq!(report["settings"]["relayApiKey"], REDACTED);
+        assert_eq!(report["settings"]["relayCommonConfigContents"], REDACTED);
+        assert_eq!(report["settings"]["relayProfiles"][0]["apiKey"], REDACTED);
+        assert_eq!(
+            report["settings"]["relayProfiles"][0]["authContents"],
+            REDACTED
+        );
+        assert_eq!(
+            report["settings"]["relayProfiles"][0]["configContents"],
+            REDACTED
+        );
+        assert_eq!(report["headers"]["Authorization"], REDACTED);
+        assert_eq!(report["headers"]["clientSecret"], REDACTED);
+        assert_eq!(report["headers"]["numericSecret"], REDACTED);
+        assert_eq!(report["headers"]["hasBearerToken"], true);
+        assert_eq!(report["tokens"], REDACTED);
+        assert_eq!(report["args"][0], REDACTED);
+        assert_eq!(report["args"][1], REDACTED);
+        assert_eq!(report["args"][2], "--safe-flag");
+
+        let serialized = serde_json::to_string(&report).unwrap();
+        for secret in [
+            "sk-relay-secret",
+            "sk-common-secret",
+            "sk-profile-secret",
+            "sk-auth-secret",
+            "config-secret",
+            "header-secret",
+            "client-secret",
+            "access-secret",
+            "refresh-secret",
+            "sk-argument-secret",
+            "argument-token",
+        ] {
+            assert!(!serialized.contains(secret));
+        }
     }
 }

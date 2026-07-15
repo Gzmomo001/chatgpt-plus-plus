@@ -558,6 +558,12 @@ body {
   gap: 8px;
 }
 
+.diagnostic-feedback-flow {
+  margin-top: 14px;
+  border-top: 1px solid hsl(var(--border) / 0.72);
+  padding-top: 1px;
+}
+
 .relay-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

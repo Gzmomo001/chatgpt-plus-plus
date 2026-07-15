@@ -7,6 +7,7 @@ import {
   type InvokeManagerCommand,
   type TauriCommandName,
 } from "./actions.ts";
+import { copyLatestDiagnosticReport } from "./diagnostics-copy.ts";
 
 type Invocation = { command: string; args?: Record<string, unknown> };
 
@@ -22,6 +23,79 @@ function recordingActions(result: unknown = { status: "ok", message: "ok" }) {
   const actions = createManagerActions(invoke);
   return { actions, invocations };
 }
+
+test("diagnostic report copy interaction generates a fresh report on every click", async () => {
+  const events: string[] = [];
+  let generation = 0;
+  const generate = async () => {
+    generation += 1;
+    events.push(`generate:${generation}`);
+    return {
+      status: "ok",
+      message: "generated",
+      report: `report-${generation}`,
+    };
+  };
+  const writeClipboard = async (report: string) => {
+    events.push(`copy:${report}`);
+  };
+
+  assert.deepEqual(
+    await copyLatestDiagnosticReport({ generate, writeClipboard }),
+    { status: "ok" },
+  );
+  assert.deepEqual(
+    await copyLatestDiagnosticReport({ generate, writeClipboard }),
+    { status: "ok" },
+  );
+  assert.deepEqual(events, [
+    "generate:1",
+    "copy:report-1",
+    "generate:2",
+    "copy:report-2",
+  ]);
+});
+
+test("diagnostic report copy interaction distinguishes generation and clipboard failures", async () => {
+  let clipboardCalls = 0;
+  const writeClipboard = async () => {
+    clipboardCalls += 1;
+    throw new Error("clipboard denied");
+  };
+
+  const commandFailure = await copyLatestDiagnosticReport({
+    generate: async () => ({ status: "failed", message: "generation failed", report: "stale" }),
+    writeClipboard,
+  });
+  assert.deepEqual(commandFailure, {
+    status: "failed",
+    stage: "generate",
+    error: "generation failed",
+  });
+  assert.equal(clipboardCalls, 0);
+
+  const emptyReport = await copyLatestDiagnosticReport({
+    generate: async () => ({ status: "ok", message: "generated", report: "" }),
+    writeClipboard,
+  });
+  assert.equal(emptyReport.status, "failed");
+  assert.equal(emptyReport.status === "failed" && emptyReport.stage, "generate");
+  assert.equal(clipboardCalls, 0);
+
+  const clipboardFailure = await copyLatestDiagnosticReport({
+    generate: async () => ({ status: "ok", message: "generated", report: "fresh" }),
+    writeClipboard,
+  });
+  assert.equal(clipboardFailure.status, "failed");
+  assert.equal(clipboardFailure.status === "failed" && clipboardFailure.stage, "copy");
+  assert.equal(
+    clipboardFailure.status === "failed" && clipboardFailure.error instanceof Error
+      ? clipboardFailure.error.message
+      : "",
+    "clipboard denied",
+  );
+  assert.equal(clipboardCalls, 1);
+});
 
 test("publishes domain adapters instead of one flat command bag", () => {
   const { actions } = recordingActions();
