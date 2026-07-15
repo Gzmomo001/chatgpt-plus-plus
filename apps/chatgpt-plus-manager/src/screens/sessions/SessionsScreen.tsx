@@ -1,4 +1,5 @@
 import { BarChart3, Download, Info, RefreshCw, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { formatTime } from "@/shared/lib/time";
 import { Field } from "@/shared/ui/field";
@@ -59,6 +60,8 @@ export type SessionsActions = {
   saveProviderSyncSettings: () => Promise<void>;
 };
 
+const SESSION_RENDER_BATCH_SIZE = 50;
+
 function providerSyncTargetLabel(target: SessionsView["providerSync"]["targets"][number]): string {
   const providerSyncSourceLabels: Record<"config" | "rollout" | "sqlite" | "manual", string> = {
     config: t("配置"),
@@ -81,6 +84,7 @@ export function SessionsScreen({
   actions: SessionsActions;
 }) {
   const items = view.rows;
+  const [renderLimit, setRenderLimit] = useState(SESSION_RENDER_BATCH_SIZE);
   const activeCount = items.filter((item) => !item.archived).length;
   const archivedCount = items.length - activeCount;
   const selectedIds = new Set(view.selectedSessionIds);
@@ -88,6 +92,17 @@ export function SessionsScreen({
   const allSelected = items.length > 0 && selectedCount === items.length;
   const { selectionMode, pendingOperation } = view;
   const sessionsBusy = pendingOperation !== null;
+  const renderedItems = items.slice(0, renderLimit);
+
+  useEffect(() => {
+    if (renderLimit >= items.length) return;
+    const frame = window.requestAnimationFrame(() => {
+      setRenderLimit((current) =>
+        Math.min(current + SESSION_RENDER_BATCH_SIZE, items.length),
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [items.length, renderLimit]);
 
   return (
     <>
@@ -190,7 +205,7 @@ export function SessionsScreen({
                 </div>
               </div>
               <div className="session-list">
-                {items.map((session) => {
+                {renderedItems.map((session) => {
                   const selected = selectedIds.has(session.id);
                   return (
                     <div className="session-row" data-selection-mode={selectionMode} data-selected={selected} key={session.id}>

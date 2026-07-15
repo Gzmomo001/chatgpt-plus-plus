@@ -462,9 +462,11 @@ export function App() {
       await refreshCcsProviders(true);
     }
     if (next === "sessions") {
-      await refreshSettings(true);
-      await refreshLocalSessions(true);
-      await refreshProviderSyncTargets(true);
+      await Promise.all([
+        refreshSettings(true),
+        refreshLocalSessions(true),
+        refreshProviderSyncTargets(true),
+      ]);
     }
     if (next === "enhance") {
       await refreshSettings(true);
