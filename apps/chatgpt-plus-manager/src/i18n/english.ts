@@ -90,6 +90,8 @@ export const EN_PLAIN: Record<string, string> = {
   "供应商列表": "Provider list",
   "供应商测试": "Provider test",
   "供应商配置": "Provider configuration",
+  "供应商配置已创建。": "Provider configuration created.",
+  "供应商配置已删除。": "Provider configuration deleted.",
   "供应商配置可能不正确": "Provider configuration may be incorrect",
   "供应商预设列表": "Provider preset list",
   "保存": "Save",

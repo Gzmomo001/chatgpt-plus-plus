@@ -765,12 +765,25 @@ export function App() {
 
   const saveSettingsValue = async (next: BackendSettings, silent = true) => {
     const normalized = normalizeSettings(next);
+    const profileMutation = normalized.relayProfiles.length > settingsForm.relayProfiles.length
+      ? "created"
+      : normalized.relayProfiles.length < settingsForm.relayProfiles.length
+        ? "deleted"
+        : null;
     setSettingsForm(normalized);
     const result = await run(() => managerActions.settings.save(normalized));
     if (result) {
       setSettings(result);
       setSettingsForm(normalizeSettings(result.settings));
-      if (!silent || !isSuccessStatus(result.status)) showNotice(t("设置保存"), result.message, result.status);
+      if (isSuccessStatus(result.status) && profileMutation) {
+        showNotice(
+          t("供应商配置"),
+          profileMutation === "created" ? t("供应商配置已创建。") : t("供应商配置已删除。"),
+          result.status,
+        );
+      } else if (!silent || !isSuccessStatus(result.status)) {
+        showNotice(t("设置保存"), result.message, result.status);
+      }
     }
   };
 

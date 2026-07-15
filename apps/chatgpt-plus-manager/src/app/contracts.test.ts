@@ -666,6 +666,15 @@ test("shows the detected version beside the path in the ChatGPT path panel", () 
   assert.doesNotMatch(about, /t\(["'](?:Codex|ChatGPT) 版本["']\)/);
 });
 
+test("notifies only after a successful provider create or delete save", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+
+  assert.match(app, /const profileMutation = normalized\.relayProfiles\.length > settingsForm\.relayProfiles\.length/);
+  assert.match(app, /if \(isSuccessStatus\(result\.status\) && profileMutation\)/);
+  assert.match(app, /profileMutation === "created" \? t\("供应商配置已创建。"\) : t\("供应商配置已删除。"\)/);
+  assert.match(app, /else if \(!silent \|\| !isSuccessStatus\(result\.status\)\)/);
+});
+
 test("does not publish the removed remote-project integration", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const routes = readFileSync(new URL("./routes.ts", import.meta.url), "utf8");
