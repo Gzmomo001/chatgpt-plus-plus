@@ -78,6 +78,7 @@ pub fn run() {
             let mut main_window_builder =
                 tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App(url.into()))
                     .title(manager_window_title())
+                    .resizable(true)
                     .inner_size(1180.0, 820.0)
                     .min_inner_size(960.0, 720.0);
             #[cfg(target_os = "macos")]

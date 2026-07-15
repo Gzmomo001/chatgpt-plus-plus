@@ -5,12 +5,15 @@ import { t, tf } from "@/i18n";
 import type { ApplyRelayProfilePresetIntent } from "../types";
 import { createPresetIntent } from "../preset-intent";
 
-const categoryLabels: Record<string, string> = {
-  official: t("官方"),
-  cn_official: t("中国官方"),
-  aggregator: t("聚合/中转"),
-  third_party: t("第三方"),
-};
+function categoryLabel(category: string): string {
+  const labels: Record<string, string> = {
+    official: t("官方"),
+    cn_official: t("中国官方"),
+    aggregator: t("聚合/中转"),
+    third_party: t("第三方"),
+  };
+  return labels[category] || category;
+}
 
 const initialFor = (name: string): string => {
   return name.charAt(0).toUpperCase();
@@ -94,9 +97,7 @@ export function ProviderPresetSelector({
                 if (items.length === 0) return null;
                 return (
                   <div className="preset-category" key={cat}>
-                    <h3 className="preset-category-label">
-                      {categoryLabels[cat] || cat}
-                    </h3>
+                    <h3 className="preset-category-label">{categoryLabel(cat)}</h3>
                     <div className="preset-category-items">
                       {items.map((preset) => (
                         <PresetButton

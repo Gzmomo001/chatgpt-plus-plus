@@ -1,5 +1,6 @@
 import { Download, MessageCircle, Plus, Settings, ShieldCheck, Stethoscope, Trash2 } from "lucide-react";
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { Badge as UiBadge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -10,14 +11,15 @@ import { ProviderPresetSelector } from "./ProviderPresetSelector";
 import { ProviderDoctorModal } from "./RelayFeedback";
 import { runProviderDiagnosis } from "../controller";
 import { commit, edit } from "../editor";
-import { aggregateStrategyHelp, aggregateStrategyLabel, aggregateStrategyOptions, configHasCodexGoalsFeature, relayModeLabel, relayProfileConfigBrief, relayProfileEditorStatus, relayProfileModeHelp, relayProtocolLabel, setCodexGoalsFeatureInConfig } from "../presentation";
+import { aggregateStrategyHelp, aggregateStrategyLabel, configHasCodexGoalsFeature, getAggregateStrategyOptions, relayModeLabel, relayProfileConfigBrief, relayProfileEditorStatus, relayProfileModeHelp, relayProtocolLabel, setCodexGoalsFeatureInConfig } from "../presentation";
 import type { ProviderDoctorResult, RelayProfileActions, RelaySettings } from "../contracts";
 import type { ApplyRelayProfilePresetIntent, ModelWindowRow, RelayAggregateStrategy, RelayProfileEditableMode, RelayProfileEditorState, RelayProfilePatch } from "../types";
 
-export function RelayProfileEditor<Settings extends RelaySettings>({ state, form, isNew = false, onStateChange, onSwitch, actions }: {
+export function RelayProfileEditor<Settings extends RelaySettings>({ state, form, isNew = false, headerAddon, onStateChange, onSwitch, actions }: {
   state: RelayProfileEditorState;
   form: Settings;
   isNew?: boolean;
+  headerAddon?: ReactNode;
   onStateChange: (value: RelayProfileEditorState) => void;
   onSwitch: () => void;
   actions: RelayProfileActions<Settings>;
@@ -29,7 +31,7 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
   const [doctorOpen, setDoctorOpen] = useState(false);
   const [doctorRunning, setDoctorRunning] = useState(false);
   if (state.draft.relayMode === "aggregate")
-    return <AggregateRelayProfileEditor state={state} isNew={isNew} onStateChange={onStateChange} />;
+    return <AggregateRelayProfileEditor state={state} isNew={isNew} headerAddon={headerAddon} onStateChange={onStateChange} />;
   const showApiFields = profile.relayMode !== "official" || profile.officialMixApiKey;
   const updateDraft = (patch: RelayProfilePatch) => onStateChange(edit(state, { type: "patch", patch }));
   const runProviderDoctor = async () => {
@@ -60,6 +62,7 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
         </Button>
       )}
     </div>
+    {headerAddon}
     {isNew ? <ProviderPresetSelector onSelect={(intent: ApplyRelayProfilePresetIntent) => onStateChange(edit(state, intent))} /> : null}
     <div className="relay-fields">
       <Field className="relay-field-name" label={t("名称")}>
@@ -187,14 +190,16 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
     }} /> : null}
   </div>;
 }
-function AggregateRelayProfileEditor({ state, isNew = false, onStateChange }: {
+function AggregateRelayProfileEditor({ state, isNew = false, headerAddon, onStateChange }: {
   state: RelayProfileEditorState;
   isNew?: boolean;
+  headerAddon?: ReactNode;
   onStateChange: (value: RelayProfileEditorState) => void;
 }) {
   const profile = state.preview.profile;
   const candidates = state.semantic.aggregateCandidates;
   const aggregate = state.draft.aggregate ?? { strategy: "failover", members: [] };
+  const aggregateStrategyOptions = getAggregateStrategyOptions();
   const memberIds = new Set(aggregate.members.map((member) => member.profileId));
   return <div className="relay-profile-editor aggregate-editor">
     <div className="relay-editor-head">
@@ -204,6 +209,7 @@ function AggregateRelayProfileEditor({ state, isNew = false, onStateChange }: {
       </div>
       <UiBadge variant="secondary">{t("聚合")}</UiBadge>
     </div>
+    {headerAddon}
     <div className="relay-fields aggregate-fields">
       <Field className="relay-field-name" label={t("名称")}>
         <Input value={profile.name} onChange={(event) => onStateChange(edit(state, { type: "patch", patch: { name: event.currentTarget.value } }))} placeholder={t("例如 主力聚合池")} />

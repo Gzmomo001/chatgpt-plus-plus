@@ -160,6 +160,20 @@ fn macos_overlay_titlebar_has_an_authorized_native_drag_path() {
 }
 
 #[test]
+fn manager_window_uses_native_resizing_without_webview_resize_permissions() {
+    let lib_rs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
+        .expect("read manager lib.rs");
+    let capability = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/capabilities/default.json"
+    ))
+    .expect("read manager default capability");
+
+    assert!(lib_rs.contains(".resizable(true)"));
+    assert!(!capability.contains("core:window:allow-start-resize-dragging"));
+}
+
+#[test]
 fn manager_close_minimizes_to_tray_without_confirmation() {
     let lib_rs = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
         .expect("read manager lib.rs");

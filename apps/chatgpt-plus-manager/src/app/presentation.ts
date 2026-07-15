@@ -15,40 +15,44 @@ const routePresentation: Record<
   { label: string; subtitle: string; icon: LucideIcon; badge?: string }
 > = {
   relay: {
-    label: t("供应商配置"),
-    subtitle: t("管理 API 供应商、协议、Key 与配置文件"),
+    label: "供应商配置",
+    subtitle: "管理 API 供应商、协议、Key 与配置文件",
     icon: KeyRound,
   },
   sessions: {
-    label: t("会话管理"),
-    subtitle: t("查看、删除和修复 Codex 本地会话"),
+    label: "会话管理",
+    subtitle: "查看、删除和修复 Codex 本地会话",
     icon: MessageCircle,
   },
   enhance: {
-    label: t("插件与增强"),
-    subtitle: t("管理插件市场与 Codex 启动增强"),
+    label: "插件与增强",
+    subtitle: "管理插件市场与 Codex 启动增强",
     icon: Hammer,
   },
   settings: {
-    label: t("设置"),
-    subtitle: t("偏好、安装维护、更新与诊断"),
+    label: "设置",
+    subtitle: "偏好、安装维护、更新与诊断",
     icon: Settings,
   },
 };
 
 const NAVIGATION_ROUTE_IDS: readonly Route[] = ["settings", "relay", "sessions", "enhance"];
 
-export const navigationRoutes = NAVIGATION_ROUTE_IDS.map((id) => ({
-  id,
-  ...routePresentation[id],
-}));
+export function getNavigationRoutes() {
+  return NAVIGATION_ROUTE_IDS.map((id) => ({
+    id,
+    ...routePresentation[id],
+    label: t(routePresentation[id].label),
+    subtitle: t(routePresentation[id].subtitle),
+  }));
+}
 
 export function routeTitle(route: Route): string {
-  return routePresentation[route].label;
+  return t(routePresentation[route].label);
 }
 
 export function routeSubtitle(route: Route): string {
-  return routePresentation[route].subtitle;
+  return t(routePresentation[route].subtitle);
 }
 
 export type Theme = "dark" | "light";

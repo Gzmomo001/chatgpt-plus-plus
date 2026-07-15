@@ -1,4 +1,4 @@
-import { ClipboardCopy, ExternalLink, MessageCircle, ShieldCheck } from "lucide-react";
+import { ClipboardCopy, ExternalLink, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
@@ -29,10 +29,10 @@ export function AboutScreen({
   actions: DiagnosticsActions;
 }) {
   return (
-    <>
-      <Panel>
-        <CardHead title={t("关于 ChatGPT++")} detail={t("本地 Codex 增强、配置和安装包维护")} />
-        <CardContent>
+    <Panel className="about-panel">
+      <CardHead title={t("关于 ChatGPT++")} />
+      <CardContent>
+        <section className="about-section">
           <div className="metric-list">
             <Metric label={t("ChatGPT++ 版本")} value={overview?.currentVersion ?? update?.currentVersion ?? "-"} />
             <Metric label={t("项目地址")} value="github.com/Gzmomo001/chatgpt-plus-plus" />
@@ -41,14 +41,6 @@ export function AboutScreen({
             <Button onClick={() => void actions.openExternalUrl("https://github.com/Gzmomo001/chatgpt-plus-plus")} variant="secondary">
               <ExternalLink className="h-4 w-4" />
               {t("打开项目主页")}
-            </Button>
-            <Button onClick={() => void actions.openExternalUrl("https://discord.gg/y96kX7A76v")} variant="secondary">
-              <MessageCircle className="h-4 w-4" />
-              Discord
-            </Button>
-            <Button onClick={() => void actions.openExternalUrl("https://t.me/CodexPlusPlus")} variant="secondary">
-              <MessageCircle className="h-4 w-4" />
-              Telegram
             </Button>
           </Toolbar>
           <div className="diagnostic-feedback-flow">
@@ -67,11 +59,12 @@ export function AboutScreen({
               </Button>
             </Toolbar>
           </div>
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title={t("GitHub Release 更新")} detail={tf("当前版本 {0}", [overview?.currentVersion ?? update?.currentVersion ?? "-"])} />
-        <CardContent>
+        </section>
+        <section className="about-section about-update-section">
+          <div className="about-section-head">
+            <h4>{t("GitHub Release 更新")}</h4>
+            <span>{tf("当前版本 {0}", [overview?.currentVersion ?? update?.currentVersion ?? "-"])}</span>
+          </div>
           <div className="metric-list">
             <Metric label={t("状态")} value={update?.status ?? "not_checked"} />
             <Metric label={t("最新版本")} value={update?.latestVersion ?? t("未检查")} />
@@ -86,8 +79,8 @@ export function AboutScreen({
               {updateInstallProgress.active ? t("正在下载安装包…") : t("下载并运行安装包")}
             </Button>
           </Toolbar>
-        </CardContent>
-      </Panel>
-    </>
+        </section>
+      </CardContent>
+    </Panel>
   );
 }

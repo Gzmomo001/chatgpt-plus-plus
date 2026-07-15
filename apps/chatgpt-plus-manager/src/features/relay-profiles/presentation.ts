@@ -14,16 +14,18 @@ export function relayProfileSwitchMessage(profile: RelayProfile): string {
   }
   return t("已按此供应商切回官方登录；Codex增强已设为兼容增强。");
 }
-export const aggregateStrategyOptions: Array<{
+export function getAggregateStrategyOptions(): Array<{
   value: RelayAggregateStrategy;
   label: string;
   description: string;
-}>=[
+}> {
+  return [
     { value: "failover",label: t("失败切换"),description: t("按成员顺序请求，失败后切到下一个供应商。") },
     { value: "conversationRoundRobin",label: t("按对话轮转"),description: t("同一对话保持一个成员，不同对话依次分配。") },
     { value: "requestRoundRobin",label: t("按请求轮转"),description: t("每次请求按成员顺序切换，适合均匀摊请求量。") },
     { value: "weightedRoundRobin",label: t("权重轮转"),description: t("按成员权重分配请求，权重越高承担越多。") },
   ];
+}
 export function providerInitial(name: string): string {
   const trimmed=(name||t("供应商")).trim();
   return Array.from(trimmed)[0]?.toUpperCase()||t("供");
@@ -40,7 +42,7 @@ export function relayProfileEditorStatus(profile: RelayProfileView,form: RelaySe
   return profile.id===form.activeRelayId? t("当前正在使用"):t("编辑后保存列表，再切换模式时会使用新配置");
 }
 export function aggregateStrategyLabel(strategy: RelayAggregateStrategy): string {
-  return aggregateStrategyOptions.find((option) => option.value===strategy)?.label??t("失败切换");
+  return getAggregateStrategyOptions().find((option) => option.value===strategy)?.label??t("失败切换");
 }
 export function relayProfileConfigBrief(profile: RelayProfileView|RelayProfileCandidate): string {
   if(profile.relayMode==="aggregate") {

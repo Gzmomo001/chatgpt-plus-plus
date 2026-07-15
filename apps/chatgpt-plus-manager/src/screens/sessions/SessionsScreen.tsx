@@ -59,14 +59,13 @@ export type SessionsActions = {
   saveProviderSyncSettings: () => Promise<void>;
 };
 
-const providerSyncSourceLabels: Record<"config" | "rollout" | "sqlite" | "manual", string> = {
-  config: t("配置"),
-  rollout: t("会话"),
-  sqlite: t("索引"),
-  manual: t("手动"),
-};
-
 function providerSyncTargetLabel(target: SessionsView["providerSync"]["targets"][number]): string {
+  const providerSyncSourceLabels: Record<"config" | "rollout" | "sqlite" | "manual", string> = {
+    config: t("配置"),
+    rollout: t("会话"),
+    sqlite: t("索引"),
+    manual: t("手动"),
+  };
   const labels = target.sources
     .map((source) => providerSyncSourceLabels[source])
     .filter(Boolean);

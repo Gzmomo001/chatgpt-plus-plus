@@ -23,6 +23,7 @@ test("owns application composition under app without a root forwarding wrapper",
   assert.match(app, /className=["']brand-title["']>[\s\S]*?ChatGPT\+\+/);
   assert.match(app, /DEVELOPMENT_RUNTIME[\s\S]*?development-badge/);
   assert.match(app, /className=["']topbar-navigation["'][\s\S]*?<nav[^>]+className=["']nav["']/);
+  assert.doesNotMatch(app, /className=["']page-heading["']/);
   assert.doesNotMatch(app, /className=["']nav-label["']|className=["']nav-badge["']/);
   assert.doesNotMatch(
     app,
@@ -40,6 +41,28 @@ test("owns application composition under app without a root forwarding wrapper",
     const source = readFileSync(new URL(entry, sourceRoot), "utf8");
     assert.doesNotMatch(source, /from ["'](?:\.\.\/)*App["']/, `${entry} must import app/App`);
   }
+});
+
+test("leaves east-edge resizing to the native resizable window", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const capability = readFileSync(
+    new URL("../../src-tauri/capabilities/default.json", import.meta.url),
+    "utf8",
+  );
+
+  assert.doesNotMatch(app, /window-resize-east-handle|startResizeDragging/);
+  assert.doesNotMatch(styles, /\.window-resize-east-handle\b/);
+  assert.doesNotMatch(capability, /core:window:allow-start-resize-dragging/);
+});
+
+test("keeps relay profile cards stationary on hover", () => {
+  const styles = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+
+  assert.match(
+    styles,
+    /\.relay-list-content \.relay-profile-card:hover,[\s\S]*?transform:\s*none;/,
+  );
 });
 
 test("publishes the manager routes in navigation order", () => {
@@ -354,7 +377,7 @@ test("keeps Overview health projection in the topbar without an Overview page", 
   assert.match(relayEditor, /import \{ Metric \} from ["']@\/shared\/ui\/metric["']/);
   assert.doesNotMatch(relayEditor, /function Metric\(/);
   assert.match(relayDetail, /import \{ Toolbar \} from ["']@\/shared\/ui\/layout["']/);
-  assert.doesNotMatch(relayDetail, /function Toolbar\(/);
+  assert.match(relayDetail, /!isNew \? <div className="relay-detail-sticky"/);
 
   assert.match(app, /import type \{ OverviewResult \} from ["']@\/shared\/contracts\/overview["']/);
   assert.match(appContracts, /from ["']@\/shared\/contracts\/command["']/);
@@ -457,6 +480,8 @@ test("composes Settings through its screen-owned vertical slice", () => {
   assert.match(screen, /export type SettingsActions(?:<[^>]+>)?\s*=\s*\{/);
   assert.match(screen, /export type SettingsForm\s*=\s*\{/);
   assert.match(screen, /diagnosticLogEnabled/);
+  assert.match(screen, /chooseChatGptAppPath/);
+  assert.match(screen, /className=["']chatgpt-app-path-value["']/);
   assert.match(screen, /openLogFolder/);
   assert.doesNotMatch(screen, /providerTestModels|provider-test-model-options|供应商测试模型/);
   assert.doesNotMatch(
@@ -490,32 +515,6 @@ test("composes Settings through its screen-owned vertical slice", () => {
   }
 });
 
-test("keeps diagnostic logging title-only and saves toggles manually without a success notice", () => {
-  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  const settings = readFileSync(
-    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
-    "utf8",
-  );
-
-  assert.doesNotMatch(
-    settings,
-    /控制 ChatGPT\+\+ 的运行诊断日志|正在记录运行诊断信息|日志记录已关闭|已关闭；不会写入 chatgpt-plus\.log。/,
-  );
-  assert.match(settings, /onChange=\{\(event\) => actions\.setDiagnosticLogEnabled\(event\.currentTarget\.checked\)\}/);
-  assert.match(
-    app,
-    /setDiagnosticLogEnabled:\s*\(enabled[^]*?settingsAutosaveRef\.current\?\.saveNow\(\{[^]*?mode:\s*"manual"/,
-  );
-  assert.match(
-    app,
-    /request\.mode === "manual"[^]*?managerActions\.settings\.save\(request\.settings\)/,
-  );
-  assert.match(
-    app,
-    /if \(requested\.mode === "autosave"\) showNotice\(t\("设置保存"\), result\.message, result\.status\)/,
-  );
-});
-
 test("composes Enhance through a minimal screen-owned view and action seam", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const screen = readFileSync(
@@ -530,6 +529,8 @@ test("composes Enhance through a minimal screen-owned view and action seam", () 
   assert.match(screen, /export type EnhanceActions\s*=\s*\{/);
   assert.doesNotMatch(screen, /\bBackendSettings\b|\bActions\b(?!\s*=)|@tauri-apps\/api|\binvoke\s*\(/);
   assert.doesNotMatch(screen, /from ["']@\/app(?:\/|["'])/);
+  assert.match(screen, /const isWindows\s*=\s*typeof navigator !== ["']undefined["'][\s\S]*?includes\(["']windows["']\)/);
+  assert.match(screen, /isWindows \? \([\s\S]*?Windows Computer Use Guard/);
 
   for (const definition of ["EnhanceScreen", "FeatureGroup", "FeatureToggle"]) {
     assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
@@ -567,8 +568,14 @@ test("composes Enhance through a minimal screen-owned view and action seam", () 
     "registerPluginMarketplace",
     "upgradePluginMarketplace",
     "upgradeRemotePluginMarketplace",
-    "saveSettings",
   ]);
+
+  assert.match(
+    app,
+    /updateFlag: \(key, value\) => \{[^]*?settingsAutosaveRef\.current\?\.saveNow\(\{[^]*?mode:\s*"manual"[^]*?settings:\s*next/,
+    "launch enhancement toggles must persist immediately",
+  );
+  assert.doesNotMatch(screen, /saveSettings|保存增强设置/);
 
   assert.doesNotMatch(screen, /\bzed\b/i);
 });
@@ -591,7 +598,7 @@ test("removes the Renderer user-script surface end to end", () => {
   assert.doesNotMatch(appContracts, /UserScript|userScripts|user-scripts/);
 });
 
-test("composes Maintenance through a minimal screen-owned view and action seam", () => {
+test("keeps Windows shortcut maintenance behind a minimal action seam", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   const screen = readFileSync(
     new URL("../screens/maintenance/MaintenanceScreen.tsx", import.meta.url),
@@ -602,8 +609,8 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
     app,
     /import \{ MaintenanceScreen \} from ["']@\/screens\/maintenance\/MaintenanceScreen["']/,
   );
-  assert.match(app, /<MaintenanceScreen\s+view=\{maintenanceView\}\s+actions=\{maintenanceActions\}/);
-  assert.match(screen, /export type MaintenanceView\s*=\s*\{/);
+  assert.match(app, /<MaintenanceScreen\s+actions=\{maintenanceActions\}/);
+  assert.doesNotMatch(screen, /export type MaintenanceView\s*=\s*\{/);
   assert.match(screen, /export type MaintenanceActions\s*=\s*\{/);
   assert.doesNotMatch(
     screen,
@@ -611,34 +618,16 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
   );
   assert.doesNotMatch(screen, /from ["']@\/app(?:\/|["'])/);
 
-  for (const definition of ["MaintenanceScreen", "StatusRow"]) {
-    assert.doesNotMatch(app, new RegExp(`function ${definition}\\(`));
-  }
+  assert.doesNotMatch(app, /function MaintenanceScreen\(/);
 
   const typeKeys = (name: string) => {
     const body = screen.match(new RegExp(`export type ${name} = \\{([\\s\\S]*?)\\n\\};`))?.[1] ?? "";
     return [...body.matchAll(/^\s{2}([A-Za-z][A-Za-z0-9]*):/gm)].map((match) => match[1]);
   };
-  assert.deepEqual(typeKeys("MaintenanceView"), [
-    "codexApp",
-    "savedCodexAppPath",
-    "launchForm",
-    "removeOwnedData",
-  ]);
-  assert.deepEqual(typeKeys("MaintenanceActions"), [
-    "updateLaunchForm",
-    "setRemoveOwnedData",
-    "repairShortcuts",
-    "installEntrypoints",
-    "uninstallEntrypoints",
-    "chooseCodexAppPath",
-    "clearCodexAppPath",
-    "launch",
-    "saveManualCodexAppPath",
-  ]);
+  assert.deepEqual(typeKeys("MaintenanceActions"), ["installEntrypoints"]);
   assert.doesNotMatch(screen, /检查与修复|检查 Codex 应用状态/);
   assert.match(screen, /navigator\.userAgent\.toLowerCase\(\)\.includes\(["']windows["']\)/);
-  assert.match(screen, /\{isWindows \? \(\s*<Panel>/);
+  assert.match(screen, /if \(!isWindows\) return null/);
   assert.match(screen, /title=\{t\(["']创建 ChatGPT\+\+ 桌面快捷方式["']\)\}/);
   assert.match(screen, /<Button[\s\S]{0,160}installEntrypoints[\s\S]{0,80}t\(["']创建快捷方式["']\)/);
   assert.doesNotMatch(
@@ -647,23 +636,56 @@ test("composes Maintenance through a minimal screen-owned view and action seam",
   );
 });
 
-test("shows the detected version beside the path in the ChatGPT path panel", () => {
+test("shows the selected or detected ChatGPT path as one preferences row", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  const maintenance = readFileSync(
-    new URL("../screens/maintenance/MaintenanceScreen.tsx", import.meta.url),
-    "utf8",
-  );
-  const about = readFileSync(
-    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
+  const settings = readFileSync(
+    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
     "utf8",
   );
 
-  assert.match(app, /codexApp:\s*\{[\s\S]*?version:\s*overview\?\.codexVersion/);
-  assert.match(maintenance, /title=\{t\(["']ChatGPT 路径["']\)\}/);
-  assert.match(maintenance, /<code className=["']detected-app-version["']>\{version \?\? t\(["']未检测到["']\)\}<\/code>/);
-  assert.doesNotMatch(maintenance, /t\(["']版本["']\)/);
-  assert.doesNotMatch(maintenance, /t\(["']ChatGPT 版本["']\)/);
-  assert.doesNotMatch(about, /t\(["'](?:Codex|ChatGPT) 版本["']\)/);
+  assert.match(
+    app,
+    /chatGptAppPath=\{settingsForm\.codexAppPath\.trim\(\) \|\| overview\?\.codexApp\.path \|\| ["']["']\}/,
+  );
+  assert.match(settings, /className=["']chatgpt-app-path-copy["'][\s\S]*?<strong>\{t\(["']ChatGPT 路径["']\)\}<\/strong>/);
+  assert.match(settings, /className=["']chatgpt-app-path-value["']/);
+  assert.doesNotMatch(settings, /chatgpt-app-path-pill/);
+  assert.match(settings, /actions\.chooseChatGptAppPath\(\)/);
+  assert.match(settings, /t\(["']选择应用["']\)/);
+  assert.doesNotMatch(settings, /手动启动|保存为默认路径|启动 ChatGPT\+\+|保存的应用路径/);
+});
+
+test("presents diagnostic logging as a title-only preference row", () => {
+  const settings = readFileSync(
+    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(settings, /<strong>\{t\(["']日志记录["']\)\}<\/strong>/);
+  assert.doesNotMatch(settings, /正在记录运行诊断信息|已关闭；不会写入 chatgpt-plus\.log。/);
+  assert.doesNotMatch(settings, /className=["']diagnostic-log-copy["'][\s\S]*?<small>/);
+});
+
+test("persists the diagnostic logging toggle immediately without a success notice", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const settings = readFileSync(
+    new URL("../screens/settings/SettingsScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(settings, /onChange=\{\(event\) => actions\.setDiagnosticLogEnabled\(event\.currentTarget\.checked\)\}/);
+  assert.match(
+    app,
+    /setDiagnosticLogEnabled:\s*\(enabled[^]*?settingsAutosaveRef\.current\?\.saveNow\(\{[^]*?mode:\s*"manual"/,
+  );
+  assert.match(
+    app,
+    /request\.mode === "manual"[^]*?managerActions\.settings\.save\(request\.settings\)/,
+  );
+  assert.match(
+    app,
+    /if \(requested\.mode === "autosave"\) showNotice\(t\("设置保存"\), result\.message, result\.status\)/,
+  );
 });
 
 test("notifies only after a successful provider create or delete save", () => {

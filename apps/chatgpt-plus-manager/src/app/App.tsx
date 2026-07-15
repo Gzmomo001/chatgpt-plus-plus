@@ -5,6 +5,7 @@ import {
   CircleArrowUp,
   Languages,
   Moon,
+  Plus,
   Rocket,
   Sun,
 } from "lucide-react";
@@ -17,10 +18,7 @@ import type { SettingsForm } from "@/screens/settings/SettingsScreen";
 import { EnhanceScreen } from "@/screens/enhance/EnhanceScreen";
 import type { EnhanceActions, EnhanceView } from "@/screens/enhance/EnhanceScreen";
 import { MaintenanceScreen } from "@/screens/maintenance/MaintenanceScreen";
-import type {
-  MaintenanceActions,
-  MaintenanceView,
-} from "@/screens/maintenance/MaintenanceScreen";
+import type { MaintenanceActions } from "@/screens/maintenance/MaintenanceScreen";
 import { SessionsScreen } from "@/screens/sessions/SessionsScreen";
 import type {
   SessionsActions,
@@ -73,9 +71,7 @@ import {
 import {
   isSuccessStatus,
   loadInitialTheme,
-  navigationRoutes,
-  routeSubtitle,
-  routeTitle,
+  getNavigationRoutes,
   stringifyError,
   type Theme,
 } from "@/app/presentation";
@@ -101,7 +97,7 @@ import { relaySwitchIssue } from "@/features/relay-profiles/controller";
 import type {
   AggregateRelayProfile,
 } from "@/features/relay-profiles/types";
-import { getLanguage, t, tf, toggleLanguage } from "@/i18n";
+import { t, tf, toggleLanguage, useLanguage } from "@/i18n";
 import {
   providerSyncProgressMessage,
   truncateSessionDeletePreview,
@@ -124,10 +120,13 @@ type SettingsSaveRequest =
   | { mode: "manual"; settings: BackendSettings };
 
 export function App() {
+  const language = useLanguage();
   const [theme, setTheme] = useState<Theme>(() => loadInitialTheme());
   const [route, setRoute] = useState<Route>(() =>
     loadInitialRoute(typeof window === "undefined" ? undefined : window.location),
   );
+  const [relayNavbarActionHost, setRelayNavbarActionHost] = useState<HTMLDivElement | null>(null);
+  const [relayCreateRequest, setRelayCreateRequest] = useState(0);
   const [notice, setNotice] = useState<{ title: string; message: string; status?: Status } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
@@ -179,9 +178,6 @@ export function App() {
     active: false,
     percent: 0,
     message: t("尚未运行安装包更新。"),
-  });
-  const [launchForm, setLaunchForm] = useState({
-    appPath: "",
   });
   const prevLaunchStatusRef = useRef<string | null>(null);
   const [settingsForm, setSettingsForm] = useState<BackendSettings>({ ...defaultSettings });
@@ -248,10 +244,6 @@ export function App() {
       setSettings(result);
       const normalized = normalizeSettings(result.settings);
       setSettingsForm(normalized);
-      setLaunchForm((current) => ({
-        ...current,
-        appPath: current.appPath || result.settings.codexAppPath || "",
-      }));
       if (!silent) showResultNotice(t("设置已加载"), result, { silentSuccess: true });
       return normalized;
     }
@@ -482,6 +474,11 @@ export function App() {
     if (next === "settings") await refreshSettingsPage();
   };
 
+  const openProviderCreator = async () => {
+    if (route !== "relay") await navigate("relay");
+    setRelayCreateRequest((current) => current + 1);
+  };
+
   const openSettingsPage = async (sectionId?: string) => {
     setRoute("settings");
     await refreshSettingsPage();
@@ -498,7 +495,7 @@ export function App() {
 
   const launchCommand = async (intent: "launch" | "restart") => {
     const request = {
-      appPath: launchForm.appPath,
+      appPath: settingsForm.codexAppPath,
     };
     const result = await run(() => managerActions.overview[intent](request));
     return result;
@@ -1164,14 +1161,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (getLanguage() === "en") {
-      void managerActions.app.updateTrayLabels({
-        showLabel: "Show window",
-        quitLabel: "Quit",
-        windowTitle: "ChatGPT++",
-      });
-    }
-  }, []);
+    void managerActions.app.updateTrayLabels({
+      showLabel: language === "en" ? "Show window" : "显示窗口",
+      quitLabel: language === "en" ? "Quit" : "退出",
+      windowTitle: "ChatGPT++",
+    });
+  }, [language]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1193,7 +1188,6 @@ export function App() {
       setSettings(result);
       const normalized = normalizeSettings(result.settings);
       setSettingsForm(normalized);
-      setLaunchForm((current) => ({ ...current, appPath: normalized.codexAppPath }));
       await refreshOverview(true);
     }
     return result;
@@ -1214,53 +1208,37 @@ export function App() {
       saveSettingsValue,
       refreshSettings,
       resetSettings,
-      chooseCodexAppPath: async (mode: "folder" | "file") => {
+      chooseChatGptAppPath: async () => {
         let selected: unknown;
         try {
+          const isWindows =
+            typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
           selected = await open(
-            mode === "folder"
-              ? { directory: true, multiple: false, title: t("选择 Codex 应用目录") }
-              : {
+            isWindows
+              ? {
                   directory: false,
                   multiple: false,
-                  title: t("选择 Codex.exe 或 Codex.app"),
-                  filters: [{ name: t("Codex 应用"), extensions: ["exe", "app"] }],
+                  title: t("选择 ChatGPT 应用"),
+                  filters: [{ name: t("ChatGPT 应用"), extensions: ["exe"] }],
+                }
+              : {
+                  directory: true,
+                  multiple: false,
+                  title: t("选择 ChatGPT 应用"),
                 },
           );
         } catch (error) {
           // Surface plugin failures (e.g. missing capability permission) so the
           // buttons no longer appear unresponsive — see #345.
           const message = error instanceof Error ? error.message : String(error);
-          showNotice(t("Codex 应用路径"), tf("打开选择器失败：{0}", [message]), "failed");
+          showNotice(t("ChatGPT 路径"), tf("打开选择器失败：{0}", [message]), "failed");
           return;
         }
         if (typeof selected === "string" && selected.trim()) {
           const result = await saveCodexAppPath(selected.trim());
           if (result) {
-            showNotice(t("Codex 应用路径"), t("应用路径已保存，之后启动会自动复用。"), result.status);
+            showNotice(t("ChatGPT 路径"), t("已选择 ChatGPT 应用，后续启动会自动复用。"), result.status);
           }
-        }
-      },
-      clearCodexAppPath: async () => {
-        const next = { ...settingsForm, codexAppPath: "" };
-        const result = await run(() => managerActions.settings.save(next));
-        if (result) {
-          setSettings(result);
-          setSettingsForm(normalizeSettings(result.settings));
-          setLaunchForm((current) => ({ ...current, appPath: "" }));
-          showNotice(t("Codex 应用路径"), t("已清除保存路径，后续启动会回到自动探测。"), result.status);
-          await refreshOverview(true);
-        }
-      },
-      saveManualCodexAppPath: async () => {
-        const appPath = launchForm.appPath.trim();
-        if (!appPath) {
-          showNotice(t("Codex 应用路径"), t("请先填写或选择应用路径。"), "failed");
-          return;
-        }
-        const result = await saveCodexAppPath(appPath);
-        if (result) {
-          showNotice(t("Codex 应用路径"), t("应用路径已保存，之后启动会自动复用。"), result.status);
         }
       },
       syncProvidersNow,
@@ -1306,7 +1284,7 @@ export function App() {
       },
       toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     }),
-    [route, launchForm, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
+    [route, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
   );
   const sessionsView: SessionsView = {
     ...sessionsControllerView,
@@ -1359,7 +1337,14 @@ export function App() {
     pluginInventoryPending,
   };
   const enhanceActions: EnhanceActions = {
-    updateFlag: (key, value) => setSettingsForm((current) => ({ ...current, [key]: value })),
+    updateFlag: (key, value) => {
+      const next = normalizeSettings({ ...settingsForm, [key]: value });
+      setSettingsForm(next);
+      settingsAutosaveRef.current?.saveNow({
+        mode: "manual",
+        settings: next,
+      });
+    },
     repairPluginMarketplace: actions.repairPluginMarketplace,
     refreshRemotePluginMarketplaceStatus: async () => {
       await actions.refreshRemotePluginMarketplace();
@@ -1370,28 +1355,9 @@ export function App() {
     registerPluginMarketplace,
     upgradePluginMarketplace,
     upgradeRemotePluginMarketplace,
-    saveSettings: actions.saveSettings,
-  };
-  const maintenanceView: MaintenanceView = {
-    codexApp: {
-      status: overview?.codexApp.status,
-      path: overview?.codexApp.path,
-      version: overview?.codexVersion,
-    },
-    savedCodexAppPath: settings?.settings.codexAppPath ?? "",
-    launchForm,
-    removeOwnedData,
   };
   const maintenanceActions: MaintenanceActions = {
-    updateLaunchForm: setLaunchForm,
-    setRemoveOwnedData,
-    repairShortcuts: actions.repairShortcuts,
     installEntrypoints: actions.installEntrypoints,
-    uninstallEntrypoints: actions.uninstallEntrypoints,
-    chooseCodexAppPath: actions.chooseCodexAppPath,
-    clearCodexAppPath: actions.clearCodexAppPath,
-    launch: actions.launch,
-    saveManualCodexAppPath: actions.saveManualCodexAppPath,
   };
   const hasUpdate = update?.updateAvailable === true;
 
@@ -1435,7 +1401,7 @@ export function App() {
               </div>
             </div>
             <nav aria-label={t("主导航")} className="nav">
-              {navigationRoutes.map((item) => {
+              {getNavigationRoutes().map((item) => {
                 const Icon = item.icon;
                 return (
                   <button
@@ -1455,12 +1421,26 @@ export function App() {
               })}
             </nav>
             <div className="topbar-actions">
+              <div className="relay-navbar-action" ref={setRelayNavbarActionHost}>
+                {route !== "relay" ? (
+                  <Button
+                    aria-label={t("添加供应商")}
+                    className="provider-create-trigger"
+                    onClick={() => void openProviderCreator()}
+                    size="icon"
+                    title={t("添加供应商")}
+                    variant="ghost"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </div>
               <OverviewHealthIndicators overview={overview} onRefresh={actions.checkHealth} />
               <Button
-                aria-label={getLanguage() === "en" ? t("切换到中文") : t("切换到英文")}
+                aria-label={language === "en" ? t("切换到中文") : t("切换到英文")}
                 onClick={() => toggleLanguage()}
                 size="icon"
-                title={getLanguage() === "en" ? t("切换到中文") : t("切换到英文")}
+                title={language === "en" ? t("切换到中文") : t("切换到英文")}
                 variant="ghost"
               >
                 <Languages className="h-4 w-4" aria-hidden="true" />
@@ -1489,10 +1469,6 @@ export function App() {
               </Button>
             </div>
           </div>
-          <div className="page-heading">
-            <h1>{routeTitle(route)}</h1>
-            <p>{routeSubtitle(route)}</p>
-          </div>
         </header>
         <section className="screen" key={route}>
           {route === "relay" ? (
@@ -1501,6 +1477,8 @@ export function App() {
               envConflicts={envConflicts}
               ccsProviders={ccsProviders}
               form={normalizeSettings(settingsForm)}
+              navbarActionHost={relayNavbarActionHost}
+              createRequest={relayCreateRequest}
               onFormChange={setSettingsForm}
               actions={actions}
             />
@@ -1522,7 +1500,7 @@ export function App() {
               <section className="settings-page-section" id="settings-preferences">
                 <SettingsScreen
                   settingsPath={settings?.settingsPath ?? ""}
-                  logPath={overview?.logsPath ?? ""}
+                  chatGptAppPath={settingsForm.codexAppPath.trim() || overview?.codexApp.path || ""}
                   form={settingsForm}
                   onFormChange={(form) => {
                     const next = normalizeSettings({ ...settingsForm, ...form });
@@ -1533,7 +1511,7 @@ export function App() {
                 />
               </section>
               <section className="settings-page-section" id="settings-maintenance">
-                <MaintenanceScreen view={maintenanceView} actions={maintenanceActions} />
+                <MaintenanceScreen actions={maintenanceActions} />
               </section>
               <section className="settings-page-section" id="settings-diagnostics">
                 <AboutScreen
@@ -1592,9 +1570,7 @@ type Actions = {
   saveSettingsValue: (settings: BackendSettings, silent?: boolean) => Promise<void>;
   refreshSettings: (silent?: boolean) => Promise<BackendSettings | null>;
   resetSettings: () => Promise<void>;
-  chooseCodexAppPath: (mode: "folder" | "file") => Promise<void>;
-  clearCodexAppPath: () => Promise<void>;
-  saveManualCodexAppPath: () => Promise<void>;
+  chooseChatGptAppPath: () => Promise<void>;
   syncProvidersNow: () => Promise<void>;
   refreshProviderSyncTargets: (silent?: boolean) => Promise<ProviderSyncTargetsResult | null>;
   setProviderSyncTarget: (provider: string) => void;

@@ -46,7 +46,6 @@ export type EnhanceActions = {
   registerPluginMarketplace: (name: string) => Promise<void>;
   upgradePluginMarketplace: () => Promise<void>;
   upgradeRemotePluginMarketplace: () => Promise<void>;
-  saveSettings: () => Promise<void>;
 };
 
 export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: EnhanceActions }) {
@@ -58,6 +57,8 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
     pluginInventory,
     pluginInventoryPending,
   } = view;
+  const isWindows =
+    typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
   const [marketplaceName, setMarketplaceName] = useState("");
   const pluginInventoryState = projectPluginInventoryState(pluginInventory, pluginInventoryPending);
   const remoteMarketplaceStatus = remotePluginMarketplace?.marketplaceRoot
@@ -78,12 +79,14 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
         <CardHead title={t("启动增强")} detail={t("只影响 ChatGPT++ 启动 Codex 时的本地行为")} />
         <CardContent>
           <div className="feature-switch-grid">
-            <FeatureToggle
-              title={t("Windows Computer Use Guard")}
-              detail={t("默认关闭；开启后启动 Codex 时会自动保留官方 Computer Use 插件所需的 config.toml、bundled 插件和 notify 配置。")}
-              checked={settings.computerUseGuardEnabled}
-              onChange={(value) => actions.updateFlag("computerUseGuardEnabled", value)}
-            />
+            {isWindows ? (
+              <FeatureToggle
+                title={t("Windows Computer Use Guard")}
+                detail={t("默认关闭；开启后启动 Codex 时会自动保留官方 Computer Use 插件所需的 config.toml、bundled 插件和 notify 配置。")}
+                checked={settings.computerUseGuardEnabled}
+                onChange={(value) => actions.updateFlag("computerUseGuardEnabled", value)}
+              />
+            ) : null}
             <FeatureToggle
               title={t("快速启动")}
               detail={t("默认关闭；无 VPN 时可开启，让 Statsig 初始化快速失败，减少启动时长。需重启 Codex 才生效。")}
@@ -91,9 +94,6 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
               onChange={(value) => actions.updateFlag("codexAppFastStartup", value)}
             />
           </div>
-          <Toolbar>
-            <Button onClick={() => void actions.saveSettings()}>{t("保存增强设置")}</Button>
-          </Toolbar>
         </CardContent>
       </Panel>
       <Panel>

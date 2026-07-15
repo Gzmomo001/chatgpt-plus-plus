@@ -4,13 +4,14 @@ import test from "node:test";
 import {
   isSuccessStatus,
   loadInitialTheme,
-  navigationRoutes,
+  getNavigationRoutes,
   routeSubtitle,
   routeTitle,
   stringifyError,
 } from "./presentation.ts";
 
 test("projects every application route and its shell copy through one interface", () => {
+  const navigationRoutes = getNavigationRoutes();
   assert.equal(navigationRoutes.length, 4);
   assert.deepEqual(
     navigationRoutes.map(({ id }) => id),

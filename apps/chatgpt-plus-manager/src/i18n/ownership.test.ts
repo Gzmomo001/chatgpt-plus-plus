@@ -18,7 +18,7 @@ test("i18n is owned by the i18n directory without legacy forwarding files", () =
   assert.doesNotMatch(facadeSource, /i18n-en/);
 });
 
-test("the facade preserves language selection, translation fallback, and persistence", async () => {
+test("the facade switches language in place without reloading the webview", async () => {
   const originalWindow = globalThis.window;
   let storedLanguage: string | null = "en";
   let reloads = 0;
@@ -45,6 +45,10 @@ test("the facade preserves language selection, translation fallback, and persist
 
   try {
     const i18n = await import(`./index.ts?ownership=${Date.now()}`);
+    const languageChanges: string[] = [];
+    const unsubscribe = i18n.subscribeToLanguage(() => {
+      languageChanges.push(i18n.getLanguage());
+    });
     assert.equal(i18n.getLanguage(), "en");
     assert.equal(i18n.t("供应商"), "Provider");
     assert.equal(i18n.t("保存设置失败：boom"), "Failed to save settings: boom");
@@ -53,11 +57,18 @@ test("the facade preserves language selection, translation fallback, and persist
 
     i18n.setLanguage("zh");
     assert.equal(storedLanguage, "zh");
-    assert.equal(reloads, 1);
+    assert.equal(i18n.getLanguage(), "zh");
+    assert.equal(i18n.t("供应商"), "供应商");
+    assert.equal(reloads, 0);
+    assert.deepEqual(languageChanges, ["zh"]);
 
     i18n.toggleLanguage();
-    assert.equal(storedLanguage, "zh");
-    assert.equal(reloads, 2);
+    assert.equal(storedLanguage, "en");
+    assert.equal(i18n.getLanguage(), "en");
+    assert.equal(i18n.t("供应商"), "Provider");
+    assert.equal(reloads, 0);
+    assert.deepEqual(languageChanges, ["zh", "en"]);
+    unsubscribe();
   } finally {
     if (originalWindow === undefined) {
       Reflect.deleteProperty(globalThis, "window");

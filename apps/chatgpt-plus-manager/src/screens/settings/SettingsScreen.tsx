@@ -1,4 +1,4 @@
-import { FolderOpen } from "lucide-react";
+import { AppWindow, FolderOpen } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
@@ -18,19 +18,20 @@ export type SettingsForm = {
 };
 
 export type SettingsActions = {
+  chooseChatGptAppPath: () => Promise<void>;
   openLogFolder: () => Promise<void>;
   setDiagnosticLogEnabled: (enabled: boolean) => void;
 };
 
 export function SettingsScreen({
   settingsPath,
-  logPath,
+  chatGptAppPath,
   form,
   onFormChange,
   actions,
 }: {
   settingsPath: string;
-  logPath: string;
+  chatGptAppPath: string;
   form: SettingsForm;
   onFormChange: (value: SettingsForm) => void;
   actions: SettingsActions;
@@ -39,6 +40,18 @@ export function SettingsScreen({
     <Panel>
       <CardHead title={t("偏好设置")} detail={settingsPath} />
       <CardContent>
+        <div className="chatgpt-app-path-setting">
+          <div className="chatgpt-app-path-copy">
+            <strong>{t("ChatGPT 路径")}</strong>
+            <code className="chatgpt-app-path-value" title={chatGptAppPath || t("未检测到")}>
+              {chatGptAppPath || t("未检测到")}
+            </code>
+          </div>
+          <Button onClick={() => void actions.chooseChatGptAppPath()} variant="secondary">
+            <AppWindow className="h-4 w-4" />
+            {t("选择应用")}
+          </Button>
+        </div>
         <section className="feature-group">
           <div className="feature-group-head">
             <strong>{t("Codex 启动参数")}</strong>
@@ -60,31 +73,29 @@ export function SettingsScreen({
           </Field>
           <p className="field-hint">{t("每行一个参数，例如 --force_high_performance_gpu。不需要填写 open 或 --args。")}</p>
         </section>
-        <section className="feature-group">
-          <div className="feature-group-head">
-            <strong>{t("日志记录")}</strong>
+        <div className="diagnostic-log-setting">
+          <div className="diagnostic-log-row">
+            <div className="diagnostic-log-copy">
+              <label htmlFor="diagnostic-log-enabled">
+                <strong>{t("日志记录")}</strong>
+              </label>
+            </div>
+            <div className="diagnostic-log-actions">
+              <Button onClick={() => void actions.openLogFolder()} variant="secondary">
+                <FolderOpen className="h-4 w-4" />
+                {t("打开日志文件夹")}
+              </Button>
+              <input
+                aria-label={t("启用日志记录")}
+                checked={form.diagnosticLogEnabled}
+                className="diagnostic-log-switch"
+                id="diagnostic-log-enabled"
+                onChange={(event) => actions.setDiagnosticLogEnabled(event.currentTarget.checked)}
+                type="checkbox"
+              />
+            </div>
           </div>
-          <label className="switch-row compact">
-            <span>
-              <strong>{t("启用日志记录")}</strong>
-            </span>
-            <input
-              aria-label={t("启用日志记录")}
-              checked={form.diagnosticLogEnabled}
-              onChange={(event) => actions.setDiagnosticLogEnabled(event.currentTarget.checked)}
-              type="checkbox"
-            />
-          </label>
-          <div className="log-folder-row">
-            <span className="log-folder-path" title={logPath}>
-              {logPath || t("日志路径将在加载后显示")}
-            </span>
-            <Button onClick={() => void actions.openLogFolder()} variant="secondary">
-              <FolderOpen className="h-4 w-4" />
-              {t("打开日志文件夹")}
-            </Button>
-          </div>
-        </section>
+        </div>
       </CardContent>
     </Panel>
   );

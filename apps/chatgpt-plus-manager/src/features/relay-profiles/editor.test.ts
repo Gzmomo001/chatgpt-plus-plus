@@ -136,6 +136,48 @@ describe("Relay profile editor", () => {
     assert.match(relayEditor, /disabled=\{actions\.relaySwitching\}/);
   });
 
+  it("opens provider configuration directly and selects its source in three columns", () => {
+    const app = readFileSync(new URL("../../app/App.tsx", import.meta.url), "utf8");
+    const relayScreen = readFileSync(
+      new URL("../../screens/relay-profiles/RelayProfilesScreen.tsx", import.meta.url),
+      "utf8",
+    );
+    const relayDetail = readFileSync(
+      new URL("./components/RelayProfileDetail.tsx", import.meta.url),
+      "utf8",
+    );
+    const creationSelector = readFileSync(
+      new URL("./components/ProviderCreationSelector.tsx", import.meta.url),
+      "utf8",
+    );
+    const styles = readFileSync(new URL("../../styles.css", import.meta.url), "utf8");
+
+    assert.match(app, /className="relay-navbar-action" ref=\{setRelayNavbarActionHost\}/);
+    assert.match(app, /route !== "relay"[\s\S]*?className="provider-create-trigger"/);
+    assert.match(app, /relayCreateRequest.*useState\(0\)/);
+    assert.match(app, /openProviderCreator = async/);
+    assert.match(relayScreen, /createPortal\([\s\S]*?className=\{`provider-create-trigger/);
+    assert.match(relayScreen, /className=\{`provider-create-trigger[\s\S]*?size="icon"/);
+    assert.match(relayScreen, /isNewProfile \? <Save/);
+    assert.match(relayScreen, /className=\{`provider-create-trigger \$\{isNewProfile \? "active" : ""\}`\}/);
+    assert.match(relayScreen, /setNewProfileDraft\(createProfile\(\)\)/);
+    assert.match(relayDetail, /onSaveActionChange/);
+    assert.match(relayDetail, /!isNew \? <div className="relay-detail-sticky"/);
+    assert.match(relayScreen, /createRequest: number/);
+    assert.match(relayScreen, /handledCreateRequestRef/);
+    assert.doesNotMatch(relayScreen, /createPageOpen|provider-create-page|provider-type-option/);
+    assert.equal(relayScreen.match(/\{navbarCreateAction\}/g)?.length, 2);
+    assert.match(relayDetail, /headerAddon=\{creationSelector\}/);
+    assert.match(creationSelector, /role="group"/);
+    assert.match(creationSelector, /kind: "standard"[\s\S]*?kind: "aggregate"[\s\S]*?kind: "import"/);
+    assert.match(creationSelector, /className="provider-type-slider"/);
+    assert.doesNotMatch(relayScreen, /className="relay-add-row"/);
+    assert.match(relayScreen, /className="relay-list-content"/);
+    assert.match(styles, /\.provider-type-segmented[\s\S]*?grid-template-columns: repeat\(3/);
+    assert.match(styles, /\.provider-type-slider[\s\S]*?transform: translateX/);
+    assert.match(styles, /\.relay-list-content \.relay-profile-card[\s\S]*?border-radius:/);
+  });
+
   it("owns collection mutations and is the only production editor seam", () => {
     const source = profile();
     const settings = context([source]).settings;
