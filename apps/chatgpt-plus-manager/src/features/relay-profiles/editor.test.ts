@@ -7,6 +7,7 @@ import {
   edit,
   open as openRequest,
 } from "./editor.ts";
+import { relayTestModelOptions } from "./model-options.ts";
 import { createPresetIntent } from "./preset-intent.ts";
 import type {
   RelayProfile,
@@ -106,6 +107,30 @@ function context(profiles: RelayProfile[]): RelayProfileEditorContext {
 }
 
 describe("Relay profile editor", () => {
+  it("offers fetched test models while preserving a legacy selection", () => {
+    assert.deepEqual(
+      relayTestModelOptions(
+        [
+          { model: "zeta-model", window: "" },
+          { model: "alpha-model", window: "" },
+          { model: "zeta-model", window: "200K" },
+          { model: "  ", window: "" },
+        ],
+        "legacy-model",
+      ),
+      ["zeta-model", "alpha-model", "legacy-model"],
+    );
+
+    const relayEditor = readFileSync(
+      new URL("./components/RelayProfileEditor.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.match(relayEditor, /className="relay-test-model-picker"/);
+    assert.match(relayEditor, /<select[\s\S]*?value=\{profile\.testModel\.trim\(\)\}/);
+    assert.match(relayEditor, /fetchRelayProfileModels[\s\S]*?type: "mergeModels"/);
+    assert.doesNotMatch(relayEditor, /<Input value=\{profile\.testModel\}/);
+  });
+
   it("keeps Relay profile switching available without a master switch", () => {
     const relayScreen = readFileSync(
       new URL("../../screens/relay-profiles/RelayProfilesScreen.tsx", import.meta.url),

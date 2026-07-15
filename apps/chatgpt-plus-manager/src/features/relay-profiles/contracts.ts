@@ -52,7 +52,6 @@ export type ExtractRelayCommonConfigResult = CommandResult<{
 export type RelaySettings = RelayProfileSettings & {
   relayCommonConfigContents: string;
   relayContextConfigContents: string;
-  relayTestModel: string;
 };
 export type RelayProfileActions<Settings extends RelaySettings> = {
   saveSettingsValue: (

@@ -13,10 +13,7 @@ import { OverviewHealthIndicators } from "@/screens/overview/OverviewHealthIndic
 import { detectLaunchCrash } from "@/screens/overview/presentation";
 import { AboutScreen } from "@/screens/diagnostics/AboutScreen";
 import { SettingsScreen } from "@/screens/settings/SettingsScreen";
-import type {
-  ProviderTestModelsView,
-  SettingsForm,
-} from "@/screens/settings/SettingsScreen";
+import type { SettingsForm } from "@/screens/settings/SettingsScreen";
 import { EnhanceScreen } from "@/screens/enhance/EnhanceScreen";
 import type { EnhanceActions, EnhanceView } from "@/screens/enhance/EnhanceScreen";
 import { MaintenanceScreen } from "@/screens/maintenance/MaintenanceScreen";
@@ -184,12 +181,6 @@ export function App() {
   });
   const prevLaunchStatusRef = useRef<string | null>(null);
   const [settingsForm, setSettingsForm] = useState<BackendSettings>({ ...defaultSettings });
-  const [providerTestModels, setProviderTestModels] = useState<ProviderTestModelsView>({
-    state: "idle",
-    models: [],
-    attemptedProviders: 0,
-    successfulProviders: 0,
-  });
   const settingsAutosaveRef = useRef<{
     schedule: (value: SettingsForm) => void;
     dispose: () => void;
@@ -260,40 +251,6 @@ export function App() {
       return normalized;
     }
     return null;
-  };
-
-  const refreshProviderTestModels = async () => {
-    setProviderTestModels((current) => ({ ...current, state: "loading" }));
-    try {
-      const result = await managerActions.relay.fetchModelUnion();
-      setProviderTestModels({
-        state: result.models.length
-          ? "ready"
-          : result.attemptedProfiles === 0
-            ? "empty"
-            : "failed",
-        models: result.models,
-        attemptedProviders: result.attemptedProfiles,
-        successfulProviders: result.successfulProfiles,
-      });
-      if (result.failedProfiles.length) {
-        logDiagnostic("settings.provider_test_models.partial_failure", {
-          attemptedProviders: result.attemptedProfiles,
-          successfulProviders: result.successfulProfiles,
-          failedProviders: result.failedProfiles,
-        });
-      }
-    } catch (error) {
-      setProviderTestModels({
-        state: "failed",
-        models: [],
-        attemptedProviders: 0,
-        successfulProviders: 0,
-      });
-      logDiagnostic("settings.provider_test_models.failed", {
-        error: stringifyError(error),
-      });
-    }
   };
 
   const refreshRelay = async (silent = false) => {
@@ -483,7 +440,6 @@ export function App() {
   const refreshSettingsPage = async () => {
     await Promise.all([
       refreshSettings(true),
-      refreshProviderTestModels(),
       refreshOverview(true),
     ]);
   };
@@ -1123,14 +1079,12 @@ export function App() {
         const normalized = normalizeSettings(result.settings);
         setSettingsForm((current) => {
           const stillCurrent =
-            current.relayTestModel === requested.relayTestModel
-            && current.diagnosticLogEnabled === requested.diagnosticLogEnabled
+            current.diagnosticLogEnabled === requested.diagnosticLogEnabled
             && current.codexExtraArgs.length === requested.codexExtraArgs.length
             && current.codexExtraArgs.every((arg, index) => arg === requested.codexExtraArgs[index]);
           if (!stillCurrent) return current;
           return {
             ...current,
-            relayTestModel: normalized.relayTestModel,
             codexExtraArgs: normalized.codexExtraArgs,
             diagnosticLogEnabled: normalized.diagnosticLogEnabled,
           };
@@ -1175,7 +1129,6 @@ export function App() {
       }
       await refreshOverview(true);
       await refreshSettings(true);
-      if (route === "settings" || startup?.showUpdate) await refreshProviderTestModels();
       await refreshRelay(true);
       await refreshEnvConflicts(true);
       await refreshProviderSyncTargets(true);
@@ -1538,7 +1491,6 @@ export function App() {
                   settingsPath={settings?.settingsPath ?? ""}
                   logPath={overview?.logsPath ?? ""}
                   form={settingsForm}
-                  providerTestModels={providerTestModels}
                   onFormChange={(form) => {
                     const next = normalizeSettings({ ...settingsForm, ...form });
                     setSettingsForm(next);

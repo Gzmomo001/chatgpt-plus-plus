@@ -2,20 +2,17 @@ import { FolderOpen } from "lucide-react";
 
 import { Button } from "@/shared/ui/button";
 import { CardContent } from "@/shared/ui/card";
-import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
-import { t, tf } from "@/i18n";
+import { t } from "@/i18n";
 import { Field } from "@/shared/ui/field";
 import { CardHead, Panel } from "@/shared/ui/layout";
 
 import {
   codexExtraArgsToInput,
   inputToCodexExtraArgs,
-  providerTestModelOptions,
 } from "./presentation";
 
 export type SettingsForm = {
-  relayTestModel: string;
   codexExtraArgs: string[];
   diagnosticLogEnabled: boolean;
 };
@@ -24,51 +21,23 @@ export type SettingsActions = {
   openLogFolder: () => Promise<void>;
 };
 
-export type ProviderTestModelsView = {
-  state: "idle" | "loading" | "ready" | "empty" | "failed";
-  models: string[];
-  attemptedProviders: number;
-  successfulProviders: number;
-};
-
 export function SettingsScreen({
   settingsPath,
   logPath,
   form,
-  providerTestModels,
   onFormChange,
   actions,
 }: {
   settingsPath: string;
   logPath: string;
   form: SettingsForm;
-  providerTestModels: ProviderTestModelsView;
   onFormChange: (value: SettingsForm) => void;
   actions: SettingsActions;
 }) {
-  const testModelOptions = providerTestModelOptions(
-    providerTestModels.models,
-    form.relayTestModel,
-  );
   return (
     <Panel>
       <CardHead title={t("偏好设置")} detail={settingsPath} />
       <CardContent>
-        <Field label={t("供应商测试模型")}>
-          <Input
-            autoComplete="off"
-            list="provider-test-model-options"
-            value={form.relayTestModel}
-            onChange={(event) => onFormChange({ ...form, relayTestModel: event.currentTarget.value })}
-            placeholder={t("例如 gpt-5.4-mini")}
-          />
-          <datalist id="provider-test-model-options">
-            {testModelOptions.map((model) => <option key={model} value={model} />)}
-          </datalist>
-          <span className="field-hint provider-test-model-status" data-state={providerTestModels.state}>
-            {providerTestModelsMessage(providerTestModels)}
-          </span>
-        </Field>
         <section className="feature-group">
           <div className="feature-group-head">
             <strong>{t("Codex 启动参数")}</strong>
@@ -120,18 +89,4 @@ export function SettingsScreen({
       </CardContent>
     </Panel>
   );
-}
-
-function providerTestModelsMessage(view: ProviderTestModelsView): string {
-  if (view.state === "loading") return t("正在从已接入供应商拉取模型列表…");
-  if (view.state === "failed") return t("暂时无法从供应商获取模型；保留当前值，也可以手动输入。");
-  if (view.state === "empty") return t("尚无可拉取模型的 API 供应商；仍可手动输入。");
-  if (view.state === "ready") {
-    return tf("已自动汇总 {0} 个模型（成功 {1}/{2} 个供应商）；仍可手动输入。", [
-      view.models.length,
-      view.successfulProviders,
-      view.attemptedProviders,
-    ]);
-  }
-  return t("进入此页面后会自动汇总所有已接入供应商的模型；仍可手动输入。");
 }

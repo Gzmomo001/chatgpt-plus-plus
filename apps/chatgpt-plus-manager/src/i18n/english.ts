@@ -81,7 +81,6 @@ export const EN_PLAIN: Record<string, string> = {
   "使用中": "In use",
   "例如 C:\\Program Files\\WindowsApps\\OpenAI.Codex...\\app": "e.g. C:\\Program Files\\WindowsApps\\OpenAI.Codex...\\app",
   "例如 deepseek-v4-pro": "e.g. deepseek-v4-pro",
-  "例如 gpt-5.4-mini": "e.g. gpt-5.4-mini",
   "例如 主力聚合池": "e.g. Primary aggregate pool",
   "供": "P",
   "供应商": "Provider",
@@ -90,7 +89,6 @@ export const EN_PLAIN: Record<string, string> = {
   "供应商切换中": "Switching provider",
   "供应商列表": "Provider list",
   "供应商测试": "Provider test",
-  "供应商测试模型": "Provider test model",
   "供应商配置": "Provider configuration",
   "供应商配置可能不正确": "Provider configuration may be incorrect",
   "供应商预设列表": "Provider preset list",
@@ -389,13 +387,8 @@ export const EN_PLAIN: Record<string, string> = {
   "设置": "Settings",
   "设置保存": "Settings saved",
   "设置自动保存": "Settings autosave",
-  "正在从已接入供应商拉取模型列表…": "Fetching models from connected providers…",
-  "暂时无法从供应商获取模型；保留当前值，也可以手动输入。":
-    "Couldn’t fetch models from providers right now. The current value is kept, and you can enter one manually.",
-  "尚无可拉取模型的 API 供应商；仍可手动输入。":
-    "No API providers with model discovery are configured. You can still enter a model manually.",
-  "进入此页面后会自动汇总所有已接入供应商的模型；仍可手动输入。":
-    "Opening this page merges models from every connected provider automatically. You can still enter one manually.",
+  "测试和供应商诊断会使用所选模型；先从上游获取，再在这里选择。":
+    "Tests and provider diagnostics use the selected model. Fetch models from upstream, then choose one here.",
   "设置已加载": "Settings loaded",
   "设置重置": "Settings reset",
   "诊断报告已复制，现在可以前往反馈问题并粘贴到 Issue。":
@@ -429,6 +422,7 @@ export const EN_PLAIN: Record<string, string> = {
   "正在检查配置完整性…": "Checking configuration integrity…",
   "该步骤未执行。": "This step was not run.",
   "请先填写或选择应用路径。": "Fill in or select an app path first.",
+  "请先从上游获取模型": "Fetch models from upstream first",
   "读取 Codex 本地 SQLite 会话库，会删除数据库记录和对应 rollout 文件":
     "Reads Codex's local SQLite session database; deletes database records and the corresponding rollout files",
   "读取 cc-switch 供应商失败。": "Failed to read cc-switch providers.",
@@ -446,6 +440,7 @@ export const EN_PLAIN: Record<string, string> = {
   "选择 Codex.exe 或 Codex.app": "Select Codex.exe or Codex.app",
   "选择 Codex.exe、Codex.app、app 目录或解包目录": "Select Codex.exe, Codex.app, the app directory or the unpacked directory",
   "选择会话": "Select session",
+  "选择测试模型": "Select a test model",
   "选择已有供应商作为成员，保存后写入 settings payload": "Select existing providers as members; saving writes them to the settings payload",
   "选择应用目录": "Select app directory",
   "通用配置文件": "Common config file",
@@ -492,15 +487,12 @@ export const EN_TEMPLATE: Record<string, string> = {
   "已删除 {0} 个，失败 {1} 个：{2}": "Deleted {0}, failed {1}: {2}",
   "已同步到 {0}：修复 {1} 个会话文件，更新 {2} 行索引{3}。":
     "Synced to {0}: repaired {1} session file(s), updated {2} index row(s){3}.",
-  "已自动汇总 {0} 个模型（成功 {1}/{2} 个供应商）；仍可手动输入。":
-    "Automatically merged {0} model(s) (succeeded for {1}/{2} providers). You can still enter one manually.",
   "已缓存 {0} 个插件 / {1} 个技能。": "Cached {0} plugin(s) / {1} skill(s).",
   "当前版本 {0}": "Current version {0}",
   "打开选择器失败：{0}": "Failed to open the picker: {0}",
   "生成诊断报告失败：{0}": "Failed to generate the diagnostic report: {0}",
   "复制诊断报告失败：{0}": "Failed to copy the diagnostic report: {0}",
   "正在同步到 {0}…": "Syncing to {0}…",
-  "留空使用默认：{0}": "Leave empty to use the default: {0}",
   "选择会话 {0}": "Select session {0}",
   "进程状态：{0}。是否要重新启动？": "Process status: {0}. Restart?",
   "，跳过 {0} 个占用文件": ", skipped {0} locked file(s)",

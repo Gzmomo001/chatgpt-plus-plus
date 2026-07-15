@@ -39,7 +39,6 @@ export const TAURI_COMMAND_NAMES = [
   "export_local_session_markdown",
   "extract_relay_common_config",
   "fetch_relay_profile_models",
-  "fetch_relay_profile_model_union",
   "import_ccs_providers",
   "install_entrypoints",
   "launch_chatgpt_plus",
@@ -114,12 +113,6 @@ export type RelayProfileTestResult = CommandResult<{
 }>;
 
 export type RelayProfileModelsResult = CommandResult<{ models: string[]; endpoint: string }>;
-export type RelayProfileModelUnionResult = CommandResult<{
-  models: string[];
-  attemptedProfiles: number;
-  successfulProfiles: number;
-  failedProfiles: string[];
-}>;
 
 export type ProviderImportRequest = {
   name: string;
@@ -328,8 +321,6 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<ProviderDoctorResult>("diagnose_relay_profile", { profile }),
       fetchModels: (profile: RelayProfileView) =>
         call<RelayProfileModelsResult>("fetch_relay_profile_models", { profile }),
-      fetchModelUnion: () =>
-        call<RelayProfileModelUnionResult>("fetch_relay_profile_model_union"),
       switchProfile: (request: { settings: BackendSettings; targetRelayId: string }) =>
         call<RelaySwitchResult>("switch_relay_profile", { request }),
     },

@@ -66,7 +66,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "export_local_session_markdown",
     "extract_relay_common_config",
     "fetch_relay_profile_models",
-    "fetch_relay_profile_model_union",
     "import_ccs_providers",
     "install_entrypoints",
     "launch_chatgpt_plus",
@@ -459,7 +458,11 @@ test("composes Settings through its screen-owned vertical slice", () => {
   assert.match(screen, /export type SettingsForm\s*=\s*\{/);
   assert.match(screen, /diagnosticLogEnabled/);
   assert.match(screen, /openLogFolder/);
-  assert.match(screen, /provider-test-model-options/);
+  assert.doesNotMatch(screen, /providerTestModels|provider-test-model-options|供应商测试模型/);
+  assert.doesNotMatch(
+    app,
+    /ProviderTestModelsView|providerTestModels|refreshProviderTestModels|fetchModelUnion/,
+  );
   assert.doesNotMatch(screen, /settings-autosave-status|settingsAutosaveMessage/);
   assert.doesNotMatch(screen, /saveSettings|保存设置/);
   assert.match(

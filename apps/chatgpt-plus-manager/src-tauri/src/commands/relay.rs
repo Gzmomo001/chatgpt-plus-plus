@@ -72,14 +72,6 @@ pub struct RelayProfileModelsPayload {
     pub models: Vec<String>,
     pub endpoint: String,
 }
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RelayProfileModelUnionPayload {
-    pub models: Vec<String>,
-    pub attempted_profiles: usize,
-    pub successful_profiles: usize,
-    pub failed_profiles: Vec<String>,
-}
 use chatgpt_plus_core::provider_doctor::ProviderDoctorPayload;
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -387,55 +379,6 @@ pub async fn fetch_relay_profile_models(
             },
         ),
     }
-}
-
-#[tauri::command]
-pub async fn fetch_relay_profile_model_union() -> CommandResult<RelayProfileModelUnionPayload> {
-    let settings = match SettingsStore::default().load() {
-        Ok(settings) => settings,
-        Err(error) => {
-            return failed(
-                &format!("读取供应商列表失败：{error}"),
-                RelayProfileModelUnionPayload {
-                    models: Vec::new(),
-                    attempted_profiles: 0,
-                    successful_profiles: 0,
-                    failed_profiles: Vec::new(),
-                },
-            );
-        }
-    };
-    let outcome =
-        chatgpt_plus_core::model_catalog::fetch_relay_profile_model_union(&settings.relay_profiles)
-            .await;
-    let payload = RelayProfileModelUnionPayload {
-        models: outcome.models,
-        attempted_profiles: outcome.attempted_profiles,
-        successful_profiles: outcome.successful_profiles,
-        failed_profiles: outcome.failed_profiles,
-    };
-
-    if payload.attempted_profiles == 0 {
-        return ok("当前没有配置可拉取模型的 API 供应商。", payload);
-    }
-    if payload.models.is_empty() {
-        return failed("未能从已接入供应商获取模型列表。", payload);
-    }
-    let message = if payload.failed_profiles.is_empty() {
-        format!(
-            "已从 {} 个供应商汇总 {} 个模型。",
-            payload.successful_profiles,
-            payload.models.len()
-        )
-    } else {
-        format!(
-            "已从 {}/{} 个供应商汇总 {} 个模型；其余供应商暂不可用。",
-            payload.successful_profiles,
-            payload.attempted_profiles,
-            payload.models.len()
-        )
-    };
-    ok(&message, payload)
 }
 
 #[tauri::command]

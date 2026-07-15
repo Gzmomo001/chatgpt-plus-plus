@@ -41,7 +41,7 @@ export type SettingsResult = CommandResult<{
 }>;
 export type PreferenceSettings = Pick<
   BackendSettings,
-  "relayTestModel" | "codexExtraArgs" | "diagnosticLogEnabled"
+  "codexExtraArgs" | "diagnosticLogEnabled"
 >;
 
 export type EnvConflict = EnvConflictsResult["conflicts"][number];

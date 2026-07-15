@@ -147,7 +147,6 @@ pub fn run() {
             commands::relay::test_relay_profile,
             commands::relay::diagnose_relay_profile,
             commands::relay::fetch_relay_profile_models,
-            commands::relay::fetch_relay_profile_model_union,
             commands::relay::switch_relay_profile,
             commands::relay::apply_relay_injection,
             commands::relay::apply_pure_api_injection,

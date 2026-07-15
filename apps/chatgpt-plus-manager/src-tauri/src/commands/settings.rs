@@ -38,7 +38,6 @@ pub struct StartupPayload {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PreferenceSettingsRequest {
-    pub relay_test_model: String,
     pub codex_extra_args: Vec<String>,
     pub diagnostic_log_enabled: bool,
 }
@@ -198,7 +197,6 @@ pub fn save_preference_settings(
 ) -> CommandResult<SettingsPayload> {
     let store = SettingsStore::default();
     match store.update(json!({
-        "relayTestModel": request.relay_test_model,
         "codexExtraArgs": request.codex_extra_args,
         "diagnosticLogEnabled": request.diagnostic_log_enabled,
     })) {
