@@ -2377,7 +2377,7 @@ body {
   height: 3px;
   background: hsl(var(--brand-accent));
   transform-origin: left center;
-  animation: toast-progress 4200ms linear forwards;
+  animation: toast-progress 3000ms linear forwards;
 }
 
 .toast-card.failed .toast-progress {

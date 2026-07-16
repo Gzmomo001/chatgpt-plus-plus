@@ -25,7 +25,7 @@ export function NoticeDialog({
   onClose: () => void;
 }) {
   useEffect(() => {
-    const timer = window.setTimeout(onClose, 4200);
+    const timer = window.setTimeout(onClose, 3000);
     return () => window.clearTimeout(timer);
   }, []);
 
