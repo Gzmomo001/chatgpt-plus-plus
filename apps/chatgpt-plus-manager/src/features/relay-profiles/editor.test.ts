@@ -132,7 +132,7 @@ describe("Relay profile editor", () => {
       assert.doesNotMatch(source, /relayProfilesEnabled|供应商配置总开关/);
     }
     assert.doesNotMatch(relayScreen, /启用供应商配置切换|relay-master-switch/);
-    assert.match(relayScreen, /disabled=\{actions\.relaySwitching\}/);
+    assert.match(relayEditor, /onClick=\{onSwitch\}/);
     assert.match(relayEditor, /disabled=\{actions\.relaySwitching\}/);
   });
 
@@ -162,12 +162,12 @@ describe("Relay profile editor", () => {
     assert.match(app, /openProviderCreator = async/);
     assert.match(relayScreen, /createPortal\([\s\S]*?className=\{`provider-create-trigger/);
     assert.match(relayScreen, /className=\{`provider-create-trigger[\s\S]*?size="icon"/);
-    assert.match(relayScreen, /isNewProfile \? <Save/);
-    assert.match(relayScreen, /className=\{`provider-create-trigger \$\{isNewProfile \? "active" : ""\}`\}/);
+    assert.match(relayScreen, /isDetailProfile \? <Save/);
+    assert.match(relayScreen, /className=\{`provider-create-trigger \$\{isDetailProfile \? "active" : ""\}`\}/);
     assert.match(relayScreen, /setNewProfileDraft\(createProfile\(\)\)/);
     assert.match(relayDetail, /onSaveActionChange/);
-    assert.match(relayDetail, /!isNew \? <div className="relay-detail-sticky"/);
-    assert.match(relayDetail, /<h2 className="relay-editor-title">[\s\S]*?onClick=\{onBack\}[\s\S]*?t\("供应商管理"\)/);
+    assert.match(relayDetail, /<SettingsCardStack className="relay-detail-stack">/);
+    assert.doesNotMatch(relayDetail, /relay-detail-sticky|返回列表/);
     assert.equal(relayEditor.match(/\{headerTitle\}/g)?.length, 3);
     assert.doesNotMatch(relayEditor, /<strong>\{profile\.name \|\| t\("未命名(?:聚合)?供应商"\)\}<\/strong>/);
     assert.match(relayScreen, /createRequest: number/);
@@ -179,11 +179,13 @@ describe("Relay profile editor", () => {
     assert.match(creationSelector, /kind: "standard"[\s\S]*?kind: "aggregate"[\s\S]*?kind: "import"/);
     assert.match(creationSelector, /className="provider-type-slider"/);
     assert.doesNotMatch(relayScreen, /className="relay-add-row"/);
-    assert.match(relayScreen, /className="relay-list-content"/);
+    assert.match(relayScreen, /contentClassName="relay-list-content"/);
     assert.match(styles, /\.provider-type-segmented[\s\S]*?grid-template-columns: repeat\(3/);
     assert.match(styles, /\.provider-type-slider[\s\S]*?transform: translateX/);
     assert.match(styles, /\.topbar-actions \.provider-create-trigger\.active[\s\S]*?border: 0;[\s\S]*?background: hsl\(211 88% 56%\)[\s\S]*?box-shadow: none;/);
-    assert.match(styles, /\.relay-editor-title button[\s\S]*?cursor: pointer;/);
+    assert.match(relayEditor, /RelayProfileCombobox/);
+    assert.doesNotMatch(relayEditor, /<select/);
+    assert.doesNotMatch(styles, /\.relay-use-button/);
     assert.match(styles, /\.relay-list-content \.relay-profile-card[\s\S]*?border-radius:/);
   });
 

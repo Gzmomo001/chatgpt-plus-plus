@@ -3,13 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Button } from "@/shared/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/shared/ui/card";
+import { SettingsCard } from "@/shared/ui/layout";
 import { EnvConflictNotice } from "@/features/relay-profiles/components/RelayFeedback";
 import {
   RelayProfileDetail,
@@ -78,7 +72,7 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
     },
   }).preview.profile;
 
-  const registerNewProfileSaveAction = useCallback((action: RelayProfileSaveAction | null) => {
+  const registerDetailSaveAction = useCallback((action: RelayProfileSaveAction | null) => {
     setNewProfileSaveAction(action);
   }, []);
 
@@ -114,14 +108,15 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
     }
   }, [detailProfileId, form.activeRelayId, newProfileDraft]);
 
+  const isDetailProfile = detailProfile !== null;
   const navbarCreateAction = navbarActionHost
     ? createPortal(
         <Button
-          aria-label={isNewProfile ? t("保存") : t("添加供应商")}
-          className={`provider-create-trigger ${isNewProfile ? "active" : ""}`}
-          disabled={isNewProfile && (!newProfileSaveAction || newProfileSaveAction.disabled)}
+          aria-label={isDetailProfile ? t("保存") : t("添加供应商")}
+          className={`provider-create-trigger ${isDetailProfile ? "active" : ""}`}
+          disabled={isDetailProfile && (!newProfileSaveAction || newProfileSaveAction.disabled)}
           onClick={() => {
-            if (isNewProfile) {
+            if (isDetailProfile) {
               newProfileSaveAction?.save();
               return;
             }
@@ -130,10 +125,10 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
             setDetailProfileId(null);
           }}
           size="icon"
-          title={isNewProfile ? t("保存") : t("添加供应商")}
+          title={isDetailProfile ? t("保存") : t("添加供应商")}
           variant="ghost"
         >
-          {isNewProfile ? <Save className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
+          {isDetailProfile ? <Save className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
         </Button>,
         navbarActionHost,
       )
@@ -156,7 +151,7 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
             setNewProfileDraft(null);
             setDetailProfileId(null);
           }}
-          onSaveActionChange={registerNewProfileSaveAction}
+          onSaveActionChange={registerDetailSaveAction}
           onFormChange={saveRelaySettings}
           onSaved={() => {
             setNewProfileSaveAction(null);
@@ -172,14 +167,12 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
   return (
     <>
       {navbarCreateAction}
-      <Card className="panel relay-list-panel">
-        <CardHeader className="panel-head">
-          <CardTitle>{t("供应商列表")}</CardTitle>
-          <CardDescription>
-            {tf("{0} 个供应商配置；可拖动排序，点编辑进入详情", [form.relayProfiles.length])}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="relay-list-content">
+      <SettingsCard
+        className="relay-list-panel"
+        contentClassName="relay-list-content"
+        detail={tf("{0} 个供应商配置；可拖动排序，点编辑进入详情", [form.relayProfiles.length])}
+        title={t("供应商列表")}
+      >
           <EnvConflictNotice envConflicts={envConflicts} actions={actions} />
           <RelayProfileList
             form={form}
@@ -191,11 +184,9 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
               );
             }}
             onFormChange={saveRelaySettings}
-            disabled={actions.relaySwitching}
             actions={actions}
           />
-        </CardContent>
-      </Card>
+      </SettingsCard>
     </>
   );
 }

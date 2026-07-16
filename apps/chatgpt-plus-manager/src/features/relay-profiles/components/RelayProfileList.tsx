@@ -14,7 +14,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CheckCircle2, Copy, Edit3, GripVertical, TestTube, Trash2 } from "lucide-react";
+import { Copy, Edit3, GripVertical, TestTube, Trash2 } from "lucide-react";
 import type { CSSProperties } from "react";
 
 import { Button } from "@/shared/ui/button";
@@ -43,7 +43,6 @@ type RelayProfileListProps<Settings extends RelaySettings> = {
   defaultContextSelection: RelayContextSelection;
   onFormChange: (value: ReconciledRelayProfileSettings<Settings>) => void;
   onEdit: (id: string) => void;
-  disabled: boolean;
   actions: RelayProfileActions<Settings>;
 };
 
@@ -52,7 +51,6 @@ export function RelayProfileList<Settings extends RelaySettings>({
   defaultContextSelection,
   onFormChange,
   onEdit,
-  disabled,
   actions,
 }: RelayProfileListProps<Settings>) {
   const sensors = useSensors(
@@ -96,7 +94,6 @@ export function RelayProfileList<Settings extends RelaySettings>({
               index={index}
               onFormChange={onFormChange}
               onEdit={onEdit}
-              disabled={disabled}
               actions={actions}
             />
           ))}
@@ -112,7 +109,6 @@ function SortableRelayProfileCard<Settings extends RelaySettings>({
   profile,
   onFormChange,
   onEdit,
-  disabled,
   actions,
 }: RelayProfileListProps<Settings> & { profile: RelayProfileView; index: number }) {
   const sortable = useSortable({ id: profile.id });
@@ -154,29 +150,15 @@ function SortableRelayProfileCard<Settings extends RelaySettings>({
         {providerInitial(profile.name)}
       </span>
       <span className="relay-summary">
-        <strong>{profile.name || t("未命名供应商")}</strong>
+        <strong>
+          {profile.name || t("未命名供应商")}
+          {active ? <span aria-label={t("当前正在使用")} className="relay-current-marker" title={t("当前正在使用")} /> : null}
+        </strong>
         <small>
           {relayModeLabel(profile.relayMode)} · {relayProtocolLabel(profile.protocol)} · {relayProfileConfigBrief(profile)}
         </small>
       </span>
       <span className="relay-card-actions">
-        <Button
-          className={`relay-use-button ${active ? "active" : ""}`}
-          disabled={disabled}
-          onClick={(event) => {
-            event.stopPropagation();
-            const result = commitIntent({ type: "activate", profileId: profile.id });
-            if (result.ok && result.effect.type === "switchProfile") {
-              void actions.switchRelayProfile(result.settings, result.effect.profileId);
-            }
-          }}
-          size="sm"
-          title={disabled ? t("供应商切换不可用") : active ? t("当前正在使用") : t("设为当前")}
-          variant={active ? "secondary" : "outline"}
-        >
-          <CheckCircle2 className="h-4 w-4" />
-          {active ? t("使用中") : t("使用")}
-        </Button>
         <span className="relay-card-extra">
           <Button
             disabled={profile.relayMode === "aggregate"}

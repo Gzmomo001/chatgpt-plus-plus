@@ -3,11 +3,10 @@ import { useEffect, useState } from "react";
 
 import { formatTime } from "@/shared/lib/time";
 import { Field } from "@/shared/ui/field";
-import { CardHead, Panel, Toolbar } from "@/shared/ui/layout";
+import { SettingsCard, Toolbar } from "@/shared/ui/layout";
 import { Metric } from "@/shared/ui/metric";
 import { StatusBadge as Badge } from "@/shared/ui/status-badge";
 import { Button } from "@/shared/ui/button";
-import { CardContent } from "@/shared/ui/card";
 import { t, tf } from "@/i18n";
 import type {
   ExportLocalSessionResult,
@@ -106,15 +105,13 @@ export function SessionsScreen({
 
   return (
     <>
-      <Panel>
-        <CardHead title={t("会话管理")} detail={t("读取 Codex 本地 SQLite 会话库，会删除数据库记录和对应 rollout 文件")} />
-        <CardContent>
-          <div className="metric-list">
+      <SettingsCard title={t("会话管理")} detail={t("读取 Codex 本地 SQLite 会话库，会删除数据库记录和对应 rollout 文件")}>
+        <div className="metric-list">
             <Metric label={t("会话总数")} value={tf("{0} 个", [items.length])} />
             <Metric label={t("未归档")} value={tf("{0} 个", [activeCount])} />
             <Metric label={t("已归档")} value={tf("{0} 个", [archivedCount])} />
             <Metric label={t("数据库")} value={view.dbPath ?? "~/.codex/sqlite/*.db"} />
-          </div>
+        </div>
           <div className="form-row">
             <Field label={t("同步目标")}>
               <select
@@ -176,12 +173,9 @@ export function SessionsScreen({
           <Toolbar>
             <Button onClick={() => void actions.saveProviderSyncSettings()}>{t("保存自动修复设置")}</Button>
           </Toolbar>
-        </CardContent>
-      </Panel>
-      <Panel>
-        <CardHead title={t("本地会话")} detail={items.length ? t("按更新时间倒序显示") : t("点击刷新会话读取本地数据库")} />
-        <CardContent>
-          {items.length ? (
+      </SettingsCard>
+      <SettingsCard title={t("本地会话")} detail={items.length ? t("按更新时间倒序显示") : t("点击刷新会话读取本地数据库")}>
+        {items.length ? (
             <>
               {view.exportResult ? (
                 <div className={`hint-line ${view.exportResult.status === "ok" ? "" : "error"}`}>
@@ -251,9 +245,8 @@ export function SessionsScreen({
             </>
           ) : (
             <div className="empty">{t("未读取到本地会话，或当前 SQLite 会话库不存在。")}</div>
-          )}
-        </CardContent>
-      </Panel>
+        )}
+      </SettingsCard>
       {view.activeSessionId ? (
         <SessionUsagePanel
           result={view.usageResult}
@@ -275,10 +268,8 @@ function SessionUsagePanel({ result, running, sessionTitle, onClose }: {
   const history = result?.history ?? [];
   const latest = history.at(-1);
   return (
-    <Panel>
-      <CardHead title={t("Token 使用历史")} detail={sessionTitle} />
-      <CardContent>
-        <Toolbar>
+    <SettingsCard title={t("Token 使用历史")} detail={sessionTitle}>
+      <Toolbar>
           <Button disabled={running} onClick={() => void onClose()} size="sm" variant="outline">
             <X className="h-4 w-4" />{t("关闭")}
           </Button>
@@ -312,8 +303,7 @@ function SessionUsagePanel({ result, running, sessionTitle, onClose }: {
               ))}
             </div>
           </>
-        ) : null}
-      </CardContent>
-    </Panel>
+      ) : null}
+    </SettingsCard>
   );
 }

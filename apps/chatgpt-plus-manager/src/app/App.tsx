@@ -1504,7 +1504,7 @@ export function App() {
             </div>
           </div>
         </header>
-        <section className="screen" key={route}>
+        <section className="screen" data-page-shell={route} key={route}>
           {route === "relay" ? (
             <RelayProfilesScreen
               relayFiles={relayFiles}

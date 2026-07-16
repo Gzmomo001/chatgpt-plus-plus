@@ -1,8 +1,6 @@
-import { ArrowLeft, Save } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/shared/ui/button";
 import { t } from "@/i18n";
-import { Toolbar } from "@/shared/ui/layout";
+import { SettingsCard, SettingsCardStack } from "@/shared/ui/layout";
 import { RelayProfileEditor } from "./RelayProfileEditor";
 import { RelayProfileFilesEditor } from "./RelayProfileFilesEditor";
 import {
@@ -79,7 +77,7 @@ export function RelayProfileDetail<Settings extends RelaySettings>({ profile, re
   const saveDraftRef = useRef(saveDraft);
   saveDraftRef.current = saveDraft;
   useEffect(() => {
-    if (!isNew || creationKind === "import") {
+    if (creationKind === "import") {
       onSaveActionChange?.(null);
       return;
     }
@@ -117,45 +115,47 @@ export function RelayProfileDetail<Settings extends RelaySettings>({ profile, re
       selected={creationKind}
     />
   ) : null;
-  const navigationTitle = (
-    <h2 className="relay-editor-title">
-      <button onClick={onBack} title={t("返回列表")} type="button">
-        <ArrowLeft aria-hidden="true" className="h-4 w-4" />
-        {t("供应商管理")}
-      </button>
-    </h2>
-  );
+  const navigationTitle = <span className="relay-editor-title">{t("供应商管理")}</span>;
+  const profileDetail = profile.name || t("未命名供应商");
   return <div className="relay-detail-page" key={profile.id}>
-    {!isNew ? <div className="relay-detail-sticky">
-      <Toolbar>
-        <Button onClick={onBack} variant="secondary">
-          <ArrowLeft className="h-4 w-4" />{t("返回列表")}</Button>
-        <Button disabled={!!validationError} onClick={() => void saveDraft()} title={validationError || t("保存")}>
-          <Save className="h-4 w-4" />{t("保存")}</Button>
-      </Toolbar>
-    </div> : null}
-    {creationKind === "import" ? <div className="relay-profile-editor provider-import-editor">
-      <div className="relay-editor-head">
-        <div>
-          {navigationTitle}
-          <span>{t("从第三方导入")}</span>
-        </div>
-      </div>
-      {creationSelector}
-    </div> : <RelayProfileEditor state={editorState} form={form} isNew={isNew} headerAddon={creationSelector} headerTitle={navigationTitle} onStateChange={setEditorState} onSwitch={switchDraft} actions={actions} />}
-    {creationKind === "import" || editorState.draft.relayMode === "aggregate" ? null : (
-      <RelayProfileFilesEditor
-        profile={draft}
-        form={form}
-        isActive={isActive}
-        onFormChange={onFormChange}
-        onProfileChange={(next) => setEditorState((current) => edit(current, {
-          type: "replaceStoredFiles",
-          configContents: next.configContents,
-          authContents: next.authContents,
-        }))}
-        actions={actions}
-      />
-    )}
+    <SettingsCardStack className="relay-detail-stack">
+      <SettingsCard
+        className="relay-detail-card"
+        contentClassName="relay-detail-card-content"
+        detail={profileDetail}
+        title={t("供应商配置")}
+      >
+        {creationKind === "import" ? <div className="relay-profile-editor provider-import-editor">
+          <div className="relay-editor-head">
+            <div>
+              {navigationTitle}
+              <span>{t("从第三方导入")}</span>
+            </div>
+          </div>
+          {creationSelector}
+        </div> : <RelayProfileEditor state={editorState} form={form} isNew={isNew} headerAddon={creationSelector} headerTitle={navigationTitle} onStateChange={setEditorState} onSwitch={switchDraft} actions={actions} />}
+      </SettingsCard>
+      {creationKind === "import" || editorState.draft.relayMode === "aggregate" ? null : (
+        <SettingsCard
+          className="relay-files-card"
+          contentClassName="relay-files-card-content"
+          detail={isActive ? t("当前供应商管理部分的写入预览；Codex 原生扩展会保留且不在此显示") : t("切换到此供应商时的管理部分预览；Codex 原生扩展会保留且不在此显示")}
+          title={t("配置文件")}
+        >
+          <RelayProfileFilesEditor
+            profile={draft}
+            form={form}
+            isActive={isActive}
+            onFormChange={onFormChange}
+            onProfileChange={(next) => setEditorState((current) => edit(current, {
+              type: "replaceStoredFiles",
+              configContents: next.configContents,
+              authContents: next.authContents,
+            }))}
+            actions={actions}
+          />
+        </SettingsCard>
+      )}
+    </SettingsCardStack>
   </div>;
 }

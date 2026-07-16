@@ -20,25 +20,31 @@ export function CardHead({ title, detail }: { title: string; detail?: string }) 
   );
 }
 
-export function SettingsCard({
-  children,
-  className,
-  contentClassName,
-  detail,
-  title,
-}: {
+type SettingsSurfaceProps = {
   children: ReactNode;
   className?: string;
   contentClassName?: string;
   detail?: string;
   title: string;
-}) {
+};
+
+export function SettingsSurface({
+  children,
+  className,
+  contentClassName,
+  detail,
+  title,
+}: SettingsSurfaceProps) {
   return (
-    <Panel className={cn("settings-card", className)}>
+    <Card className={cn("panel", "settings-surface", className)}>
       <CardHead title={title} detail={detail} />
       <CardContent className={contentClassName}>{children}</CardContent>
-    </Panel>
+    </Card>
   );
+}
+
+export function SettingsCard(props: SettingsSurfaceProps) {
+  return <SettingsSurface {...props} className={cn("settings-card", props.className)} />;
 }
 
 export function SettingsCardStack({
@@ -48,7 +54,7 @@ export function SettingsCardStack({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={cn("settings-card-stack", className)}>{children}</div>;
+  return <div className={cn("settings-surface-stack", "settings-card-stack", className)}>{children}</div>;
 }
 
 export function Toolbar({ children }: { children: ReactNode }) {

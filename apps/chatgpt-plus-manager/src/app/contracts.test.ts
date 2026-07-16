@@ -376,8 +376,9 @@ test("keeps Overview health projection in the topbar without an Overview page", 
 
   assert.match(relayEditor, /import \{ Metric \} from ["']@\/shared\/ui\/metric["']/);
   assert.doesNotMatch(relayEditor, /function Metric\(/);
-  assert.match(relayDetail, /import \{ Toolbar \} from ["']@\/shared\/ui\/layout["']/);
-  assert.match(relayDetail, /!isNew \? <div className="relay-detail-sticky"/);
+  assert.match(relayDetail, /import \{ SettingsCard, SettingsCardStack \} from ["']@\/shared\/ui\/layout["']/);
+  assert.match(relayDetail, /<SettingsCardStack className="relay-detail-stack">/);
+  assert.doesNotMatch(relayDetail, /relay-detail-sticky|返回列表/);
 
   assert.match(app, /import type \{ OverviewResult \} from ["']@\/shared\/contracts\/overview["']/);
   assert.match(appContracts, /from ["']@\/shared\/contracts\/command["']/);
@@ -600,16 +601,31 @@ test("reuses the About card geometry across settings surfaces", () => {
   assert.match(styles, /--settings-card-max-width:\s*880px/);
   assert.match(styles, /--settings-card-radius:\s*18px/);
   assert.match(styles, /\.screen > \.settings-card-stack\s*\{[\s\S]*?margin-inline:\s*auto/);
+  assert.match(layout, /export function SettingsSurface\(/);
+  assert.match(styles, /\.settings-surface[\s\S]*?border-radius:\s*var\(--settings-card-radius\)/);
+  assert.match(styles, /\.screen\[data-page-shell\] > \*\s*\{[\s\S]*?var\(--page-shell-max-width\)/);
+  assert.match(styles, /\.screen\[data-page-shell="settings"\]/);
 
   for (const path of [
     "../screens/diagnostics/AboutScreen.tsx",
     "../screens/enhance/EnhanceScreen.tsx",
     "../screens/settings/SettingsScreen.tsx",
     "../screens/maintenance/MaintenanceScreen.tsx",
+    "../screens/relay-profiles/RelayProfilesScreen.tsx",
+    "../screens/sessions/SessionsScreen.tsx",
   ]) {
     const screen = readFileSync(new URL(path, import.meta.url), "utf8");
     assert.match(screen, /<SettingsCard\b/, `${path} must use the shared settings card`);
   }
+
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  assert.match(app, /<section className=["']screen["'] data-page-shell=\{route\}/);
+  const sessions = readFileSync(new URL("../screens/sessions/SessionsScreen.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(sessions, /<Panel>/, "sessions must not own a separate panel shell");
+  assert.doesNotMatch(sessions, /<CardContent>/, "sessions must not nest a second content shell");
+  const relay = readFileSync(new URL("../screens/relay-profiles/RelayProfilesScreen.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(relay, /<Card className=["']panel relay-list-panel["']/,
+    "relay profiles must not own a separate card shell");
 });
 
 test("does not expose the removed Recommendations section", () => {

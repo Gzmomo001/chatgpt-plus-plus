@@ -1,4 +1,4 @@
-import { Download, MessageCircle, Plus, Settings, ShieldCheck, Stethoscope, Trash2 } from "lucide-react";
+import { Check, Download, MessageCircle, Plus, Settings, ShieldCheck, Stethoscope, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Badge as UiBadge } from "@/shared/ui/badge";
@@ -8,6 +8,7 @@ import { t, tf } from "@/i18n";
 import { Field } from "@/shared/ui/field";
 import { Metric } from "@/shared/ui/metric";
 import { ProviderPresetSelector } from "./ProviderPresetSelector";
+import { RelayProfileCombobox } from "./RelayProfileCombobox";
 import { ProviderDoctorModal } from "./RelayFeedback";
 import { runProviderDiagnosis } from "../controller";
 import { commit, edit } from "../editor";
@@ -33,6 +34,7 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
   const [doctorRunning, setDoctorRunning] = useState(false);
   if (state.draft.relayMode === "aggregate")
     return <AggregateRelayProfileEditor state={state} isNew={isNew} headerAddon={headerAddon} headerTitle={headerTitle} onStateChange={onStateChange} />;
+  const editableMode: RelayProfileEditableMode = profile.relayMode === "pureApi" ? "pureApi" : "official";
   const showApiFields = profile.relayMode !== "official" || profile.officialMixApiKey;
   const updateDraft = (patch: RelayProfilePatch) => onStateChange(edit(state, { type: "patch", patch }));
   const runProviderDoctor = async () => {
@@ -50,16 +52,19 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
         {headerTitle}
         <span>{relayProfileEditorStatus(profile, form, isNew)}</span>
       </div>
-      {isNew ? null : (
+      {isNew ? null : profile.id === form.activeRelayId ? (
+        <span className="relay-active-status">
+          <Check aria-hidden="true" className="h-4 w-4" />
+          {t("当前")}
+        </span>
+      ) : (
         <Button
           disabled={actions.relaySwitching}
           onClick={onSwitch}
           title={actions.relaySwitching ? t("供应商切换中") : undefined}
-          variant={profile.id === form.activeRelayId ? "secondary" : "default"}
+          variant="default"
         >
-          {actions.relaySwitching
-            ? t("切换中")
-            : profile.id === form.activeRelayId ? t("使用中") : t("设为当前")}
+          {actions.relaySwitching ? t("切换中") : t("设为当前")}
         </Button>
       )}
     </div>
@@ -70,10 +75,15 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
         <Input value={profile.name} onChange={(event) => updateDraft({ name: event.currentTarget.value })} />
       </Field>
       <Field className="relay-field-mode" label={t("接入模式")}>
-        <select className="field-select" value={profile.relayMode} onChange={(event) => onStateChange(edit(state, { type: "setMode", mode: event.currentTarget.value as RelayProfileEditableMode }))}>
-          <option value="official">{t("官方登录")}</option>
-          <option value="pureApi">{t("纯 API")}</option>
-        </select>
+        <RelayProfileCombobox
+          ariaLabel={t("接入模式")}
+          onChange={(mode) => onStateChange(edit(state, { type: "setMode", mode }))}
+          options={[
+            { value: "official" as const, label: t("官方登录") },
+            { value: "pureApi" as const, label: t("纯 API") },
+          ]}
+          value={editableMode}
+        />
       </Field>
       <Field className="relay-field-config-model" label={t("配置模型")}>
         <Input value={profile.model} onChange={(event) => updateDraft({ model: event.currentTarget.value })} placeholder={t("例如 deepseek-v4-pro")} />
@@ -217,18 +227,15 @@ function AggregateRelayProfileEditor({ state, isNew = false, headerAddon, header
         <Input value={profile.name} onChange={(event) => onStateChange(edit(state, { type: "patch", patch: { name: event.currentTarget.value } }))} placeholder={t("例如 主力聚合池")} />
       </Field>
       <Field className="aggregate-strategy-field" label={t("聚合策略")}>
-        <select
-          className="field-select"
-          value={aggregate.strategy}
-          onChange={(event) => onStateChange(edit(state, {
+        <RelayProfileCombobox
+          ariaLabel={t("聚合策略")}
+          onChange={(strategy) => onStateChange(edit(state, {
             type: "setAggregateStrategy",
-            strategy: event.currentTarget.value as RelayAggregateStrategy,
+            strategy,
           }))}
-        >
-          {aggregateStrategyOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+          options={aggregateStrategyOptions}
+          value={aggregate.strategy}
+        />
       </Field>
     </div>
     <div className="aggregate-strategy-grid">
