@@ -106,6 +106,7 @@ import {
 const PROTOCOL_PROXY_BASE_URL = "http://127.0.0.1:57321/v1";
 const CHAT_UPSTREAM_BASE_URL_KEY = "chatgpt_plus_chat_base_url";
 const WEEKLY_UPDATE_CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
+const AUTOMATIC_UPDATE_CHECKS_ENABLED = import.meta.env.PROD;
 const DEVELOPMENT_RUNTIME =
   typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
@@ -1154,8 +1155,10 @@ export function App() {
       if (startup?.showUpdate) {
         setRoute("settings");
         scrollToSettingsSection("settings-about");
-        void checkUpdate(false);
-      } else {
+        if (AUTOMATIC_UPDATE_CHECKS_ENABLED) {
+          void checkUpdate(false);
+        }
+      } else if (AUTOMATIC_UPDATE_CHECKS_ENABLED) {
         void checkUpdate(true);
       }
       await refreshOverview(true);
@@ -1170,6 +1173,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!AUTOMATIC_UPDATE_CHECKS_ENABLED) return;
     const timer = window.setInterval(() => {
       void checkUpdate(true);
     }, WEEKLY_UPDATE_CHECK_INTERVAL_MS);
