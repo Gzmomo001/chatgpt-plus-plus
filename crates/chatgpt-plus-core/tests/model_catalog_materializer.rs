@@ -41,6 +41,17 @@ fn full_model(slug: &str) -> Value {
     })
 }
 
+fn codex_model(slug: &str) -> Value {
+    let mut model = full_model(slug);
+    model["supported_reasoning_levels"] = json!([
+        {"effort": "low", "description": "Low"},
+        {"effort": "medium", "description": "Medium"},
+        {"effort": "high", "description": "High"},
+        {"effort": "xhigh", "description": "Extra high"}
+    ]);
+    model
+}
+
 #[test]
 fn repository_does_not_bundle_a_full_model_info_template() {
     assert!(
@@ -114,11 +125,109 @@ fn materializes_from_models_cache_and_preserves_opaque_fields() {
     );
     assert_eq!(
         catalog["models"][1]["supported_reasoning_levels"],
-        json!([])
+        json!([{"effort": "medium", "description": "Medium"}])
     );
-    assert!(catalog["models"][1]["default_reasoning_level"].is_null());
+    assert_eq!(catalog["models"][1]["default_reasoning_level"], "medium");
     assert_eq!(catalog["models"][1]["supports_search_tool"], false);
     assert_eq!(catalog["models"][1]["input_modalities"], json!(["text"]));
+}
+
+#[test]
+fn preserves_native_reasoning_levels_for_an_exact_codex_model() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("models_cache.json"),
+        serde_json::to_vec(&json!({"models": [codex_model("gpt-5.3-codex")]})).unwrap(),
+    )
+    .unwrap();
+    let specs = vec![CustomModelSpec {
+        id: "gpt-5.3-codex".to_string(),
+        context_window: None,
+        reasoning: None,
+    }];
+
+    let outcome = materialize_model_catalog(temp.path(), "relay", &specs).unwrap();
+    let catalog: Value =
+        serde_json::from_slice(&std::fs::read(outcome.catalog_path.unwrap()).unwrap()).unwrap();
+
+    assert_eq!(
+        catalog["models"][0]["supported_reasoning_levels"],
+        json!([
+            {"effort": "low", "description": "Low"},
+            {"effort": "medium", "description": "Medium"},
+            {"effort": "high", "description": "High"},
+            {"effort": "xhigh", "description": "Extra high"}
+        ])
+    );
+    assert_eq!(catalog["models"][0]["default_reasoning_level"], "medium");
+}
+
+#[test]
+fn repairs_a_stale_managed_catalog_from_models_cache() {
+    let temp = tempfile::tempdir().unwrap();
+    let catalog_dir = temp.path().join("model-catalogs");
+    std::fs::create_dir_all(&catalog_dir).unwrap();
+    std::fs::write(
+        catalog_dir.join("relay.json"),
+        serde_json::to_vec(&json!({"models": [full_model("gpt-5.6-sol")]})).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        temp.path().join("models_cache.json"),
+        serde_json::to_vec(&json!({"models": [codex_model("gpt-5.6-sol")]})).unwrap(),
+    )
+    .unwrap();
+    let specs = vec![CustomModelSpec {
+        id: "gpt-5.6-sol".to_string(),
+        context_window: None,
+        reasoning: None,
+    }];
+
+    let outcome = materialize_model_catalog(temp.path(), "relay", &specs).unwrap();
+    let catalog: Value =
+        serde_json::from_slice(&std::fs::read(outcome.catalog_path.unwrap()).unwrap()).unwrap();
+
+    assert_eq!(outcome.source, Some(CatalogTemplateSource::ModelsCache));
+    assert_eq!(
+        catalog["models"][0]["supported_reasoning_levels"],
+        codex_model("gpt-5.6-sol")["supported_reasoning_levels"]
+    );
+}
+
+#[test]
+fn uses_the_richest_reasoning_template_for_an_unknown_manual_model() {
+    let temp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        temp.path().join("models_cache.json"),
+        serde_json::to_vec(&json!({
+            "models": [
+                full_model("plain-chat"),
+                codex_model("gpt-5.3-codex")
+            ]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let specs = vec![CustomModelSpec {
+        id: "gpt-5.6-sol".to_string(),
+        context_window: None,
+        reasoning: None,
+    }];
+
+    let outcome = materialize_model_catalog(temp.path(), "relay", &specs).unwrap();
+    let catalog: Value =
+        serde_json::from_slice(&std::fs::read(outcome.catalog_path.unwrap()).unwrap()).unwrap();
+
+    assert_eq!(
+        catalog["models"][0]["supported_reasoning_levels"],
+        json!([
+            {"effort": "low", "description": "Low"},
+            {"effort": "medium", "description": "Medium"},
+            {"effort": "high", "description": "High"},
+            {"effort": "xhigh", "description": "Extra high"}
+        ])
+    );
+    assert_eq!(catalog["models"][0]["default_reasoning_level"], "medium");
 }
 
 #[test]
@@ -136,12 +245,12 @@ fn regenerates_offline_from_managed_catalog_and_skips_unchanged_writes() {
     }];
     let first = materialize_model_catalog(temp.path(), "relay", &first_specs).unwrap();
     assert_eq!(first.source, Some(CatalogTemplateSource::ModelsCache));
-    let preferred_managed = materialize_model_catalog(temp.path(), "relay", &first_specs).unwrap();
+    let preferred_cache = materialize_model_catalog(temp.path(), "relay", &first_specs).unwrap();
     assert_eq!(
-        preferred_managed.source,
-        Some(CatalogTemplateSource::ManagedCatalog)
+        preferred_cache.source,
+        Some(CatalogTemplateSource::ModelsCache)
     );
-    assert!(!preferred_managed.changed);
+    assert!(!preferred_cache.changed);
     std::fs::remove_file(temp.path().join("models_cache.json")).unwrap();
 
     let second_specs = vec![CustomModelSpec {

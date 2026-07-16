@@ -83,10 +83,11 @@ pub(crate) fn materialize_model_catalog_with_runtime_capabilities(
     }
 
     let managed = read_valid_catalog(&catalog_path)?;
-    let (source, source_kind) = if let Some(catalog) = managed {
-        (catalog, CatalogTemplateSource::ManagedCatalog)
-    } else if let Some(catalog) = read_valid_catalog(&codex_home.join("models_cache.json"))? {
+    let models_cache = read_valid_catalog(&codex_home.join("models_cache.json"))?;
+    let (source, source_kind) = if let Some(catalog) = models_cache {
         (catalog, CatalogTemplateSource::ModelsCache)
+    } else if let Some(catalog) = managed {
+        (catalog, CatalogTemplateSource::ManagedCatalog)
     } else {
         return Ok(CatalogMaterializationOutcome {
             status: CatalogMaterializationStatus::Degraded,
@@ -260,7 +261,11 @@ fn build_catalog_from_opaque_source(
         .enumerate()
         .map(|(index, spec)| {
             let exact = by_slug.get(&spec.id);
-            let mut model = exact.cloned().unwrap_or_else(|| fallback.clone());
+            let template = exact
+                .cloned()
+                .or_else(|| reasoning_template(source_models))
+                .unwrap_or_else(|| fallback.clone());
+            let mut model = template;
             if exact.is_none() {
                 apply_conservative_capabilities(&mut model);
             }
@@ -272,6 +277,24 @@ fn build_catalog_from_opaque_source(
     Ok(source)
 }
 
+fn reasoning_template(source_models: &[Value]) -> Option<Value> {
+    source_models
+        .iter()
+        .max_by_key(|model| {
+            model
+                .get("supported_reasoning_levels")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len)
+        })
+        .filter(|model| {
+            model
+                .get("supported_reasoning_levels")
+                .and_then(Value::as_array)
+                .is_some_and(|levels| !levels.is_empty())
+        })
+        .cloned()
+}
+
 fn apply_owned_fields(model: &mut Value, spec: &CustomModelSpec, index: usize) {
     model["slug"] = json!(spec.id);
     model["display_name"] = json!(spec.id);
@@ -280,15 +303,12 @@ fn apply_owned_fields(model: &mut Value, spec: &CustomModelSpec, index: usize) {
         model["context_window"] = json!(context_window);
         model["max_context_window"] = json!(context_window);
     }
-    let (supported, default) = match &spec.reasoning {
-        Some(reasoning) => (
-            reasoning_levels(model, &reasoning.supported),
-            reasoning.default.clone(),
-        ),
-        None => (Vec::new(), None),
-    };
-    model["supported_reasoning_levels"] = Value::Array(supported);
-    model["default_reasoning_level"] = default.map_or(Value::Null, Value::String);
+    if let Some(reasoning) = &spec.reasoning {
+        model["supported_reasoning_levels"] =
+            Value::Array(reasoning_levels(model, &reasoning.supported));
+        model["default_reasoning_level"] =
+            reasoning.default.clone().map_or(Value::Null, Value::String);
+    }
     model["priority"] = json!(1000 + index);
     model["visibility"] = json!("list");
     model["supported_in_api"] = json!(true);
