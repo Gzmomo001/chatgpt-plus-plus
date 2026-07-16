@@ -603,6 +603,7 @@ test("reuses the About card geometry across settings surfaces", () => {
   assert.match(styles, /\.screen > \.settings-card-stack\s*\{[\s\S]*?margin-inline:\s*auto/);
   assert.match(layout, /export function SettingsSurface\(/);
   assert.match(styles, /\.settings-surface[\s\S]*?border-radius:\s*var\(--settings-card-radius\)/);
+  assert.match(styles, /\.settings-surface > \.panel-head,[\s\S]*?padding:\s*22px 24px 0/);
   assert.match(styles, /\.screen\[data-page-shell\] > \*\s*\{[\s\S]*?var\(--page-shell-max-width\)/);
   assert.match(styles, /\.screen\[data-page-shell="settings"\]/);
 

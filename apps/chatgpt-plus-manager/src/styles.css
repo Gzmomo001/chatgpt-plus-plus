@@ -4810,6 +4810,11 @@ textarea {
   transform: none;
 }
 
+.settings-surface > .panel-head,
+.settings-card > .panel-head {
+  padding: 22px 24px 0;
+}
+
 .settings-surface > [data-slot="card-content"],
 .settings-card > [data-slot="card-content"] {
   overflow: visible;
