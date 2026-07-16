@@ -92,6 +92,18 @@
   text-overflow: ellipsis;
 }
 
+.about-app-path-value {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .about-action-buttons {
   display: flex;
   align-items: center;

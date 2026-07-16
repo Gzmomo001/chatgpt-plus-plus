@@ -665,8 +665,27 @@ test("keeps shortcut maintenance out of the single About route", () => {
 
 test("keeps the retired SettingsScreen out of the single About route", () => {
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(app, /SettingsScreen|settings-preferences|chatGptAppPath=|onFormChange=\{\(form\)/);
+  assert.doesNotMatch(app, /SettingsScreen|settings-preferences|onFormChange=\{\(form\)/);
   assert.match(app, /<AboutScreen[\s\S]*?overview=\{overview\}[\s\S]*?update=\{update\}/);
+});
+
+test("exposes the auto-detected ChatGPT path and manual picker on About", () => {
+  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const screen = readFileSync(
+    new URL("../screens/diagnostics/AboutScreen.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    app,
+    /chatGptAppPath=\{overview\?\.codexApp\.path \?\? settingsForm\.codexAppPath\}/,
+    "About should display the resolved path while retaining the saved-path loading fallback",
+  );
+  assert.match(screen, /chatGptAppPath:\s*string/);
+  assert.match(screen, /t\(["']ChatGPT 路径["']\)/);
+  assert.match(screen, /chatGptAppPath \|\| t\(["']未检测到["']\)/);
+  assert.match(screen, /actions\.chooseChatGptAppPath\(\)/);
+  assert.match(screen, /t\(["']选择应用["']\)/);
 });
 
 test("exposes diagnostic log controls on the visible About settings route", () => {

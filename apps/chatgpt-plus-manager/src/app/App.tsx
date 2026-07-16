@@ -1544,6 +1544,7 @@ export function App() {
                   overview={overview}
                   update={update}
                   updateInstallProgress={updateInstallProgress}
+                  chatGptAppPath={overview?.codexApp.path ?? settingsForm.codexAppPath}
                   codexExtraArgs={settingsForm.codexExtraArgs}
                   diagnosticLogEnabled={settingsForm.diagnosticLogEnabled}
                   actions={actions}

@@ -1,4 +1,5 @@
 import {
+  AppWindow,
   ArrowUpCircle,
   ChevronDown,
   ClipboardCopy,
@@ -29,6 +30,7 @@ const appIcon = new URL("../../../src-tauri/icons/icon.png", import.meta.url).hr
 
 export type DiagnosticsActions = {
   openExternalUrl: (url: string) => Promise<void>;
+  chooseChatGptAppPath: () => Promise<void>;
   checkUpdate: () => Promise<void>;
   performUpdate: () => Promise<void>;
   copyDiagnostics: () => Promise<void>;
@@ -41,6 +43,7 @@ export function AboutScreen({
   overview,
   update,
   updateInstallProgress,
+  chatGptAppPath,
   codexExtraArgs,
   diagnosticLogEnabled,
   actions,
@@ -48,6 +51,7 @@ export function AboutScreen({
   overview: OverviewResult | null;
   update: UpdateResult | null;
   updateInstallProgress: TaskProgress;
+  chatGptAppPath: string;
   codexExtraArgs: string[];
   diagnosticLogEnabled: boolean;
   actions: DiagnosticsActions;
@@ -78,6 +82,25 @@ export function AboutScreen({
       </div>
 
       <div className="about-action-list">
+        <section className="about-action-row">
+          <div className="about-action-icon">
+            <AppWindow aria-hidden="true" className="h-5 w-5" />
+          </div>
+          <div className="about-action-copy">
+            <strong>{t("ChatGPT 路径")}</strong>
+            <code
+              className="about-app-path-value"
+              title={chatGptAppPath || t("未检测到")}
+            >
+              {chatGptAppPath || t("未检测到")}
+            </code>
+          </div>
+          <Button onClick={() => void actions.chooseChatGptAppPath()} variant="secondary">
+            <AppWindow aria-hidden="true" className="h-4 w-4" />
+            {t("选择应用")}
+          </Button>
+        </section>
+
         <section className="about-action-row">
           <div className="about-action-icon about-action-icon-update">
             {updateInstallProgress.active ? (
