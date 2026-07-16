@@ -6,6 +6,7 @@ import {
   Languages,
   Moon,
   Plus,
+  RefreshCw,
   Rocket,
   Sun,
 } from "lucide-react";
@@ -1428,16 +1429,27 @@ export function App() {
               })}
               {hasUpdate ? (
                 <button
-                  aria-label={tf("更新到 {0}", [update?.latestVersion ?? ""])}
+                  aria-label={
+                    updateInstallProgress.active
+                      ? t("正在更新…")
+                      : tf("更新到 {0}", [update?.latestVersion ?? ""])
+                  }
                   className="nav-item update-nav-item"
-                  onClick={() => {
-                    void openSettingsPage("settings-about");
-                  }}
-                  title={tf("发现新版本 {0}", [update?.latestVersion ?? ""])}
+                  disabled={updateInstallProgress.active}
+                  onClick={() => void actions.performUpdate()}
+                  title={
+                    updateInstallProgress.active
+                      ? t("正在更新…")
+                      : tf("发现新版本 {0}", [update?.latestVersion ?? ""])
+                  }
                   type="button"
                 >
                   <span className="nav-icon">
-                    <CircleArrowUp className="h-4 w-4" aria-hidden="true" />
+                    {updateInstallProgress.active ? (
+                      <RefreshCw className="h-4 w-4 update-nav-spinner" aria-hidden="true" />
+                    ) : (
+                      <CircleArrowUp className="h-4 w-4" aria-hidden="true" />
+                    )}
                   </span>
                 </button>
               ) : null}

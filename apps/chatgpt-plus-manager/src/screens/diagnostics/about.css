@@ -226,6 +226,10 @@
   color: hsl(207 100% 82%);
 }
 
+.update-nav-spinner {
+  animation: about-update-spin 900ms linear infinite;
+}
+
 @keyframes about-update-spin {
   to {
     transform: rotate(360deg);

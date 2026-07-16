@@ -496,6 +496,9 @@ test("uses one dynamic update action and advertises available updates in navigat
   assert.match(app, /const WEEKLY_UPDATE_CHECK_INTERVAL_MS = 7 \* 24 \* 60 \* 60 \* 1000/);
   assert.match(app, /setInterval\(\(\) => \{[\s\S]*?checkUpdate\(true\)[\s\S]*?WEEKLY_UPDATE_CHECK_INTERVAL_MS/);
   assert.match(app, /className=["']nav-item update-nav-item["']/);
+  assert.match(app, /className=["']nav-item update-nav-item["'][\s\S]*?onClick=\{\(\) => void actions\.performUpdate\(\)\}/);
+  assert.match(app, /className=["']nav-item update-nav-item["'][\s\S]*?disabled=\{updateInstallProgress\.active\}/);
+  assert.doesNotMatch(app, /className=["']nav-item update-nav-item["'][\s\S]*?openSettingsPage\(["']settings-about["']\)/);
   assert.match(app, /hasUpdate \? \([\s\S]*?CircleArrowUp/);
 });
 
