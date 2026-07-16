@@ -201,14 +201,6 @@ jobs:
           VERSION="$RELEASE_VERSION"
           BINARY_DIR="$PWD/target/${{ matrix.target }}/release" bash scripts/installer/macos/package-dmg.sh "$VERSION" "${{ matrix.arch }}"
 
-      - name: Build macOS zip asset
-        shell: bash
-        env:
-          RELEASE_VERSION: ${{ needs.prepare_release.outputs.version }}
-        run: |
-          VERSION="$RELEASE_VERSION"
-          (cd dist/macos/stage && zip -r "../ChatGPTPlusPlus-${VERSION}-macos-${{ matrix.arch }}.zip" "ChatGPT++.app")
-
       - name: Verify macOS bundle structure
         run: |
           set -euo pipefail
@@ -231,7 +223,6 @@ jobs:
           tag_name: ${{ needs.prepare_release.outputs.tag }}
           files: |
             dist/macos/*.dmg
-            dist/macos/*.zip
 
   latest-json:
     name: Upload static latest.json

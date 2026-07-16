@@ -539,9 +539,9 @@ fn github_release_workflow_builds_separate_macos_x64_and_arm64_dmgs() {
     assert!(workflow.contains("aarch64-apple-darwin"));
     assert!(workflow.contains("package-dmg.sh \"$VERSION\" \"${{ matrix.arch }}\""));
     assert!(workflow.contains("target/${{ matrix.target }}/release"));
-    assert!(workflow.contains(
-        "zip -r \"../ChatGPTPlusPlus-${VERSION}-macos-${{ matrix.arch }}.zip\" \"ChatGPT++.app\""
-    ));
+    assert!(workflow.contains("dist/macos/*.dmg"));
+    assert!(!workflow.contains("Build macOS zip asset"));
+    assert!(!workflow.contains("dist/macos/*.zip"));
     assert!(workflow.contains("test ! -e \"$app/Contents/Helpers/chatgpt-plus-plus\""));
     assert!(!workflow.contains("ChatGPT++ 管理工具.app"));
 }
