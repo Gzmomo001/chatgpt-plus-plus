@@ -7,6 +7,13 @@ export const ROUTE_IDS = [
 
 export type Route = (typeof ROUTE_IDS)[number];
 
+export function nextRelayListRequest(
+  nextRoute: Route,
+  currentRequest: number,
+): number {
+  return nextRoute === "relay" ? currentRequest + 1 : currentRequest;
+}
+
 export function loadInitialRoute(location?: { search: string; hash: string }): Route {
   if (!location) return "relay";
   const params = new URLSearchParams(location.search);

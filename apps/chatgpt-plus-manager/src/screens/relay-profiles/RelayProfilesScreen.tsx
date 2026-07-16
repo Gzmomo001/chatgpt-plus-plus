@@ -32,6 +32,7 @@ type RelayProfilesScreenProps<Settings extends RelaySettings> = {
   form: Settings;
   navbarActionHost: HTMLElement | null;
   createRequest: number;
+  listRequest: number;
   onFormChange: (value: ReconciledRelayProfileSettings<Settings>) => void;
   actions: RelayProfileActions<Settings>;
 };
@@ -43,6 +44,7 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
   form,
   navbarActionHost,
   createRequest,
+  listRequest,
   onFormChange,
   actions,
 }: RelayProfilesScreenProps<Settings>) {
@@ -83,6 +85,12 @@ export function RelayProfilesScreen<Settings extends RelaySettings>({
     setNewProfileDraft(createProfile());
     setDetailProfileId(null);
   }, [createRequest]);
+
+  useEffect(() => {
+    setNewProfileSaveAction(null);
+    setNewProfileDraft(null);
+    setDetailProfileId(null);
+  }, [listRequest]);
 
   useEffect(() => {
     if (

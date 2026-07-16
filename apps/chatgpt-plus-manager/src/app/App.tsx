@@ -75,6 +75,7 @@ import {
 } from "@/app/presentation";
 import {
   loadInitialRoute,
+  nextRelayListRequest,
   type Route,
 } from "@/app/routes";
 import {
@@ -127,6 +128,7 @@ export function App() {
   );
   const [relayNavbarActionHost, setRelayNavbarActionHost] = useState<HTMLDivElement | null>(null);
   const [relayCreateRequest, setRelayCreateRequest] = useState(0);
+  const [relayListRequest, setRelayListRequest] = useState(0);
   const [notice, setNotice] = useState<{ title: string; message: string; status?: Status } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string;
@@ -453,6 +455,7 @@ export function App() {
     if (route === "sessions" && next !== "sessions") {
       sessionsControllerRef.current!.reset();
     }
+    setRelayListRequest((current) => nextRelayListRequest(next, current));
     setRoute(next);
     if (next === "relay") {
       await refreshSettings(true);
@@ -1513,6 +1516,7 @@ export function App() {
               form={normalizeSettings(settingsForm)}
               navbarActionHost={relayNavbarActionHost}
               createRequest={relayCreateRequest}
+              listRequest={relayListRequest}
               onFormChange={setSettingsForm}
               actions={actions}
             />
