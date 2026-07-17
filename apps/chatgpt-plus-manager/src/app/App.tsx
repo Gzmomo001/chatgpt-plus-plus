@@ -1057,7 +1057,7 @@ export function App() {
       },
       onError: (error, requested) => {
         showNotice(
-          t(requested.mode === "autosave" ? "设置自动保存" : "设置保存"),
+          requested.mode === "autosave" ? t("设置自动保存") : t("设置保存"),
           stringifyError(error),
           "failed",
         );
@@ -1117,8 +1117,8 @@ export function App() {
 
   useEffect(() => {
     void managerActions.app.updateTrayLabels({
-      showLabel: language === "en" ? "Show window" : "显示窗口",
-      quitLabel: language === "en" ? "Quit" : "退出",
+      showLabel: language === "en" ? "Show window" : t("显示窗口"),
+      quitLabel: language === "en" ? "Quit" : t("退出"),
       windowTitle: "ChatGPT++",
     });
   }, [language]);

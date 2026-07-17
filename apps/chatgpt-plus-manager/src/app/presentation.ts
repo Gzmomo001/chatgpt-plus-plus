@@ -9,6 +9,12 @@ import {
 import type { Status } from "./contracts.ts";
 import { ROUTE_IDS, type Route } from "./routes.ts";
 import { t } from "../i18n/index.ts";
+import {
+  DYNAMIC_PLAIN_ROUTE_ENHANCE_LABEL,
+  DYNAMIC_PLAIN_ROUTE_ENHANCE_SUBTITLE,
+  DYNAMIC_PLAIN_ROUTE_RELAY_SUBTITLE,
+  DYNAMIC_PLAIN_ROUTE_SESSIONS_SUBTITLE,
+} from "../i18n/dynamic-keys.ts";
 
 const routePresentation: Record<
   Route,
@@ -16,17 +22,17 @@ const routePresentation: Record<
 > = {
   relay: {
     label: "供应商配置",
-    subtitle: "管理 API 供应商、协议、Key 与配置文件",
+    subtitle: DYNAMIC_PLAIN_ROUTE_RELAY_SUBTITLE,
     icon: KeyRound,
   },
   sessions: {
     label: "会话管理",
-    subtitle: "查看、删除和修复 Codex 本地会话",
+    subtitle: DYNAMIC_PLAIN_ROUTE_SESSIONS_SUBTITLE,
     icon: MessageCircle,
   },
   enhance: {
-    label: "插件与增强",
-    subtitle: "管理插件市场与 Codex 启动增强",
+    label: DYNAMIC_PLAIN_ROUTE_ENHANCE_LABEL,
+    subtitle: DYNAMIC_PLAIN_ROUTE_ENHANCE_SUBTITLE,
     icon: Hammer,
   },
   settings: {

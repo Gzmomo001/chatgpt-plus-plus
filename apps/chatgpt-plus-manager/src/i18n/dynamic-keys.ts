@@ -4,8 +4,18 @@
 // coverage.
 export const DYNAMIC_PLAIN_LAUNCH_CRASH_TITLE = "Codex 意外停止" as const;
 export const DYNAMIC_TEMPLATE_LAUNCH_CRASH_MESSAGE = "进程状态：{0}。是否要重新启动？" as const;
+export const DYNAMIC_PLAIN_ROUTE_RELAY_SUBTITLE = "管理 API 供应商、协议、Key 与配置文件" as const;
+export const DYNAMIC_PLAIN_ROUTE_SESSIONS_SUBTITLE = "查看、删除和修复 Codex 本地会话" as const;
+export const DYNAMIC_PLAIN_ROUTE_ENHANCE_LABEL = "插件与增强" as const;
+export const DYNAMIC_PLAIN_ROUTE_ENHANCE_SUBTITLE = "管理插件市场与 Codex 启动增强" as const;
 
-export const DYNAMIC_PLAIN_KEYS = [DYNAMIC_PLAIN_LAUNCH_CRASH_TITLE] as const;
+export const DYNAMIC_PLAIN_KEYS = [
+  DYNAMIC_PLAIN_LAUNCH_CRASH_TITLE,
+  DYNAMIC_PLAIN_ROUTE_RELAY_SUBTITLE,
+  DYNAMIC_PLAIN_ROUTE_SESSIONS_SUBTITLE,
+  DYNAMIC_PLAIN_ROUTE_ENHANCE_LABEL,
+  DYNAMIC_PLAIN_ROUTE_ENHANCE_SUBTITLE,
+] as const;
 export const DYNAMIC_TEMPLATE_KEYS = [DYNAMIC_TEMPLATE_LAUNCH_CRASH_MESSAGE] as const;
 
 export type DynamicPlainKey = (typeof DYNAMIC_PLAIN_KEYS)[number];

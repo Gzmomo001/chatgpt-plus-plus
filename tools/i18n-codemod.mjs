@@ -37,8 +37,8 @@ const WRITE = process.argv.includes("--write");
 // test-only error message, and model-windows.test.ts imports the module in
 // isolation under `node --test`, where an "@/i18n" dependency would not resolve.
 const FILES = [
-  "src/App.tsx",
-  "src/components/ProviderPresetSelector.tsx",
+  "src/app/App.tsx",
+  "src/features/relay-profiles/components/ProviderPresetSelector.tsx",
 ];
 
 const CJK = /[㐀-䶿一-鿿　-〿＀-￯]/;
@@ -102,6 +102,17 @@ function collect(node, edits) {
   }
 
   if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && hasCjk(node.text)) {
+    const parent = node.parent;
+    if (
+      parent &&
+      ts.isCallExpression(parent) &&
+      ts.isIdentifier(parent.expression) &&
+      parent.arguments[0] === node
+    ) {
+      if (parent.expression.text === "t") plainKeys.add(node.text);
+      else if (parent.expression.text === "tf") templateKeys.add(node.text);
+      return;
+    }
     if (!isPropertyNamePosition(node) && !isAlreadyWrapped(node)) {
       plainKeys.add(node.text);
       const call = `t(${JSON.stringify(node.text)})`;
