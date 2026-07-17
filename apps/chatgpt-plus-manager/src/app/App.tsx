@@ -549,17 +549,17 @@ export function App() {
     }
   };
 
-  const registerPluginMarketplace = async (name: string) => {
-    if (pluginInventoryPending) return;
-    const source = await open({ directory: true, multiple: false, title: t("选择插件市场目录") });
-    if (typeof source !== "string") return;
+  const registerPluginMarketplace = async (url: string) => {
+    if (pluginInventoryPending) return false;
     setPluginInventoryPending("register");
     try {
-      const result = await run(() => managerActions.maintenance.registerPluginMarketplace(name, source));
+      const result = await run(() => managerActions.maintenance.registerPluginMarketplace(url));
       if (result) {
         setPluginInventory(result);
         showResultNotice(t("注册插件市场"), result, { silentSuccess: true });
+        return isSuccessStatus(result.status);
       }
+      return false;
     } finally {
       setPluginInventoryPending(null);
     }

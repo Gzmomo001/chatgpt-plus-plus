@@ -173,7 +173,7 @@ test("adapters own wire command names and nested payload shapes", async () => {
   await actions.sessions.exportMarkdown({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" }, "/tmp/hello.md");
   await actions.sessions.loadUsage({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" });
   await actions.maintenance.mutatePlugin("demo@personal", "disable");
-  await actions.maintenance.registerPluginMarketplace("personal", "/tmp/personal-market");
+  await actions.maintenance.registerPluginMarketplace("https://github.com/example/personal-market");
   await actions.maintenance.uninstallEntrypoints(true);
   await actions.diagnostics.openLogFolder();
   await actions.app.updateTrayLabels({ showLabel: "Show", quitLabel: "Quit", windowTitle: "Manager" });
@@ -214,7 +214,7 @@ test("adapters own wire command names and nested payload shapes", async () => {
     },
     {
       command: "register_plugin_marketplace",
-      args: { request: { name: "personal", source: "/tmp/personal-market" } },
+      args: { request: { url: "https://github.com/example/personal-market" } },
     },
     { command: "uninstall_entrypoints", args: { options: { removeOwnedData: true } } },
     { command: "open_log_folder", args: undefined },

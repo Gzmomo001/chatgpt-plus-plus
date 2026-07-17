@@ -1,8 +1,11 @@
 use std::io::{Cursor, Read};
 use std::path::{Component, Path, PathBuf};
+use std::process::Stdio;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use serde::Serialize;
+use tokio::process::Command;
 use toml_edit::{DocumentMut, Item, Table};
 
 const OPENAI_CURATED_MARKETPLACE: &str = "openai-curated";
@@ -12,6 +15,7 @@ const ROLE_SPECIFIC_PLUGINS_MARKETPLACE: &str = "role-specific-plugins";
 const OPENAI_PLUGINS_ZIP_URL: &str =
     "https://codeload.github.com/openai/plugins/zip/refs/heads/main";
 const OPENAI_PLUGINS_DOWNLOAD_LIMIT_BYTES: usize = 128 * 1024 * 1024;
+const REMOTE_MARKETPLACE_CLONE_TIMEOUT: Duration = Duration::from_secs(120);
 const OPENAI_CURATED_REMOTE_MARKETPLACE_ZIP: &[u8] =
     include_bytes!("../../../assets/plugin-marketplaces/openai-curated-remote.zip");
 
@@ -184,6 +188,12 @@ pub struct PluginMarketplaceSource {
     pub plugin_count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteMarketplaceRegistration {
+    pub name: String,
+    pub root: PathBuf,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginInventoryItem {
@@ -290,7 +300,7 @@ pub fn plugin_marketplace_inventory(home: &Path) -> anyhow::Result<PluginMarketp
                 marketplace_source: source.clone(),
                 installed: is_installed,
                 enabled,
-                skill_count: count_skill_files(&root.join("plugins").join(name))?,
+                skill_count: count_skill_files(&marketplace_plugin_root(&root, entry, name))?,
             };
             if let Some(existing_index) = plugins.iter().position(|plugin| {
                 plugin.name == candidate.name && plugin.marketplace_source == source
@@ -380,12 +390,137 @@ pub fn register_local_plugin_marketplace(
     source: &Path,
 ) -> anyhow::Result<bool> {
     let name = name.trim();
-    if name.is_empty() || name.contains('.') || name.contains(']') {
-        anyhow::bail!("marketplace name is invalid");
-    }
+    validate_marketplace_name(name)?;
     local_marketplace_root_from_root(source, name)?
         .ok_or_else(|| anyhow::anyhow!("marketplace manifest is missing or name does not match"))?;
     ensure_marketplace_configs(home, &[name], source)
+}
+
+pub async fn register_remote_plugin_marketplace(
+    home: &Path,
+    source_url: &str,
+) -> anyhow::Result<RemoteMarketplaceRegistration> {
+    let source_url = normalize_remote_marketplace_url(source_url)?;
+    let marketplace_cache = home.join(".tmp").join("marketplaces");
+    std::fs::create_dir_all(&marketplace_cache)
+        .with_context(|| format!("failed to create {}", marketplace_cache.display()))?;
+    let checkout = unique_marketplace_checkout_path(&marketplace_cache);
+
+    let result = async {
+        clone_remote_marketplace(&source_url, &checkout).await?;
+        install_remote_plugin_marketplace_checkout(home, &source_url, &checkout)
+    }
+    .await;
+
+    if checkout.exists() {
+        let _ = std::fs::remove_dir_all(&checkout);
+    }
+    result
+}
+
+fn normalize_remote_marketplace_url(source_url: &str) -> anyhow::Result<String> {
+    let source_url = source_url.trim();
+    let mut parsed =
+        reqwest::Url::parse(source_url).context("plugin marketplace URL is invalid")?;
+    if !matches!(parsed.scheme(), "https" | "http") {
+        anyhow::bail!("plugin marketplace URL must use http or https");
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        anyhow::bail!("plugin marketplace URL must not contain credentials");
+    }
+    if parsed.host_str().is_none() {
+        anyhow::bail!("plugin marketplace URL must include a host");
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        anyhow::bail!("plugin marketplace URL must not contain a query or fragment");
+    }
+    let normalized_path = parsed.path().trim_end_matches('/').to_string();
+    if normalized_path.is_empty() {
+        anyhow::bail!("plugin marketplace URL must include a repository path");
+    }
+    parsed.set_path(&normalized_path);
+    Ok(parsed.to_string().trim_end_matches('/').to_string())
+}
+
+async fn clone_remote_marketplace(source_url: &str, checkout: &Path) -> anyhow::Result<()> {
+    let mut command = Command::new("git");
+    command
+        .arg("clone")
+        .arg("--depth")
+        .arg("1")
+        .arg("--single-branch")
+        .arg("--no-tags")
+        .arg(source_url)
+        .arg(checkout)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let output = tokio::time::timeout(REMOTE_MARKETPLACE_CLONE_TIMEOUT, command.output())
+        .await
+        .context("plugin marketplace download timed out")?
+        .context("failed to start git; install Git and make sure it is available in PATH")?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr.trim();
+    if detail.is_empty() {
+        anyhow::bail!("git clone failed with status {}", output.status);
+    }
+    anyhow::bail!("git clone failed: {detail}")
+}
+
+fn install_remote_plugin_marketplace_checkout(
+    home: &Path,
+    source_url: &str,
+    checkout: &Path,
+) -> anyhow::Result<RemoteMarketplaceRegistration> {
+    normalize_remote_marketplace_url(source_url)?;
+    let manifest = local_marketplace_manifest(checkout)?
+        .ok_or_else(|| anyhow::anyhow!("plugin marketplace manifest is missing or empty"))?;
+    let name = manifest
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("plugin marketplace manifest name is missing"))?;
+    validate_marketplace_name(name)?;
+
+    let marketplace_cache = home.join(".tmp").join("marketplaces");
+    std::fs::create_dir_all(&marketplace_cache)
+        .with_context(|| format!("failed to create {}", marketplace_cache.display()))?;
+    let destination = marketplace_cache.join(name);
+    let backup_name = format!(".{name}.previous-chatgpt-plus");
+    replace_directory_with_backup_name(checkout, &destination, &backup_name)?;
+    ensure_marketplace_configs(home, &[name], &destination)?;
+
+    Ok(RemoteMarketplaceRegistration {
+        name: name.to_string(),
+        root: destination,
+    })
+}
+
+fn validate_marketplace_name(name: &str) -> anyhow::Result<()> {
+    if name.is_empty()
+        || name.chars().any(|character| {
+            matches!(character, '.' | '[' | ']' | '/' | '\\') || character.is_control()
+        })
+    {
+        anyhow::bail!("marketplace name is invalid");
+    }
+    Ok(())
+}
+
+fn unique_marketplace_checkout_path(parent: &Path) -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    parent.join(format!(
+        ".remote-marketplace-{}-{nonce}",
+        std::process::id()
+    ))
 }
 
 pub async fn refresh_openai_curated_marketplace_and_configure(
@@ -411,14 +546,26 @@ pub fn refresh_openai_curated_remote_marketplace_and_configure(
 }
 
 fn count_skill_files(root: &Path) -> anyhow::Result<usize> {
+    count_skill_files_at_depth(root, 0)
+}
+
+fn count_skill_files_at_depth(root: &Path, depth: usize) -> anyhow::Result<usize> {
     if !root.is_dir() {
         return Ok(0);
     }
+    if depth > 64 {
+        anyhow::bail!("plugin directory nesting is too deep");
+    }
     let mut total = 0;
     for entry in std::fs::read_dir(root)? {
-        let path = entry?.path();
-        if path.is_dir() {
-            total += count_skill_files(&path)?;
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        let path = entry.path();
+        if file_type.is_dir() {
+            total += count_skill_files_at_depth(&path, depth + 1)?;
         } else if path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
             total += 1;
         }
@@ -467,6 +614,16 @@ fn local_marketplace_root_from_root(
     root: &Path,
     marketplace_name: &str,
 ) -> anyhow::Result<Option<PathBuf>> {
+    let Some(marketplace) = local_marketplace_manifest(root)? else {
+        return Ok(None);
+    };
+    if marketplace.get("name").and_then(serde_json::Value::as_str) != Some(marketplace_name) {
+        return Ok(None);
+    }
+    Ok(Some(root.to_path_buf()))
+}
+
+fn local_marketplace_manifest(root: &Path) -> anyhow::Result<Option<serde_json::Value>> {
     let marketplace_path = root
         .join(".agents")
         .join("plugins")
@@ -478,18 +635,41 @@ fn local_marketplace_root_from_root(
         .with_context(|| format!("failed to read {}", marketplace_path.display()))?;
     let marketplace: serde_json::Value = serde_json::from_str(&text)
         .with_context(|| format!("failed to parse {}", marketplace_path.display()))?;
-    if marketplace.get("name").and_then(serde_json::Value::as_str) != Some(marketplace_name) {
-        return Ok(None);
-    }
     let has_plugins = marketplace
         .get("plugins")
         .and_then(serde_json::Value::as_array)
         .map(|plugins| !plugins.is_empty())
         .unwrap_or(false);
-    if !has_plugins || !root.join("plugins").is_dir() {
+    if !has_plugins {
         return Ok(None);
     }
-    Ok(Some(root.to_path_buf()))
+    Ok(Some(marketplace))
+}
+
+fn marketplace_plugin_root(root: &Path, entry: &serde_json::Value, name: &str) -> PathBuf {
+    let configured_path = entry
+        .get("source")
+        .and_then(|source| {
+            source
+                .as_str()
+                .or_else(|| source.get("path").and_then(serde_json::Value::as_str))
+        })
+        .or_else(|| entry.get("path").and_then(serde_json::Value::as_str));
+    configured_path
+        .and_then(|path| safe_marketplace_relative_path(path).map(|relative| root.join(relative)))
+        .unwrap_or_else(|| root.join("plugins").join(name))
+}
+
+fn safe_marketplace_relative_path(path: &str) -> Option<PathBuf> {
+    let mut relative = PathBuf::new();
+    for component in Path::new(path).components() {
+        match component {
+            Component::Normal(value) => relative.push(value),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    Some(relative)
 }
 
 fn local_marketplace_plugin_names(
@@ -1208,6 +1388,85 @@ mod tests {
         let inventory = plugin_marketplace_inventory(&home).unwrap();
         assert_eq!(inventory.marketplaces[0].name, "personal");
         assert_eq!(inventory.plugins[0].id, "my-plugin@personal");
+    }
+
+    #[test]
+    fn installs_a_downloaded_remote_marketplace_and_registers_its_manifest_name() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().join("home");
+        let checkout = temp.path().join("checkout");
+        std::fs::create_dir_all(checkout.join(".agents").join("plugins")).unwrap();
+        std::fs::create_dir_all(
+            checkout
+                .join("packages")
+                .join("research-companion")
+                .join("skills")
+                .join("research"),
+        )
+        .unwrap();
+        std::fs::write(
+            checkout
+                .join("packages")
+                .join("research-companion")
+                .join("skills")
+                .join("research")
+                .join("SKILL.md"),
+            "# Research",
+        )
+        .unwrap();
+        std::fs::write(
+            checkout
+                .join(".agents")
+                .join("plugins")
+                .join("marketplace.json"),
+            r#"{"name":"research-tools","plugins":[{"name":"research-companion","source":{"source":"local","path":"./packages/research-companion"}}]}"#,
+        )
+        .unwrap();
+
+        let registration = install_remote_plugin_marketplace_checkout(
+            &home,
+            "https://github.com/example/research-tools",
+            &checkout,
+        )
+        .unwrap();
+
+        assert_eq!(registration.name, "research-tools");
+        assert_eq!(
+            registration.root,
+            home.join(".tmp")
+                .join("marketplaces")
+                .join("research-tools")
+        );
+        let inventory = plugin_marketplace_inventory(&home).unwrap();
+        assert_eq!(inventory.marketplaces[0].name, "research-tools");
+        assert_eq!(inventory.plugins[0].id, "research-companion@research-tools");
+        assert_eq!(inventory.plugins[0].skill_count, 1);
+    }
+
+    #[test]
+    fn remote_marketplace_urls_require_http_transport_without_credentials() {
+        assert_eq!(
+            normalize_remote_marketplace_url("https://github.com/example/plugins.git/").unwrap(),
+            "https://github.com/example/plugins.git"
+        );
+        assert!(normalize_remote_marketplace_url("file:///tmp/plugins").is_err());
+        assert!(
+            normalize_remote_marketplace_url("https://token@github.com/example/plugins").is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skill_inventory_does_not_follow_marketplace_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let plugin_root = temp.path().join("plugin");
+        let outside = temp.path().join("outside");
+        std::fs::create_dir_all(&plugin_root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("SKILL.md"), "# Outside").unwrap();
+        std::os::unix::fs::symlink(&outside, plugin_root.join("linked-outside")).unwrap();
+
+        assert_eq!(count_skill_files(&plugin_root).unwrap(), 0);
     }
 
     #[test]

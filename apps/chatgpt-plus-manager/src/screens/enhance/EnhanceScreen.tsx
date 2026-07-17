@@ -1,4 +1,4 @@
-import { Download, Info, RefreshCw, Trash2 } from "lucide-react";
+import { Download, Info, Link2, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/ui/button";
@@ -41,7 +41,7 @@ export type EnhanceActions = {
   repairRemotePluginMarketplace: () => Promise<void>;
   refreshPluginInventory: () => Promise<void>;
   mutatePlugin: (pluginId: string, action: "install" | "uninstall" | "enable" | "disable") => Promise<void>;
-  registerPluginMarketplace: (name: string) => Promise<void>;
+  registerPluginMarketplace: (url: string) => Promise<boolean>;
   upgradePluginMarketplace: () => Promise<void>;
   upgradeRemotePluginMarketplace: () => Promise<void>;
 };
@@ -57,7 +57,7 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
   } = view;
   const isWindows =
     typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("windows");
-  const [marketplaceName, setMarketplaceName] = useState("");
+  const [marketplaceUrl, setMarketplaceUrl] = useState("");
   const pluginInventoryState = projectPluginInventoryState(pluginInventory, pluginInventoryPending);
   const remoteMarketplaceStatus = remotePluginMarketplace?.marketplaceRoot
     ? remotePluginMarketplace.configRegistered
@@ -139,13 +139,27 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
               </Button>
             </Toolbar>
           </div>
-          <div className="form-row">
-            <Input value={marketplaceName} onChange={(event) => setMarketplaceName(event.currentTarget.value)} placeholder={t("个人市场名称，例如 personal")} />
-            <Button disabled={!!pluginInventoryPending || !marketplaceName.trim()} onClick={async () => {
-              await actions.registerPluginMarketplace(marketplaceName.trim());
-              setMarketplaceName("");
-            }} variant="secondary">{t("选择目录并注册")}</Button>
-          </div>
+          <form className="form-row" onSubmit={async (event) => {
+            event.preventDefault();
+            const registered = await actions.registerPluginMarketplace(marketplaceUrl.trim());
+            if (registered) setMarketplaceUrl("");
+          }}>
+            <Input
+              aria-label={t("插件市场 URL")}
+              autoCapitalize="none"
+              autoCorrect="off"
+              inputMode="url"
+              onChange={(event) => setMarketplaceUrl(event.currentTarget.value)}
+              placeholder={t("插件市场 URL，例如 https://github.com/owner/repo")}
+              spellCheck={false}
+              type="url"
+              value={marketplaceUrl}
+            />
+            <Button disabled={!!pluginInventoryPending || !marketplaceUrl.trim()} type="submit" variant="secondary">
+              <Link2 className="h-4 w-4" />
+              {pluginInventoryPending === "register" ? t("正在注册…") : t("注册远程市场")}
+            </Button>
+          </form>
           {pluginInventoryState === "loading" ? <div className="empty">{t("正在更新插件市场…")}</div> : null}
           {pluginInventoryState === "idle" ? <div className="empty">{t("尚未加载插件库存。")}</div> : null}
           {pluginInventoryState === "error" ? <div className="empty error">{pluginInventory?.message}</div> : null}

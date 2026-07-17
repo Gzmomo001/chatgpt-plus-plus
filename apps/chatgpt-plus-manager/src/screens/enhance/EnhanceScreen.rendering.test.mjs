@@ -17,6 +17,7 @@ test("plugin marketplace operations do not render progress bars", async () => {
       "/src/screens/enhance/EnhanceScreen.tsx",
     );
     const idleAction = async () => {};
+    const successfulAction = async () => true;
     const html = renderToStaticMarkup(createElement(EnhanceScreen, {
       view: {
         settings: {
@@ -41,7 +42,7 @@ test("plugin marketplace operations do not render progress bars", async () => {
         repairRemotePluginMarketplace: idleAction,
         refreshPluginInventory: idleAction,
         mutatePlugin: idleAction,
-        registerPluginMarketplace: idleAction,
+        registerPluginMarketplace: successfulAction,
         upgradePluginMarketplace: idleAction,
         upgradeRemotePluginMarketplace: idleAction,
       },
@@ -51,6 +52,10 @@ test("plugin marketplace operations do not render progress bars", async () => {
     assert.doesNotMatch(html, /上次修复结果/);
     assert.match(html, /官方插件市场/);
     assert.match(html, /内置备用插件市场/);
+    assert.match(html, /插件市场 URL/);
+    assert.match(html, /注册远程市场/);
+    assert.doesNotMatch(html, /个人市场名称/);
+    assert.doesNotMatch(html, /选择目录并注册/);
   } finally {
     await server.close();
   }

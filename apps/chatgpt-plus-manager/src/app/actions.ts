@@ -375,8 +375,8 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<PluginMarketplaceInventoryResult>("plugin_marketplace_inventory"),
       mutatePlugin: (pluginId: string, action: "install" | "uninstall" | "enable" | "disable") =>
         call<PluginMarketplaceInventoryResult>("mutate_plugin", { request: { pluginId, action } }),
-      registerPluginMarketplace: (name: string, source: string) =>
-        call<PluginMarketplaceInventoryResult>("register_plugin_marketplace", { request: { name, source } }),
+      registerPluginMarketplace: (url: string) =>
+        call<PluginMarketplaceInventoryResult>("register_plugin_marketplace", { request: { url } }),
       refreshPluginMarketplace: () =>
         call<PluginMarketplaceRepairResult>("refresh_plugin_marketplace"),
       refreshRemotePluginMarketplace: () =>

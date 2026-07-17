@@ -46,8 +46,7 @@ pub struct PluginMutationRequest {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterPluginMarketplaceRequest {
-    pub name: String,
-    pub source: String,
+    pub url: String,
 }
 #[derive(Debug, Clone, Serialize)]
 pub struct AdsPayload {
@@ -203,22 +202,23 @@ pub(super) fn mutate_plugin_in_home(
 }
 
 #[tauri::command]
-pub fn register_plugin_marketplace(
+pub async fn register_plugin_marketplace(
     request: RegisterPluginMarketplaceRequest,
 ) -> CommandResult<chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory> {
     let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
-    register_plugin_marketplace_in_home(&home, request)
+    register_plugin_marketplace_in_home(&home, request).await
 }
 
-pub(super) fn register_plugin_marketplace_in_home(
+pub(super) async fn register_plugin_marketplace_in_home(
     home: &Path,
     request: RegisterPluginMarketplaceRequest,
 ) -> CommandResult<chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory> {
-    if let Err(error) = chatgpt_plus_core::plugin_marketplace::register_local_plugin_marketplace(
+    if let Err(error) = chatgpt_plus_core::plugin_marketplace::register_remote_plugin_marketplace(
         home,
-        &request.name,
-        Path::new(&request.source),
-    ) {
+        &request.url,
+    )
+    .await
+    {
         return failed(
             &format!("注册插件市场失败：{error}"),
             chatgpt_plus_core::plugin_marketplace::PluginMarketplaceInventory {

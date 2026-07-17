@@ -730,13 +730,11 @@ fn plugin_marketplace_commands_register_inventory_and_mutate_plugins() {
     )
     .unwrap();
 
-    let registered = install::register_plugin_marketplace_in_home(
-        &home,
-        install::RegisterPluginMarketplaceRequest {
-            name: "personal".to_string(),
-            source: source.to_string_lossy().to_string(),
-        },
-    );
+    chatgpt_plus_core::plugin_marketplace::register_local_plugin_marketplace(
+        &home, "personal", &source,
+    )
+    .unwrap();
+    let registered = install::plugin_marketplace_inventory_from_home(&home);
     assert_eq!(registered.status, "ok");
     assert_eq!(registered.payload.plugins[0].id, "demo@personal");
     assert!(!registered.payload.plugins[0].installed);
@@ -751,6 +749,21 @@ fn plugin_marketplace_commands_register_inventory_and_mutate_plugins() {
     assert_eq!(installed.status, "ok");
     assert!(installed.payload.plugins[0].installed);
     assert!(installed.payload.plugins[0].enabled);
+}
+
+#[tokio::test]
+async fn plugin_marketplace_command_rejects_non_http_urls() {
+    let temp = tempfile::tempdir().unwrap();
+    let result = install::register_plugin_marketplace_in_home(
+        &temp.path().join("home"),
+        install::RegisterPluginMarketplaceRequest {
+            url: "file:///tmp/personal-market".to_string(),
+        },
+    )
+    .await;
+
+    assert_eq!(result.status, "failed");
+    assert!(result.message.contains("http"));
 }
 
 fn create_thread_db_with_rollout(path: &Path, rollout_path: &Path) {
