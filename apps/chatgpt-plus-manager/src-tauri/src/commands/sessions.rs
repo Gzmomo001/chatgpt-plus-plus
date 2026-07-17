@@ -37,16 +37,6 @@ pub struct ExportLocalSessionRequest {
     pub destination_path: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LocalSessionUsageRequest {
-    pub session_id: String,
-    #[serde(default)]
-    pub title: String,
-    #[serde(default)]
-    pub db_path: Option<String>,
-}
-
 #[tauri::command]
 pub fn list_local_sessions() -> CommandResult<LocalSessionsPayload> {
     let inventory = chatgpt_plus_data::list_local_sessions_from_home(
@@ -165,74 +155,6 @@ pub(super) fn export_local_session_markdown_from_home(
         status: status.to_string(),
         message: result.message.clone(),
         payload: result,
-    }
-}
-
-#[tauri::command]
-pub fn load_local_session_usage(request: LocalSessionUsageRequest) -> CommandResult<Value> {
-    load_local_session_usage_from_home(
-        &chatgpt_plus_core::codex_sqlite::default_codex_home_dir(),
-        request,
-    )
-}
-
-pub(super) fn load_local_session_usage_from_home(
-    home: &std::path::Path,
-    request: LocalSessionUsageRequest,
-) -> CommandResult<Value> {
-    let session = SessionRef {
-        session_id: request.session_id,
-        title: request.title,
-    };
-    let mut payload = json!({
-        "sessionId": session.session_id,
-        "rolloutPath": null,
-        "history": [],
-    });
-    let mut message = "未找到对应会话的 Token 使用历史。".to_string();
-    for path in candidate_db_paths(home, request.db_path.as_deref()) {
-        if !path.is_file() {
-            continue;
-        }
-        let adapter = chatgpt_plus_data::SQLiteStorageAdapter::new(
-            path,
-            chatgpt_plus_data::BackupStore::new(home.join(".tmp-usage-backups")),
-        );
-        let candidate = adapter.codex_thread_usage_history(&session);
-        if candidate.get("status").and_then(Value::as_str) == Some("ok") {
-            let mut history = candidate
-                .get("history")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default();
-            for item in &mut history {
-                let Some(object) = item.as_object_mut() else {
-                    continue;
-                };
-                rename_json_key(object, "conversation_id", "conversationId");
-                rename_json_key(object, "turn_id", "turnId");
-                rename_json_key(object, "observed_at", "observedAt");
-            }
-            let count = history.len();
-            message = format!("已读取 {count} 条 Token 使用记录。");
-            payload = json!({
-                "sessionId": candidate.get("session_id").and_then(Value::as_str).unwrap_or(&session.session_id),
-                "rolloutPath": candidate.get("rollout_path").cloned().unwrap_or(Value::Null),
-                "history": history,
-            });
-            return ok(&message, payload);
-        }
-        if let Some(candidate_message) = candidate.get("message").and_then(Value::as_str) {
-            message = candidate_message.to_string();
-            payload = candidate;
-        }
-    }
-    failed(&message, payload)
-}
-
-fn rename_json_key(object: &mut serde_json::Map<String, Value>, from: &str, to: &str) {
-    if let Some(value) = object.remove(from) {
-        object.insert(to.to_string(), value);
     }
 }
 

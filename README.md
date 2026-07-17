@@ -136,7 +136,7 @@ Telegram 频道：<https://t.me/CodexPlusPlus>
 - Tauri + React 主界面，支持深色/浅色切换。
 - 按官方方式启动 Codex/ChatGPT，不修改 Renderer、DOM 或页面请求。
 - 多 Provider 配置：写入受管理的 `ChatGPTPlusPlus` provider，并可切回官方 ChatGPT 登录态。
-- 管理器会话页支持删除、Markdown 导出和 Token 使用历史。
+- 管理器会话页支持删除和 Markdown 导出。
 - 管理器直接维护插件 marketplace、插件与技能库存，不依赖 Codex 页面注入。
 - Provider 同步：切换供应商后自动同步本地会话 metadata，旧会话仍可见；也可在会话管理中手动执行。
 - 按模型粒度配置 metadata：「模型列表」可填写模型名、上下文窗口（如 `1M`、`200K` 或 `1000000`）、支持的 reasoning effort 和默认 effort。ChatGPT++ 从 Codex runtime catalog 或 `models_cache.json` 生成完整 `model_catalog_json`；仓库与用户设置只维护小型模型声明。首次离线且没有 Codex cache 时会保留所选模型并使用 Codex unknown-model fallback。
@@ -187,7 +187,7 @@ experimental_bearer_token = "sk-..."
 
 ## 启动维护与插件能力
 
-ChatGPT++ 可独立启用 Computer Use Guard 与快速启动，并直接读取 Codex 官方 marketplace 和 `config.toml` 来管理插件与技能。会话删除、Markdown 导出和 Token 使用历史也都在管理器内完成，不依赖 Codex 页面注入。
+ChatGPT++ 可独立启用 Computer Use Guard 与快速启动，并直接读取 Codex 官方 marketplace 和 `config.toml` 来管理插件与技能。会话删除和 Markdown 导出也都在管理器内完成，不依赖 Codex 页面注入。
 
 ## 推荐内容
 

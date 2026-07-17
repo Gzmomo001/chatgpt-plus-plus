@@ -171,7 +171,6 @@ test("adapters own wire command names and nested payload shapes", async () => {
   await actions.relay.fetchModels(profile);
   await actions.sessions.delete({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" });
   await actions.sessions.exportMarkdown({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" }, "/tmp/hello.md");
-  await actions.sessions.loadUsage({ id: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" });
   await actions.maintenance.mutatePlugin("demo@personal", "disable");
   await actions.maintenance.registerPluginMarketplace("https://github.com/example/personal-market");
   await actions.maintenance.uninstallEntrypoints(true);
@@ -203,10 +202,6 @@ test("adapters own wire command names and nested payload shapes", async () => {
     {
       command: "export_local_session_markdown",
       args: { request: { sessionId: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite", destinationPath: "/tmp/hello.md" } },
-    },
-    {
-      command: "load_local_session_usage",
-      args: { request: { sessionId: "session-a", title: "Hello", dbPath: "/tmp/state.sqlite" } },
     },
     {
       command: "mutate_plugin",

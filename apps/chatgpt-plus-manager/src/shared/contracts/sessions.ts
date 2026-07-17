@@ -32,27 +32,3 @@ export type ExportLocalSessionResult = {
   filename: string | null;
   markdown: string | null;
 };
-
-export type TokenUsagePoint = {
-  source: string;
-  conversationId: string;
-  turnId: string;
-  observedAt: string;
-  usage: {
-    inputTokens: number;
-    outputTokens: number;
-    totalTokens: number;
-    cachedTokens: number;
-    contextUsed: number;
-    contextLimit: number;
-    hasBreakdown: boolean;
-  };
-};
-
-export type LocalSessionUsageResult = {
-  status: string;
-  message: string;
-  sessionId: string;
-  rolloutPath: string | null;
-  history: TokenUsagePoint[];
-};

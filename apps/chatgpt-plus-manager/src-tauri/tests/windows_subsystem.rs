@@ -327,7 +327,7 @@ fn manager_does_not_register_the_removed_remote_project_commands() {
         .next()
         .expect("manager handler registration end");
 
-    assert_eq!(handler.matches("commands::").count(), 53);
+    assert_eq!(handler.matches("commands::").count(), 52);
     assert!(!commands_rs.contains(&command_stem));
     assert!(!handler.contains(&command_stem));
 }
@@ -409,15 +409,15 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         .cloned()
         .collect::<BTreeSet<_>>();
 
-    assert_eq!(annotated.len(), 53, "Manager domain command count changed");
+    assert_eq!(annotated.len(), 52, "Manager domain command count changed");
     assert_eq!(
         lib_annotated, tray_commands,
         "lib.rs must own only the three tray commands"
     );
     assert_eq!(
         registered.len(),
-        56,
-        "handler must include 53 domain and three tray commands"
+        55,
+        "handler must include 52 domain and three tray commands"
     );
     assert_eq!(
         registered_paths, expected_registered_paths,
@@ -427,9 +427,9 @@ fn manager_command_inventory_matches_annotations_registration_and_frontend_contr
         registered_manager, annotated_paths,
         "generate_handler must register every domain command exactly once",
     );
-    assert_eq!(frontend.len(), 53, "frontend-known command count changed");
+    assert_eq!(frontend.len(), 52, "frontend-known command count changed");
     assert!(frontend.is_superset(&tray_commands));
-    assert_eq!(frontend_manager.len(), 50);
+    assert_eq!(frontend_manager.len(), 49);
     assert!(
         annotated.is_superset(&frontend_manager),
         "every frontend manager command must have an annotated backend command"
@@ -651,7 +651,7 @@ fn manager_does_not_expose_extension_management() {
 }
 
 #[test]
-fn manager_window_and_relay_detail_header_stay_usable() {
+fn manager_window_stays_usable_without_the_legacy_relay_detail_header() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let app_tsx = manifest_dir.parent().unwrap().join("src/app/App.tsx");
     let app_tsx = std::fs::read_to_string(&app_tsx).expect("read manager App.tsx");
@@ -667,13 +667,10 @@ fn manager_window_and_relay_detail_header_stay_usable() {
     let tauri_conf =
         std::fs::read_to_string(manifest_dir.join("tauri.conf.json")).expect("read tauri config");
 
-    assert!(detail_tsx.contains("relay-detail-sticky"));
+    assert!(!detail_tsx.contains("relay-detail-sticky"));
     assert!(!detail_tsx.contains("CardHead title=\"供应商详情\""));
     assert!(!app_tsx.contains("relay-detail-sticky"));
-    assert!(styles.contains(".relay-detail-sticky"));
-    assert!(styles.contains("position: sticky"));
-    assert!(styles.contains("top: 0"));
-    assert!(styles.contains("margin: 0"));
+    assert!(!styles.contains(".relay-detail-sticky"));
     assert!(lib_rs.contains(".inner_size(1180.0, 820.0)"));
     assert!(lib_rs.contains(".min_inner_size(960.0, 720.0)"));
     assert!(tauri_conf.contains("\"width\": 1180"));

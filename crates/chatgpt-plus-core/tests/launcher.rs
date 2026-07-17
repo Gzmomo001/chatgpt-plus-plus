@@ -77,6 +77,7 @@ fn macos_open_command_keeps_official_app_launch_without_cdp_flags() {
     );
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn macos_fast_startup_command_targets_the_app_executable_with_resolver_rules() {
     let settings = BackendSettings {

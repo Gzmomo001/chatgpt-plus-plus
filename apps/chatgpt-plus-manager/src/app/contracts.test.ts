@@ -95,7 +95,6 @@ test("publishes every frontend-known Tauri command name", () => {
     "list_local_sessions",
     "load_ads",
     "load_ccs_providers",
-    "load_local_session_usage",
     "load_overview",
     "load_pending_provider_import",
     "load_provider_sync_targets",
@@ -222,8 +221,6 @@ test("composes Sessions through its screen-owned vertical slice", () => {
       "deleteSelectedSessions",
       "deleteSession",
       "exportSession",
-      "loadSessionUsage",
-      "closeSessionDetail",
       "syncProvidersNow",
     ],
   );

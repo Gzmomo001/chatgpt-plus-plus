@@ -19,7 +19,6 @@ import type {
   DeleteLocalSessionResult,
   ExportLocalSessionResult,
   LocalSession,
-  LocalSessionUsageResult,
   LocalSessionsResult,
 } from "@/shared/contracts/sessions";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
@@ -44,7 +43,6 @@ export const TAURI_COMMAND_NAMES = [
   "list_local_sessions",
   "load_ads",
   "load_ccs_providers",
-  "load_local_session_usage",
   "load_overview",
   "load_pending_provider_import",
   "load_provider_sync_targets",
@@ -340,10 +338,6 @@ export function createManagerActions(call: InvokeManagerCommand) {
           destinationPath,
         },
       }),
-      loadUsage: (session: Pick<LocalSession, "id" | "title" | "dbPath">) =>
-        call<LocalSessionUsageResult>("load_local_session_usage", {
-          request: { sessionId: session.id, title: session.title, dbPath: session.dbPath },
-        }),
       syncProviders: () =>
         call<CommandResult<ProviderSyncPayload>>("sync_providers_now", { targetProvider: undefined }),
     },

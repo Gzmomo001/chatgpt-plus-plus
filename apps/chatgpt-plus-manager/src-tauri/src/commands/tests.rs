@@ -684,38 +684,7 @@ fn session_export_command_prepares_and_saves_markdown_with_explicit_states() {
 }
 
 #[test]
-fn session_usage_command_returns_rollout_token_history() {
-    let temp = tempfile::tempdir().unwrap();
-    let home = temp.path().join("codex-home");
-    std::fs::create_dir_all(&home).unwrap();
-    let db_path = home.join("state_5.sqlite");
-    let rollout_path = home.join("rollout.jsonl");
-    std::fs::write(
-        &rollout_path,
-        concat!(
-            "{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"turn-1\"}}\n",
-            "{\"timestamp\":\"2026-07-12T00:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"total_tokens\":1500},\"last_token_usage\":{\"input_tokens\":1000,\"output_tokens\":200,\"total_tokens\":1200},\"model_context_window\":200000}}}\n"
-        ),
-    )
-    .unwrap();
-    create_thread_db_with_rollout(&db_path, &rollout_path);
-
-    let result = sessions::load_local_session_usage_from_home(
-        &home,
-        sessions::LocalSessionUsageRequest {
-            session_id: "t1".to_string(),
-            title: "Thread".to_string(),
-            db_path: Some(db_path.to_string_lossy().to_string()),
-        },
-    );
-
-    assert_eq!(result.status, "ok");
-    assert_eq!(result.payload["history"][0]["turnId"], "turn-1");
-    assert_eq!(result.payload["history"][0]["usage"]["totalTokens"], 1200);
-}
-
-#[test]
-fn plugin_marketplace_commands_register_inventory_and_mutate_plugins() {
+fn plugin_marketplace_inventory_and_mutation_use_registered_marketplaces() {
     let temp = tempfile::tempdir().unwrap();
     let home = temp.path().join("home");
     let source = temp.path().join("personal-market");

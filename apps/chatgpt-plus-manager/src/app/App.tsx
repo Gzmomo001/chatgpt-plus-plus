@@ -143,15 +143,12 @@ export function App() {
     selectedSessionIds: [],
     selectionMode: false,
     pendingOperation: null,
-    activeSessionId: null,
     exportResult: null,
-    usageResult: null,
   });
   const sessionsControllerPortsRef = useRef<SessionsControllerPorts>({
     loadSessions: async () => null,
     deleteSession: async () => null,
     exportSession: async () => null,
-    loadUsage: async () => null,
     confirmDelete: async () => false,
     reportDelete: () => {},
     viewChanged: setSessionsControllerView,
@@ -162,7 +159,6 @@ export function App() {
       loadSessions: (silent) => sessionsControllerPortsRef.current.loadSessions(silent),
       deleteSession: (session) => sessionsControllerPortsRef.current.deleteSession(session),
       exportSession: (session) => sessionsControllerPortsRef.current.exportSession(session),
-      loadUsage: (session) => sessionsControllerPortsRef.current.loadUsage(session),
       confirmDelete: (request) => sessionsControllerPortsRef.current.confirmDelete(request),
       reportDelete: (report) => sessionsControllerPortsRef.current.reportDelete(report),
       viewChanged: (view) => sessionsControllerPortsRef.current.viewChanged(view),
@@ -392,19 +388,10 @@ export function App() {
     return result;
   };
 
-  const loadLocalSessionUsage = async (session: LocalSession) => {
-    const result = await run(() => managerActions.sessions.loadUsage(session));
-    if (result && !isSuccessStatus(result.status)) {
-      showResultNotice(t("Token 使用历史"), result);
-    }
-    return result;
-  };
-
   sessionsControllerPortsRef.current = {
     loadSessions: loadLocalSessions,
     deleteSession: (session) => run(() => requestDeleteLocalSession(session)),
     exportSession: exportLocalSession,
-    loadUsage: loadLocalSessionUsage,
     confirmDelete: confirmSessionsDelete,
     reportDelete: reportSessionsDelete,
     viewChanged: setSessionsControllerView,
@@ -1193,8 +1180,6 @@ export function App() {
     deleteSelectedSessions: () => executeSessionsAction({ type: "deleteSelection" }),
     deleteSession: (sessionId) => executeSessionsAction({ type: "deleteOne", sessionId }),
     exportSession: (sessionId) => executeSessionsAction({ type: "export", sessionId }),
-    loadSessionUsage: (sessionId) => executeSessionsAction({ type: "loadUsage", sessionId }),
-    closeSessionDetail: () => executeSessionsAction({ type: "closeDetail" }),
     syncProvidersNow: actions.syncProvidersNow,
   };
   const enhanceView: EnhanceView = {

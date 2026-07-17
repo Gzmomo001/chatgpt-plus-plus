@@ -2,7 +2,6 @@ import type {
   DeleteLocalSessionResult,
   ExportLocalSessionResult,
   LocalSession,
-  LocalSessionUsageResult,
   LocalSessionsResult,
 } from "../../shared/contracts/sessions.ts";
 
@@ -18,10 +17,8 @@ export type SessionsControllerView = {
   }[];
   selectedSessionIds: readonly string[];
   selectionMode: boolean;
-  pendingOperation: "refresh" | "deleteOne" | "deleteSelection" | "export" | "usage" | null;
-  activeSessionId: string | null;
+  pendingOperation: "refresh" | "deleteOne" | "deleteSelection" | "export" | null;
   exportResult: ExportLocalSessionResult | null;
-  usageResult: LocalSessionUsageResult | null;
 };
 
 export type SessionsIntent =
@@ -31,9 +28,7 @@ export type SessionsIntent =
   | { type: "clearSelection" }
   | { type: "deleteSelection" }
   | { type: "deleteOne"; sessionId: string }
-  | { type: "export"; sessionId: string }
-  | { type: "loadUsage"; sessionId: string }
-  | { type: "closeDetail" };
+  | { type: "export"; sessionId: string };
 
 export type SessionsDeleteRequest = {
   kind: "single" | "bulk";
@@ -48,7 +43,6 @@ export type SessionsControllerPorts = {
   loadSessions: (silent: boolean) => Promise<LocalSessionsResult | null>;
   deleteSession: (session: LocalSession) => Promise<DeleteLocalSessionResult | null>;
   exportSession: (session: LocalSession) => Promise<ExportLocalSessionResult | null>;
-  loadUsage: (session: LocalSession) => Promise<LocalSessionUsageResult | null>;
   confirmDelete: (request: SessionsDeleteRequest) => Promise<boolean>;
   reportDelete: (report: SessionsDeleteReport) => void;
   viewChanged: (view: SessionsControllerView) => void;
@@ -68,9 +62,7 @@ export function createSessionsController(ports: SessionsControllerPorts): Sessio
   let selectedSessionIds = new Set<string>();
   let selectionMode = false;
   let pendingOperation: SessionsControllerView["pendingOperation"] = null;
-  let activeSessionId: string | null = null;
   let exportResult: ExportLocalSessionResult | null = null;
-  let usageResult: LocalSessionUsageResult | null = null;
 
   const view = (): SessionsControllerView => ({
     dbPath: sessions?.dbPath ?? null,
@@ -85,9 +77,7 @@ export function createSessionsController(ports: SessionsControllerPorts): Sessio
     selectedSessionIds: [...selectedSessionIds],
     selectionMode,
     pendingOperation,
-    activeSessionId,
     exportResult,
-    usageResult,
   });
   const publish = () => ports.viewChanged(view());
 
@@ -185,21 +175,6 @@ export function createSessionsController(ports: SessionsControllerPorts): Sessio
     }
   };
 
-  const loadUsage = async (sessionId: string) => {
-    const item = findSession(sessionId);
-    if (!item || pendingOperation) return;
-    activeSessionId = sessionId;
-    usageResult = null;
-    pendingOperation = "usage";
-    publish();
-    try {
-      usageResult = await ports.loadUsage(item);
-    } finally {
-      pendingOperation = null;
-      publish();
-    }
-  };
-
   const execute = async (intent: SessionsIntent) => {
     switch (intent.type) {
       case "refresh":
@@ -234,23 +209,13 @@ export function createSessionsController(ports: SessionsControllerPorts): Sessio
       case "export":
         await exportOne(intent.sessionId);
         return;
-      case "loadUsage":
-        await loadUsage(intent.sessionId);
-        return;
-      case "closeDetail":
-        if (pendingOperation) return;
-        activeSessionId = null;
-        usageResult = null;
-        publish();
     }
   };
 
   const reset = () => {
     selectionMode = false;
     selectedSessionIds.clear();
-    activeSessionId = null;
     exportResult = null;
-    usageResult = null;
     publish();
   };
 

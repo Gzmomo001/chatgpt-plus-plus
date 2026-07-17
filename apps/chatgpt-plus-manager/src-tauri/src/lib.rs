@@ -116,7 +116,6 @@ pub fn run() {
             commands::sessions::list_local_sessions,
             commands::sessions::delete_local_session,
             commands::sessions::export_local_session_markdown,
-            commands::sessions::load_local_session_usage,
             commands::sessions::load_provider_sync_targets,
             commands::sessions::sync_providers_now,
             commands::install::load_ads,
