@@ -2,7 +2,6 @@ import { BarChart3, Download, Info, RefreshCw, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { formatTime } from "@/shared/lib/time";
-import { Field } from "@/shared/ui/field";
 import { SettingsCard, Toolbar } from "@/shared/ui/layout";
 import { Metric } from "@/shared/ui/metric";
 import { StatusBadge as Badge } from "@/shared/ui/status-badge";
@@ -31,15 +30,6 @@ export type SessionsView = {
   usageResult: LocalSessionUsageResult | null;
   providerSync: {
     active: boolean;
-    percent: number;
-    message: string;
-    enabled: boolean;
-    selectedTarget: string;
-    targets: readonly {
-      id: string;
-      sources: readonly ("config" | "rollout" | "sqlite" | "manual")[];
-      isCurrentProvider: boolean;
-    }[];
   };
 };
 
@@ -54,26 +44,9 @@ export type SessionsActions = {
   loadSessionUsage: (sessionId: string) => Promise<void>;
   closeSessionDetail: () => Promise<void>;
   syncProvidersNow: () => Promise<void>;
-  selectProviderSyncTarget: (provider: string) => void;
-  setProviderSyncEnabled: (enabled: boolean) => void;
-  saveProviderSyncSettings: () => Promise<void>;
 };
 
 const SESSION_RENDER_BATCH_SIZE = 50;
-
-function providerSyncTargetLabel(target: SessionsView["providerSync"]["targets"][number]): string {
-  const providerSyncSourceLabels: Record<"config" | "rollout" | "sqlite" | "manual", string> = {
-    config: t("配置"),
-    rollout: t("会话"),
-    sqlite: t("索引"),
-    manual: t("手动"),
-  };
-  const labels = target.sources
-    .map((source) => providerSyncSourceLabels[source])
-    .filter(Boolean);
-  const current = target.isCurrentProvider ? [t("当前")] : [];
-  return [...labels, ...current].join(" / ") || t("发现");
-}
 
 export function SessionsScreen({
   view,
@@ -111,70 +84,25 @@ export function SessionsScreen({
             <Metric label={t("未归档")} value={tf("{0} 个", [activeCount])} />
             <Metric label={t("已归档")} value={tf("{0} 个", [archivedCount])} />
             <Metric label={t("数据库")} value={view.dbPath ?? "~/.codex/sqlite/*.db"} />
-        </div>
-          <div className="form-row">
-            <Field label={t("同步目标")}>
-              <select
-                className="select-input"
-                disabled={view.providerSync.active || !view.providerSync.targets.length}
-                value={view.providerSync.selectedTarget}
-                onChange={(event) => actions.selectProviderSyncTarget(event.currentTarget.value)}
-              >
-                {view.providerSync.targets.map((target) => (
-                  <option key={target.id} value={target.id}>
-                    {target.id}{t("（")}{providerSyncTargetLabel(target)}{t("）")}
-                  </option>
-                ))}
-                {!view.providerSync.targets.length ? <option value="">{t("当前配置 provider")}</option> : null}
-              </select>
-            </Field>
           </div>
           <Toolbar>
-            <Button aria-busy={pendingOperation === "refresh"} disabled={sessionsBusy} onClick={() => void actions.refreshSessions()}>
-              <RefreshCw className="h-4 w-4" />
-              {t("刷新会话")}
-            </Button>
             <Button disabled={view.providerSync.active} onClick={() => void actions.syncProvidersNow()} variant="outline">
               <RefreshCw className="h-4 w-4" />
               {view.providerSync.active ? t("正在修复…") : t("立刻修复历史会话")}
             </Button>
           </Toolbar>
-          <div className="provider-sync-progress" data-active={view.providerSync.active}>
-            <div className="provider-sync-progress-head">
-              <strong>{view.providerSync.active ? t("正在修复历史会话") : t("历史会话修复进度")}</strong>
-              <span>{view.providerSync.percent}%</span>
-            </div>
-            <div
-              aria-valuemax={100}
-              aria-valuemin={0}
-              aria-valuenow={view.providerSync.percent}
-              className="provider-sync-progress-bar"
-              role="progressbar"
-            >
-              <div className="provider-sync-progress-fill" style={{ width: `${view.providerSync.percent}%` }} />
-            </div>
-            <small>{view.providerSync.message}</small>
-          </div>
           <div className="hint-line">
             <Info className="h-4 w-4" />
             <span>{t("删除会创建本地备份；如果 Codex App 正在使用该会话，建议先关闭对应会话窗口再操作。")}</span>
           </div>
-          <label className="switch-row">
-            <input
-              checked={view.providerSync.enabled}
-              onChange={(event) => actions.setProviderSyncEnabled(event.currentTarget.checked)}
-              type="checkbox"
-            />
-            <span>
-              <strong>{t("启动前自动修复历史会话")}</strong>
-              <small>{t("开启后，通过 ChatGPT++ 启动 Codex 前自动整理一次旧对话的归属标记。")}</small>
-            </span>
-          </label>
-          <Toolbar>
-            <Button onClick={() => void actions.saveProviderSyncSettings()}>{t("保存自动修复设置")}</Button>
-          </Toolbar>
       </SettingsCard>
       <SettingsCard title={t("本地会话")} detail={items.length ? t("按更新时间倒序显示") : t("点击刷新会话读取本地数据库")}>
+        <Toolbar>
+          <Button aria-busy={pendingOperation === "refresh"} disabled={sessionsBusy} onClick={() => void actions.refreshSessions()}>
+            <RefreshCw className="h-4 w-4" />
+            {t("刷新会话")}
+          </Button>
+        </Toolbar>
         {items.length ? (
             <>
               {view.exportResult ? (

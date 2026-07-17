@@ -50,12 +50,16 @@ impl ManagedLaunchRuntime {
     ) -> anyhow::Result<LaunchOutcome> {
         let _operation = self.operation.lock().await;
         if action == LaunchAction::Launch {
-            let state = self.state.lock().await;
-            if let Some(active) = &state.active {
-                return Ok(LaunchOutcome {
-                    protocol_proxy_port: active.handle.protocol_proxy_port,
-                    already_running: true,
-                });
+            let active = self.state.lock().await.active.take();
+            if let Some(active) = active {
+                active.handle.shutdown_owned_resources().await;
+                let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
+                    "manager.launch_runtime.reactivate",
+                    serde_json::json!({
+                        "protocol_proxy_port": active.handle.protocol_proxy_port,
+                        "app_path": active.request.app_path
+                    }),
+                );
             }
         }
 
@@ -192,13 +196,6 @@ impl LaunchHooks for ManagerLaunchHooks {
         settings: &chatgpt_plus_core::settings::BackendSettings,
     ) -> anyhow::Result<()> {
         self.core.apply_codex_home(settings)
-    }
-
-    async fn run_provider_sync(&self) -> anyhow::Result<()> {
-        let _ = tokio::task::spawn_blocking(|| chatgpt_plus_data::run_provider_sync(None))
-            .await
-            .map_err(|error| anyhow::anyhow!("provider sync task failed: {error}"))?;
-        Ok(())
     }
 
     async fn ensure_computer_use_config(

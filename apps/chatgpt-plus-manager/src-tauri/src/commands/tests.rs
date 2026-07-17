@@ -12,7 +12,9 @@ use super::diagnostics::check_env_conflicts;
 use super::install::{self, ads_payload, open_external_url, perform_update};
 use super::relay::*;
 use super::sessions::{self, delete_local_session, list_local_sessions};
-use super::settings::{backend_version, load_overview, should_show_update, startup_options};
+use super::settings::{
+    backend_version, launch_enhancement_changed, load_overview, should_show_update, startup_options,
+};
 
 #[test]
 fn local_sessions_payload_serializes_with_camel_case_paths() {
@@ -299,6 +301,27 @@ fn startup_options_returns_structured_payload() {
     let result = startup_options();
 
     assert_eq!(result.status, "ok");
+}
+
+#[test]
+fn launch_enhancement_changes_require_a_managed_codex_restart() {
+    let previous = BackendSettings::default();
+    let fast_startup = BackendSettings {
+        codex_app_fast_startup: true,
+        ..previous.clone()
+    };
+    let computer_use_guard = BackendSettings {
+        computer_use_guard_enabled: true,
+        ..previous.clone()
+    };
+    let unrelated = BackendSettings {
+        diagnostic_log_enabled: false,
+        ..previous.clone()
+    };
+
+    assert!(launch_enhancement_changed(&previous, &fast_startup));
+    assert!(launch_enhancement_changed(&previous, &computer_use_guard));
+    assert!(!launch_enhancement_changed(&previous, &unrelated));
 }
 
 #[test]

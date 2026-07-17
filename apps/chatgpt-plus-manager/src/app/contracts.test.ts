@@ -209,7 +209,7 @@ test("composes Sessions through its screen-owned vertical slice", () => {
   assert.doesNotMatch(app, /function SessionsScreen\(/);
   assert.match(screen, /export function SessionsScreen\(/);
   assert.doesNotMatch(screen, /@tauri-apps\/api|\binvoke\s*\(|@\/app(?:\/|["'])/);
-  assert.doesNotMatch(screen, /\bSessionsControllerView\b|\bSessionsIntent\b|\bLocalSessionsResult\b|\bProviderSyncTargetOption\b/);
+  assert.doesNotMatch(screen, /\bSessionsControllerView\b|\bSessionsIntent\b|\bLocalSessionsResult\b|\bProviderSyncTargetOption\b|同步目标|selectProviderSyncTarget/);
   const actionContract = screen.match(/export type SessionsActions\s*=\s*\{([\s\S]*?)\n\};/);
   assert.ok(actionContract);
   assert.deepEqual(
@@ -225,9 +225,6 @@ test("composes Sessions through its screen-owned vertical slice", () => {
       "loadSessionUsage",
       "closeSessionDetail",
       "syncProvidersNow",
-      "selectProviderSyncTarget",
-      "setProviderSyncEnabled",
-      "saveProviderSyncSettings",
     ],
   );
 });

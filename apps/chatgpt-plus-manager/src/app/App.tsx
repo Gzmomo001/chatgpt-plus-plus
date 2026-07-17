@@ -33,7 +33,7 @@ import { numberOrDefault } from "@/shared/lib/settings";
 import type { UpdateResult } from "@/shared/contracts/diagnostics";
 import type { OverviewResult } from "@/shared/contracts/overview";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
-import type { LocalSession, ProviderSyncTargetsResult } from "@/shared/contracts/sessions";
+import type { LocalSession } from "@/shared/contracts/sessions";
 import {
   useEffect,
   useMemo,
@@ -99,7 +99,6 @@ import type {
 } from "@/features/relay-profiles/types";
 import { t, tf, toggleLanguage, useLanguage } from "@/i18n";
 import {
-  providerSyncProgressMessage,
   truncateSessionDeletePreview,
 } from "@/features/sessions/presentation";
 
@@ -109,13 +108,6 @@ const WEEKLY_UPDATE_CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const AUTOMATIC_UPDATE_CHECKS_ENABLED = import.meta.env.PROD;
 const DEVELOPMENT_RUNTIME =
   typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
-
-type ProviderSyncProgress = {
-  active: boolean;
-  percent: number;
-  message: string;
-  result: CommandResult<ProviderSyncPayload> | null;
-};
 
 type SettingsSaveRequest =
   | { mode: "autosave"; form: PreferenceSettings }
@@ -189,12 +181,7 @@ export function App() {
     saveNow: (request: SettingsSaveRequest) => void;
     dispose: () => void;
   } | null>(null);
-  const [providerSyncProgress, setProviderSyncProgress] = useState<ProviderSyncProgress>({
-    active: false,
-    percent: 0,
-    message: t("尚未运行历史会话修复。"),
-    result: null,
-  });
+  const [providerSyncActive, setProviderSyncActive] = useState(false);
   const [pluginMarketplaceProgress, setPluginMarketplaceProgress] = useState<TaskProgress>({
     active: false,
     percent: 0,
@@ -208,8 +195,6 @@ export function App() {
   });
   const [pluginInventory, setPluginInventory] = useState<PluginMarketplaceInventoryResult | null>(null);
   const [pluginInventoryPending, setPluginInventoryPending] = useState<string | null>(null);
-  const [providerSyncTargets, setProviderSyncTargets] = useState<ProviderSyncTargetsResult | null>(null);
-  const [selectedProviderSyncTarget, setSelectedProviderSyncTarget] = useState("");
   const [removeOwnedData, setRemoveOwnedData] = useState(false);
   const [relaySwitching, setRelaySwitching] = useState(false);
 
@@ -469,7 +454,6 @@ export function App() {
       await Promise.all([
         refreshSettings(true),
         refreshLocalSessions(true),
-        refreshProviderSyncTargets(true),
       ]);
     }
     if (next === "enhance") {
@@ -492,8 +476,15 @@ export function App() {
   };
 
   const launch = async () => {
+    logDiagnostic("manager.ui.launch.click", {
+      appPath: settingsForm.codexAppPath,
+    });
     const result = await launchCommand("launch");
     if (result) {
+      logDiagnostic("manager.ui.launch.result", {
+        status: result.status,
+        message: result.message,
+      });
       showNotice(t("启动任务"), result.message, result.status);
       await refreshOverview(true);
     }
@@ -799,73 +790,18 @@ export function App() {
     }
   };
 
-  const refreshProviderSyncTargets = async (silent = false) => {
-    const result = await run(() => managerActions.sessions.loadSyncTargets());
-    if (result) {
-      setProviderSyncTargets(result);
-      const targets = result.targets ?? [];
-      const saved = settingsForm.providerSyncLastSelectedProvider;
-      const preferred =
-        targets.find((target) => target.id === saved)?.id ||
-        targets.find((target) => target.isCurrentProvider)?.id ||
-        targets[0]?.id ||
-        "openai";
-      setSelectedProviderSyncTarget((current) => (targets.some((target) => target.id === current) ? current : preferred));
-      if (!silent && !isSuccessStatus(result.status)) showNotice(t("Provider 同步目标"), result.message, result.status);
-    }
-    return result;
-  };
-
   const syncProvidersNow = async () => {
-    if (providerSyncProgress.active) return;
-    setProviderSyncProgress({
-      active: true,
-      percent: 12,
-      message: selectedProviderSyncTarget ? tf("正在同步到 {0}…", [selectedProviderSyncTarget]) : t("正在扫描历史会话与索引…"),
-      result: null,
-    });
-    const progressTimer = window.setInterval(() => {
-      setProviderSyncProgress((current) => {
-        if (!current.active) return current;
-        return {
-          ...current,
-          percent: Math.min(88, current.percent + 8),
-          message: current.percent < 40 ? t("正在检查会话 provider 标记…") : t("正在写入修复与备份…"),
-        };
-      });
-    }, 350);
+    if (providerSyncActive) return;
+    setProviderSyncActive(true);
     try {
-      const targetProvider = selectedProviderSyncTarget || undefined;
-      const result = await run(() => managerActions.sessions.syncProviders(targetProvider));
+      const result = await run(() => managerActions.sessions.syncProviders());
       if (result) {
-        setProviderSyncProgress({
-          active: false,
-          percent: 100,
-          message: providerSyncProgressMessage(result),
-          result,
-        });
-        if (targetProvider) {
-          const next = {
-            ...settingsForm,
-            providerSyncLastSelectedProvider: targetProvider,
-            providerSyncSavedProviders: Array.from(
-              new Set([...(settingsForm.providerSyncSavedProviders ?? []), targetProvider]),
-            ).sort(),
-          };
-          setSettingsForm(next);
-        }
-        await refreshProviderSyncTargets(true);
         showNotice(t("历史会话修复"), result.message, result.status);
       } else {
-        setProviderSyncProgress({
-          active: false,
-          percent: 100,
-          message: t("历史会话修复失败，请查看错误提示后重试。"),
-          result: null,
-        });
+        showNotice(t("历史会话修复"), t("历史会话修复失败，请查看错误提示后重试。"), "failed");
       }
     } finally {
-      window.clearInterval(progressTimer);
+      setProviderSyncActive(false);
     }
   };
 
@@ -1165,7 +1101,6 @@ export function App() {
       await refreshSettings(true);
       await refreshRelay(true);
       await refreshEnvConflicts(true);
-      await refreshProviderSyncTargets(true);
       await refreshPendingProviderImport(true);
       await refreshRemotePluginMarketplace(true);
       await refreshPluginInventory(true);
@@ -1262,11 +1197,6 @@ export function App() {
         }
       },
       syncProvidersNow,
-      refreshProviderSyncTargets,
-      setProviderSyncTarget: (provider: string) => {
-        setSelectedProviderSyncTarget(provider);
-        setSettingsForm((current) => ({ ...current, providerSyncLastSelectedProvider: provider }));
-      },
       refreshRelay,
       refreshRelayFiles,
       refreshEnvConflicts,
@@ -1315,21 +1245,12 @@ export function App() {
       },
       toggleTheme: () => setTheme((current) => (current === "dark" ? "light" : "dark")),
     }),
-    [route, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, theme, relayFiles, selectedProviderSyncTarget, envConflicts, ccsProviders, relaySwitching],
+    [route, settingsForm, settings, removeOwnedData, update, updateInstallProgress.active, theme, relayFiles, envConflicts, ccsProviders, relaySwitching],
   );
   const sessionsView: SessionsView = {
     ...sessionsControllerView,
     providerSync: {
-      active: providerSyncProgress.active,
-      percent: providerSyncProgress.percent,
-      message: providerSyncProgress.message,
-      enabled: settingsForm.providerSyncEnabled,
-      selectedTarget: selectedProviderSyncTarget,
-      targets: (providerSyncTargets?.targets ?? []).map((target) => ({
-        id: target.id,
-        sources: target.sources,
-        isCurrentProvider: target.isCurrentProvider,
-      })),
+      active: providerSyncActive,
     },
   };
   const sessionsActions: SessionsActions = {
@@ -1344,10 +1265,6 @@ export function App() {
     loadSessionUsage: (sessionId) => executeSessionsAction({ type: "loadUsage", sessionId }),
     closeSessionDetail: () => executeSessionsAction({ type: "closeDetail" }),
     syncProvidersNow: actions.syncProvidersNow,
-    selectProviderSyncTarget: actions.setProviderSyncTarget,
-    setProviderSyncEnabled: (enabled) =>
-      setSettingsForm((current) => ({ ...current, providerSyncEnabled: enabled })),
-    saveProviderSyncSettings: actions.saveSettings,
   };
   const enhanceView: EnhanceView = {
     settings: {
@@ -1601,8 +1518,6 @@ type Actions = {
   resetSettings: () => Promise<void>;
   chooseChatGptAppPath: () => Promise<void>;
   syncProvidersNow: () => Promise<void>;
-  refreshProviderSyncTargets: (silent?: boolean) => Promise<ProviderSyncTargetsResult | null>;
-  setProviderSyncTarget: (provider: string) => void;
   refreshRelay: () => Promise<void>;
   refreshRelayFiles: () => Promise<RelayFilesResult | null>;
   refreshEnvConflicts: (silent?: boolean) => Promise<EnvConflictsResult | null>;

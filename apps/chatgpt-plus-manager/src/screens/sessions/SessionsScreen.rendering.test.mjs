@@ -40,11 +40,6 @@ test("session management keeps its first render bounded for large inventories", 
         usageResult: null,
         providerSync: {
           active: false,
-          percent: 0,
-          message: "idle",
-          enabled: false,
-          selectedTarget: "",
-          targets: [],
         },
       },
       actions: {
@@ -58,9 +53,6 @@ test("session management keeps its first render bounded for large inventories", 
         loadSessionUsage: idleAction,
         closeSessionDetail: idleAction,
         syncProvidersNow: idleAction,
-        selectProviderSyncTarget: () => {},
-        setProviderSyncEnabled: () => {},
-        saveProviderSyncSettings: idleAction,
       },
     }));
 

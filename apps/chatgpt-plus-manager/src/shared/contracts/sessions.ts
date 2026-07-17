@@ -56,26 +56,3 @@ export type LocalSessionUsageResult = {
   rolloutPath: string | null;
   history: TokenUsagePoint[];
 };
-
-export type ProviderSyncTargetSource = "config" | "rollout" | "sqlite" | "manual";
-
-export type ProviderSyncTargetOption = {
-  id: string;
-  sources: ProviderSyncTargetSource[];
-  isCurrentProvider: boolean;
-  isManual: boolean;
-  isSaved: boolean;
-};
-
-export type ProviderSyncTargetsResult = {
-  status: string;
-  message: string;
-  currentProvider: string;
-  targets: ProviderSyncTargetOption[];
-};
-
-export type ProviderSyncProgressView = {
-  active: boolean;
-  percent: number;
-  message: string;
-};

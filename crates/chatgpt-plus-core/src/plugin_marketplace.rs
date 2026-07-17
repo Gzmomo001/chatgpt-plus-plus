@@ -192,6 +192,8 @@ pub struct PluginInventoryItem {
     pub display_name: String,
     pub description: String,
     pub marketplace: String,
+    #[serde(skip)]
+    marketplace_source: String,
     pub installed: bool,
     pub enabled: bool,
     pub skill_count: usize,
@@ -279,16 +281,26 @@ pub fn plugin_marketplace_inventory(home: &Path) -> anyhow::Result<PluginMarketp
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default()
                 .to_string();
-            plugins.push(PluginInventoryItem {
+            let candidate = PluginInventoryItem {
                 id,
                 name: name.to_string(),
                 display_name,
                 description,
                 marketplace: configured_name.to_string(),
+                marketplace_source: source.clone(),
                 installed: is_installed,
                 enabled,
                 skill_count: count_skill_files(&root.join("plugins").join(name))?,
-            });
+            };
+            if let Some(existing_index) = plugins.iter().position(|plugin| {
+                plugin.name == candidate.name && plugin.marketplace_source == source
+            }) {
+                if should_replace_duplicate_plugin(&plugins[existing_index], &candidate) {
+                    plugins[existing_index] = candidate;
+                }
+            } else {
+                plugins.push(candidate);
+            }
         }
     }
     sources.sort_by(|left, right| left.name.cmp(&right.name));
@@ -297,6 +309,29 @@ pub fn plugin_marketplace_inventory(home: &Path) -> anyhow::Result<PluginMarketp
         marketplaces: sources,
         plugins,
     })
+}
+
+fn should_replace_duplicate_plugin(
+    existing: &PluginInventoryItem,
+    candidate: &PluginInventoryItem,
+) -> bool {
+    (
+        candidate.installed,
+        candidate.enabled,
+        plugin_marketplace_priority(&candidate.marketplace),
+    ) > (
+        existing.installed,
+        existing.enabled,
+        plugin_marketplace_priority(&existing.marketplace),
+    )
+}
+
+fn plugin_marketplace_priority(name: &str) -> u8 {
+    match name {
+        OPENAI_CURATED_MARKETPLACE => 2,
+        OPENAI_API_CURATED_MARKETPLACE => 1,
+        _ => 0,
+    }
 }
 
 pub fn mutate_plugin(home: &Path, plugin_id: &str, mutation: PluginMutation) -> anyhow::Result<()> {
@@ -1102,6 +1137,7 @@ mod tests {
         ensure_openai_curated_marketplace_config(home).unwrap();
 
         let inventory = plugin_marketplace_inventory(home).unwrap();
+        assert_eq!(inventory.plugins.len(), 1);
         let gmail = inventory
             .plugins
             .iter()

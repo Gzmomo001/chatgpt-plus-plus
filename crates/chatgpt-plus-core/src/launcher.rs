@@ -145,7 +145,6 @@ pub trait LaunchHooks: Send + Sync {
         )?;
         Ok(())
     }
-    async fn run_provider_sync(&self) -> anyhow::Result<()>;
     async fn ensure_computer_use_config(&self, _settings: &BackendSettings) -> anyhow::Result<()> {
         Ok(())
     }
@@ -224,9 +223,6 @@ where
             );
         }
         hooks.apply_codex_home(&settings)?;
-        if settings.provider_sync_enabled {
-            hooks.run_provider_sync().await?;
-        }
         if let Err(error) = hooks.ensure_plugin_marketplace_config(&settings).await {
             let _ = crate::diagnostic_log::append_diagnostic_log(
                 "launch_runtime.plugin_marketplace_config_failed_nonfatal",
@@ -408,12 +404,6 @@ impl LaunchHooks for DefaultLaunchHooks {
         Ok(())
     }
 
-    async fn run_provider_sync(&self) -> anyhow::Result<()> {
-        anyhow::bail!(
-            "provider sync requires manager launch hooks with chatgpt-plus-data integration"
-        )
-    }
-
     async fn ensure_computer_use_config(&self, settings: &BackendSettings) -> anyhow::Result<()> {
         if !settings.computer_use_guard_enabled {
             return Ok(());
@@ -553,20 +543,38 @@ impl LaunchHooks for DefaultLaunchHooks {
             } else {
                 MacosCleanupPolicy::QuitIfNotPreviouslyRunning
             };
-            let command = build_macos_open_command(app_dir, &launch_extra_args);
-            let executable = command
-                .first()
-                .ok_or_else(|| anyhow::anyhow!("macOS open command is empty"))?;
-            let child = Command::new(executable)
-                .args(&command[1..])
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .spawn()
-                .context("failed to launch macOS Codex app")?;
+            let (command, child) = if settings.codex_app_fast_startup {
+                let command = build_codex_command(app_dir, &launch_extra_args);
+                let child = spawn_macos_app_executable(&command).await?;
+                (command, child)
+            } else {
+                let command = build_macos_open_command(app_dir, &launch_extra_args);
+                let child = match spawn_macos_open_command(&command).await {
+                    Ok(child) => child,
+                    Err(error) if is_macos_launch_services_missing_executable(&error) => {
+                        let direct_command = build_codex_command(app_dir, &launch_extra_args);
+                        spawn_macos_app_executable(&direct_command).await?
+                    }
+                    Err(error) => return Err(error),
+                };
+                (command, child)
+            };
+            let _ = crate::diagnostic_log::append_diagnostic_log(
+                "launch_runtime.codex_spawned",
+                serde_json::json!({
+                    "app_dir": app_dir,
+                    "fast_startup": settings.codex_app_fast_startup,
+                    "arguments": launch_extra_args
+                }),
+            );
             *self.child.lock().await = Some(child);
             return Ok(CodexLaunch::Process {
                 command,
-                wait_strategy: ProcessWaitStrategy::ExternalWaitCommand,
+                wait_strategy: if settings.codex_app_fast_startup {
+                    ProcessWaitStrategy::TrackedChild
+                } else {
+                    ProcessWaitStrategy::ExternalWaitCommand
+                },
                 macos_cleanup_policy: Some(cleanup_policy),
             });
         }
@@ -1021,7 +1029,6 @@ fn statsig_fast_fail_host_resolver_rule() -> String {
         "MAP prodregistryv2.org 127.0.0.1",
         "MAP api.statsigcdn.com 127.0.0.1",
         "MAP statsigapi.net 127.0.0.1",
-        "MAP cloudflare-dns.com 127.0.0.1",
     ]
     .join(",")
 }
@@ -1054,6 +1061,141 @@ pub fn build_macos_open_command(app_dir: &Path, extra_args: &[String]) -> Vec<St
     ];
     command.extend(build_codex_arguments(extra_args));
     command
+}
+
+async fn spawn_macos_open_command(command: &[String]) -> anyhow::Result<Child> {
+    spawn_macos_open_command_with_delay(command, std::time::Duration::from_millis(250)).await
+}
+
+async fn spawn_macos_open_command_with_delay(
+    command: &[String],
+    inspection_delay: std::time::Duration,
+) -> anyhow::Result<Child> {
+    let executable = command
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("macOS open command is empty"))?;
+    let mut child = Command::new(executable)
+        .args(&command[1..])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("failed to launch macOS Codex app")?;
+
+    tokio::time::sleep(inspection_delay).await;
+    let Some(status) = child
+        .try_wait()
+        .context("failed to inspect macOS Codex launch")?
+    else {
+        return Ok(child);
+    };
+    if status.success() {
+        return Ok(child);
+    }
+
+    let mut stderr = String::new();
+    if let Some(mut pipe) = child.stderr.take() {
+        pipe.read_to_string(&mut stderr)
+            .await
+            .context("failed to read macOS Codex launch error")?;
+    }
+    let detail = stderr.trim();
+    if detail.is_empty() {
+        anyhow::bail!("macOS 无法启动 ChatGPT（open 退出状态：{status}）");
+    }
+    anyhow::bail!("macOS 无法启动 ChatGPT：{detail}");
+}
+
+fn is_macos_launch_services_missing_executable(error: &anyhow::Error) -> bool {
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("klsnoexecutableerr")
+        || message.contains("code=-10827")
+        || message.contains("the executable is missing")
+}
+
+async fn spawn_macos_app_executable(command: &[String]) -> anyhow::Result<Child> {
+    let executable = command
+        .first()
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow::anyhow!("ChatGPT direct launch command is empty"))?;
+    if !executable.is_file() {
+        anyhow::bail!(
+            "macOS LaunchServices 无法识别 ChatGPT，且应用主程序不存在：{}",
+            executable.display()
+        );
+    }
+    let mut child = Command::new(&executable)
+        .args(&command[1..])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "macOS LaunchServices 无法识别 ChatGPT，直接启动应用主程序也失败：{}",
+                executable.display()
+            )
+        })?;
+
+    tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+    let Some(status) = child
+        .try_wait()
+        .context("无法检查 ChatGPT 直接启动后的进程状态")?
+    else {
+        child.stderr.take();
+        return Ok(child);
+    };
+
+    let mut stderr = String::new();
+    if let Some(mut pipe) = child.stderr.take() {
+        pipe.read_to_string(&mut stderr)
+            .await
+            .context("无法读取 ChatGPT 直接启动错误")?;
+    }
+    let detail = stderr.trim();
+    if detail.is_empty() {
+        anyhow::bail!("ChatGPT 主程序启动后立即退出（状态：{status}）");
+    }
+    anyhow::bail!("ChatGPT 主程序启动后立即退出：{detail}");
+}
+
+#[cfg(test)]
+mod macos_open_tests {
+    use super::{is_macos_launch_services_missing_executable, spawn_macos_open_command_with_delay};
+
+    #[tokio::test]
+    async fn reports_an_immediate_open_failure() {
+        let error = spawn_macos_open_command_with_delay(
+            &[
+                "sh".to_string(),
+                "-c".to_string(),
+                "printf 'LaunchServices rejected app' >&2; exit 1".to_string(),
+            ],
+            std::time::Duration::from_millis(250),
+        )
+        .await
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("macOS 无法启动 ChatGPT：LaunchServices rejected app")
+        );
+    }
+
+    #[test]
+    fn recognizes_the_launch_services_missing_executable_error() {
+        let error = anyhow::anyhow!(
+            "macOS 无法启动 ChatGPT：Error Domain=NSOSStatusErrorDomain Code=-10827 \
+             \"kLSNoExecutableErr: The executable is missing\""
+        );
+
+        assert!(is_macos_launch_services_missing_executable(&error));
+        assert!(is_macos_launch_services_missing_executable(
+            &anyhow::anyhow!("The executable is missing")
+        ));
+        assert!(!is_macos_launch_services_missing_executable(
+            &anyhow::anyhow!("permission denied")
+        ));
+    }
 }
 
 pub fn build_macos_cleanup_command(

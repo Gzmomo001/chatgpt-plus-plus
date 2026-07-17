@@ -90,6 +90,7 @@ impl SettingsStore {
         let mut raw = self.load_raw_object()?;
         merge_known_setting_fields(&mut raw, &payload);
         raw.remove("relayTestModel");
+        raw.remove("providerSyncEnabled");
         let settings = normalize_settings_config_sections(
             serde_json::from_value(Value::Object(raw.clone())).unwrap_or_default(),
         );
@@ -150,9 +151,6 @@ fn merge_known_setting_fields(target: &mut Map<String, Value>, source: &Map<Stri
                     .collect(),
             ),
         );
-    }
-    if let Some(value) = source.get("providerSyncEnabled").and_then(Value::as_bool) {
-        target.insert("providerSyncEnabled".to_string(), Value::Bool(value));
     }
     merge_bool_setting(target, source, "diagnosticLogEnabled");
     if let Some(value) = source

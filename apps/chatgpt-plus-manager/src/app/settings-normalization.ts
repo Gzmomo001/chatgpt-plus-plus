@@ -18,7 +18,6 @@ export const defaultSettings: BackendSettings = {
   codexAppPath: "",
   codexExtraArgs: [],
   diagnosticLogEnabled: true,
-  providerSyncEnabled: false,
   providerSyncSavedProviders: [],
   providerSyncManualProviders: [],
   providerSyncLastSelectedProvider: "",

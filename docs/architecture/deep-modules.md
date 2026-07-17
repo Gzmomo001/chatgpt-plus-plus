@@ -59,7 +59,7 @@ unmanaged Codex state and shared context. Activation validates the target,
 persists settings, reconciles the home, checks the resulting status, and rolls
 back both raw settings and the original `config.toml`/`auth.json` on failure.
 Opening the ChatGPT++ UI does not mutate Codex home. A managed Codex launch
-reconciles the already-selected active profile before Provider Sync and spawn;
+reconciles the already-selected active profile before spawn;
 explicit profile selection still uses the transactional `activate` path.
 
 **Adapters and locality:** Manager Relay commands resolve the configured home

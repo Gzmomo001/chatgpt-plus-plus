@@ -19,7 +19,6 @@ export type BackendSettings = {
   codexAppPath: string;
   codexExtraArgs: string[];
   diagnosticLogEnabled: boolean;
-  providerSyncEnabled: boolean;
   providerSyncSavedProviders: string[];
   providerSyncManualProviders: string[];
   providerSyncLastSelectedProvider: string;

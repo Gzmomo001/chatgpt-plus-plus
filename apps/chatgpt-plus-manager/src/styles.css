@@ -1242,7 +1242,9 @@ body {
 }
 
 .relay-field-mode {
+  position: relative;
   grid-column: 1;
+  z-index: 1;
 }
 
 .relay-field-config-model {
@@ -1259,6 +1261,22 @@ body {
 
 .relay-field-goals {
   grid-column: 1;
+}
+
+.relay-profile-editor .relay-goals-switch {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 68px;
+  margin: 0;
+  border: 1px solid hsl(var(--border) / 0.72);
+  border-radius: 14px;
+  background: hsl(var(--surface-sunken) / 0.32);
+  padding: 14px 20px;
+}
+
+.relay-profile-editor .relay-goals-switch:hover {
+  border-color: hsl(var(--border));
+  background: hsl(var(--surface-sunken) / 0.32);
 }
 
 .relay-advanced-toggle {

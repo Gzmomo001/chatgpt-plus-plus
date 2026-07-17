@@ -32,6 +32,7 @@ fn fast_startup_remains_an_explicit_non_renderer_launch_option() {
     let args = build_codex_arguments_for_settings(&settings);
 
     assert!(args[0].starts_with("--host-resolver-rules="));
+    assert!(!args[0].contains("cloudflare-dns.com"));
     assert_eq!(args[1], "--force_high_performance_gpu");
 }
 
@@ -74,6 +75,22 @@ fn macos_open_command_keeps_official_app_launch_without_cdp_flags() {
             "--disable-gpu",
         ]
     );
+}
+
+#[test]
+fn macos_fast_startup_command_targets_the_app_executable_with_resolver_rules() {
+    let settings = BackendSettings {
+        codex_app_fast_startup: true,
+        ..BackendSettings::default()
+    };
+    let args = build_codex_arguments_for_settings(&settings);
+    let command = build_codex_command(Path::new("/Applications/ChatGPT.app"), &args);
+
+    assert_eq!(
+        command[0],
+        "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"
+    );
+    assert!(command[1].starts_with("--host-resolver-rules="));
 }
 
 #[test]
@@ -149,11 +166,6 @@ impl LaunchHooks for FakeHooks {
 
     fn apply_codex_home(&self, _settings: &BackendSettings) -> anyhow::Result<()> {
         self.event("codex-home-apply");
-        Ok(())
-    }
-
-    async fn run_provider_sync(&self) -> anyhow::Result<()> {
-        self.event("provider-sync");
         Ok(())
     }
 
@@ -279,12 +291,9 @@ async fn chat_protocol_proxy_starts_only_the_protocol_proxy() {
 }
 
 #[tokio::test]
-async fn provider_sync_and_plugin_configuration_remain_prelaunch_maintenance() {
+async fn provider_sync_is_not_run_before_launch() {
     let temp = tempfile::tempdir().unwrap();
-    let hooks = FakeHooks::new(BackendSettings {
-        provider_sync_enabled: true,
-        ..BackendSettings::default()
-    });
+    let hooks = FakeHooks::new(BackendSettings::default());
 
     launch_codex_with_hooks(options(&temp), &hooks)
         .await
@@ -292,15 +301,15 @@ async fn provider_sync_and_plugin_configuration_remain_prelaunch_maintenance() {
 
     let events = hooks.events.lock().unwrap().clone();
     assert_eq!(
-        &events[..5],
+        &events[..4],
         [
             "model-catalog-refresh",
             "codex-home-apply",
-            "provider-sync",
             "marketplace-config",
             "launch:"
         ]
     );
+    assert!(!events.iter().any(|event| event == "provider-sync"));
 }
 
 #[tokio::test]

@@ -87,7 +87,7 @@ fn store_defaults_missing_and_invalid_json_and_preserves_unknown_fields_on_updat
     .unwrap();
     store.update(json!({"providerSyncEnabled": true})).unwrap();
     let saved: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    assert_eq!(saved["providerSyncEnabled"], true);
+    assert!(saved.get("providerSyncEnabled").is_none());
     assert_eq!(saved["futureSetting"], json!({"enabled": true}));
 }
 

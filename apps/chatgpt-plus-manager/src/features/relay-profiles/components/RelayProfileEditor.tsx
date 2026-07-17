@@ -90,10 +90,10 @@ export function RelayProfileEditor<Settings extends RelaySettings>({ state, form
         <p className="field-hint">{t("默认启动 Codex 时使用的模型名，请勿带后缀；上下文窗口请在下方「模型列表」中按模型单独配置。")}</p>
       </Field>
       <Field className="relay-field-goals" label={t("Codex 目标")}>
-        <label className="inline-check">
-          <input checked={configHasCodexGoalsFeature(profile.configContents)} onChange={(event) => updateDraft({ configContents: setCodexGoalsFeatureInConfig(profile.configContents, event.currentTarget.checked) })} type="checkbox" />
+        <div className="switch-row relay-goals-switch">
           <span>{t("启用目标功能")}</span>
-        </label>
+          <input aria-label={t("启用目标功能")} checked={configHasCodexGoalsFeature(profile.configContents)} onChange={(event) => updateDraft({ configContents: setCodexGoalsFeatureInConfig(profile.configContents, event.currentTarget.checked) })} type="checkbox" />
+        </div>
       </Field>
       <div className="relay-advanced-toggle">
         <Button aria-expanded={showAdvanced} onClick={() => setShowAdvanced((current) => !current)} size="sm" type="button" variant="secondary">

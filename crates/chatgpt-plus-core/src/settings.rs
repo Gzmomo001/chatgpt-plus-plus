@@ -41,7 +41,6 @@ mod tests {
     #[test]
     fn settings_default_matches_expected_behavior() {
         let settings = BackendSettings::default();
-        assert!(!settings.provider_sync_enabled);
         assert!(!settings.computer_use_guard_enabled);
         assert!(!settings.codex_app_fast_startup);
         assert!(settings.diagnostic_log_enabled);
@@ -60,10 +59,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(settings.codex_app_path, r"C:\Portable\Codex\app");
-        assert!(settings.provider_sync_enabled);
         assert_eq!(settings.relay_base_url, default_relay_base_url());
         assert!(settings.codex_extra_args.is_empty());
         let saved = serde_json::to_value(&settings).unwrap();
+        assert!(saved.get("providerSyncEnabled").is_none());
         assert!(saved.get("cliWrapperEnabled").is_none());
         assert!(saved.get("cliWrapperBaseUrl").is_none());
         assert!(saved.get("cliWrapperApiKey").is_none());
@@ -517,7 +516,6 @@ experimental_bearer_token = "sk-existing""#
         let dir = temp_dir();
         let store = SettingsStore::new(dir.join("nested").join("settings.json"));
         let settings = BackendSettings {
-            provider_sync_enabled: true,
             codex_extra_args: vec!["--force_high_performance_gpu".to_string()],
             ..BackendSettings::default()
         };
@@ -590,14 +588,12 @@ experimental_bearer_token = "sk-existing""#
         let dir = temp_dir();
         let store = SettingsStore::new(dir.join("settings.json"));
         let initial = BackendSettings {
-            provider_sync_enabled: false,
             ..BackendSettings::default()
         };
         store.save(&initial).unwrap();
 
         let updated = store
             .update(json!({
-            "providerSyncEnabled": true,
             "codexAppPath": "C:\\Portable\\Codex\\Codex.exe",
             "computerUseGuardEnabled": true,
             "codexAppFastStartup": true,
@@ -608,7 +604,6 @@ experimental_bearer_token = "sk-existing""#
             }))
             .unwrap();
 
-        assert!(updated.provider_sync_enabled);
         assert_eq!(updated.codex_app_path, r"C:\Portable\Codex\Codex.exe");
         assert!(updated.computer_use_guard_enabled);
         assert!(updated.codex_app_fast_startup);
@@ -830,7 +825,7 @@ experimental_bearer_token = "sk-existing""#
     }
 
     #[test]
-    fn settings_store_update_preserves_existing_unknown_fields() {
+    fn settings_store_update_removes_legacy_provider_sync_field_and_preserves_unknown_fields() {
         let dir = temp_dir();
         let path = dir.join("settings.json");
         let store = SettingsStore::new(path.clone());
@@ -840,15 +835,14 @@ experimental_bearer_token = "sk-existing""#
         )
         .unwrap();
 
-        let updated = store
+        let _updated = store
             .update(json!({
                 "providerSyncEnabled": true
             }))
             .unwrap();
         let saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
 
-        assert!(updated.provider_sync_enabled);
-        assert_eq!(saved["providerSyncEnabled"], json!(true));
+        assert!(saved.get("providerSyncEnabled").is_none());
         assert_eq!(saved["codexExtraArgs"], Value::Null);
         assert_eq!(saved["customField"], json!({"nested": true}));
     }
@@ -898,7 +892,7 @@ experimental_bearer_token = "sk-existing""#
 
         let updated = store.update(json!(null)).unwrap();
 
-        assert!(!updated.provider_sync_enabled);
+        assert_eq!(updated, BackendSettings::default());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
     }
 }

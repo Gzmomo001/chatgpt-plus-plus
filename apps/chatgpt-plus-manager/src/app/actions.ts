@@ -21,7 +21,6 @@ import type {
   LocalSession,
   LocalSessionUsageResult,
   LocalSessionsResult,
-  ProviderSyncTargetsResult,
 } from "@/shared/contracts/sessions";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 
@@ -345,9 +344,8 @@ export function createManagerActions(call: InvokeManagerCommand) {
         call<LocalSessionUsageResult>("load_local_session_usage", {
           request: { sessionId: session.id, title: session.title, dbPath: session.dbPath },
         }),
-      loadSyncTargets: () => call<ProviderSyncTargetsResult>("load_provider_sync_targets"),
-      syncProviders: (targetProvider?: string) =>
-        call<CommandResult<ProviderSyncPayload>>("sync_providers_now", { targetProvider }),
+      syncProviders: () =>
+        call<CommandResult<ProviderSyncPayload>>("sync_providers_now", { targetProvider: undefined }),
     },
     diagnostics: {
       openLogFolder: () => call<CommandResult<{ path: string }>>("open_log_folder"),

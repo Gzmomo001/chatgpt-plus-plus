@@ -170,13 +170,21 @@ pub fn load_settings() -> CommandResult<SettingsPayload> {
 }
 
 #[tauri::command]
-pub fn save_settings(settings: BackendSettings) -> CommandResult<SettingsPayload> {
+pub fn save_settings(
+    runtime: tauri::State<'_, ManagedLaunchRuntime>,
+    settings: BackendSettings,
+) -> CommandResult<SettingsPayload> {
     let settings = normalize_settings_before_save(settings);
-    match SettingsStore::default().save(&settings) {
+    let store = SettingsStore::default();
+    let previous = store.load().unwrap_or_default();
+    match store.save(&settings) {
         Ok(()) => {
             chatgpt_plus_core::diagnostic_log::set_diagnostic_log_enabled(
                 settings.diagnostic_log_enabled,
             );
+            if launch_enhancement_changed(&previous, &settings) {
+                runtime.restart_after_configuration_change();
+            }
             settings_payload("设置已保存。", "设置保存后重新读取失败")
         }
         Err(error) => failed(
@@ -189,6 +197,14 @@ pub fn save_settings(settings: BackendSettings) -> CommandResult<SettingsPayload
             },
         ),
     }
+}
+
+pub(super) fn launch_enhancement_changed(
+    previous: &BackendSettings,
+    next: &BackendSettings,
+) -> bool {
+    previous.computer_use_guard_enabled != next.computer_use_guard_enabled
+        || previous.codex_app_fast_startup != next.codex_app_fast_startup
 }
 
 #[tauri::command]
