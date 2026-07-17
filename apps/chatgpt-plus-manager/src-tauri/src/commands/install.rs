@@ -270,7 +270,7 @@ pub fn refresh_remote_plugin_marketplace() -> CommandResult<RemotePluginMarketpl
     match chatgpt_plus_core::plugin_marketplace::refresh_openai_curated_remote_marketplace_and_configure(&home) {
         Ok(_) => remote_plugin_marketplace_status(),
         Err(error) => failed(
-            &format!("刷新官方远端插件市场失败：{error}"),
+            &format!("刷新内置备用插件市场失败：{error}"),
             RemotePluginMarketplacePayload { codex_home: home.to_string_lossy().to_string(), marketplace_root: None, config_registered: false, needs_repair: true, plugin_count: 0, skill_count: 0 },
         ),
     }
@@ -330,9 +330,9 @@ pub fn remote_plugin_marketplace_status() -> CommandResult<RemotePluginMarketpla
         remote_plugin_marketplace_counts(status.marketplace_root.as_deref());
     ok(
         if status.needs_repair() {
-            "官方远端插件缓存需要释放或注册。"
+            "内置备用插件市场需要导入或注册。"
         } else {
-            "官方远端插件缓存已可用。"
+            "内置备用插件市场已可用。"
         },
         RemotePluginMarketplacePayload {
             codex_home: home.to_string_lossy().to_string(),
@@ -363,11 +363,11 @@ pub fn repair_remote_plugin_marketplace() -> CommandResult<RemotePluginMarketpla
                 remote_plugin_marketplace_counts(status.marketplace_root.as_deref());
             ok(
                 if result.initialized {
-                    "已释放并注册内置官方远端插件缓存。"
+                    "已导入并注册内置备用插件市场。"
                 } else if result.configured {
-                    "已注册官方远端插件缓存。"
+                    "已注册内置备用插件市场。"
                 } else {
-                    "官方远端插件缓存已可用，无需修复。"
+                    "内置备用插件市场已可用，无需操作。"
                 },
                 RemotePluginMarketplacePayload {
                     codex_home: home.to_string_lossy().to_string(),
@@ -390,7 +390,7 @@ pub fn repair_remote_plugin_marketplace() -> CommandResult<RemotePluginMarketpla
             let (plugin_count, skill_count) =
                 remote_plugin_marketplace_counts(status.marketplace_root.as_deref());
             failed(
-                &format!("官方远端插件缓存修复失败：{error}"),
+                &format!("内置备用插件市场导入失败：{error}"),
                 RemotePluginMarketplacePayload {
                     codex_home: home.to_string_lossy().to_string(),
                     marketplace_root: status

@@ -1,11 +1,10 @@
-import { Download, Info, RefreshCw, Trash2, Wrench } from "lucide-react";
+import { Download, Info, RefreshCw, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/shared/ui/button";
 import { t, tf } from "@/i18n";
 import { SettingsCard, SettingsCardStack, Toolbar } from "@/shared/ui/layout";
 import { StatusBadge as Badge } from "@/shared/ui/status-badge";
-import { TaskProgressBox, type TaskProgress } from "@/shared/ui/task-progress";
 import { Input } from "@/shared/ui/input";
 import type { PluginMarketplaceInventoryResult } from "@/shared/contracts/plugins";
 import { projectPluginInventoryState } from "./presentation";
@@ -28,9 +27,9 @@ export type RemotePluginMarketplaceView = {
 
 export type EnhanceView = {
   settings: EnhanceSettingsView;
-  pluginMarketplaceProgress: TaskProgress;
+  pluginMarketplacePending: boolean;
   remotePluginMarketplace: RemotePluginMarketplaceView | null;
-  remotePluginMarketplaceProgress: TaskProgress;
+  remotePluginMarketplacePending: boolean;
   pluginInventory: PluginMarketplaceInventoryResult | null;
   pluginInventoryPending: string | null;
 };
@@ -50,9 +49,9 @@ export type EnhanceActions = {
 export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: EnhanceActions }) {
   const {
     settings,
-    pluginMarketplaceProgress,
+    pluginMarketplacePending,
     remotePluginMarketplace,
-    remotePluginMarketplaceProgress,
+    remotePluginMarketplacePending,
     pluginInventory,
     pluginInventoryPending,
   } = view;
@@ -70,7 +69,7 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
         String(remotePluginMarketplace.pluginCount),
         String(remotePluginMarketplace.skillCount),
       ])
-    : t("未发现本地缓存；点击按钮会从 ChatGPT++ 内置快照释放并注册，无需官方账号预缓存。");
+    : t("未发现内置快照；导入后即可作为独立备用市场使用，无需官方账号预缓存。");
 
   return (
     <SettingsCardStack>
@@ -99,29 +98,29 @@ export function EnhanceScreen({ view, actions }: { view: EnhanceView; actions: E
         <div className="feature-group">
           <div className="feature-action-row">
             <div>
-              <strong>{t("官方远端插件缓存")}</strong>
-              <small>{t("使用 ChatGPT++ 内置快照补齐远端插件，API 模式也可显示和安装 Product Design 插件。")}</small>
+              <strong>{t("官方插件市场")}</strong>
+              <small>{t("从 GitHub openai/plugins 初始化完整官方市场并注册到当前 CODEX_HOME。")}</small>
+            </div>
+            <Button disabled={pluginMarketplacePending} variant="secondary" onClick={() => void actions.repairPluginMarketplace()}>
+              {pluginMarketplacePending ? t("正在初始化…") : t("初始化官方市场")}
+            </Button>
+          </div>
+          <div className="feature-action-row">
+            <div>
+              <strong>{t("内置备用插件市场")}</strong>
+              <small>{t("独立于官方市场的 ChatGPT++ 内置快照，API 模式也可显示和安装 Product Design 插件。")}</small>
               <small>{remoteMarketplaceSummary}</small>
             </div>
             <Badge status={remotePluginMarketplace?.configRegistered ? "ok" : "not_checked"} />
-            <Button disabled={remotePluginMarketplaceProgress.active} onClick={() => void actions.repairRemotePluginMarketplace()} variant="secondary">
-              {remotePluginMarketplaceProgress.active ? t("正在处理…") : t("释放并注册内置缓存")}
+            <Button disabled={remotePluginMarketplacePending} onClick={() => void actions.repairRemotePluginMarketplace()} variant="secondary">
+              {remotePluginMarketplacePending ? t("正在导入…") : t("导入内置快照")}
             </Button>
-            <Button disabled={remotePluginMarketplaceProgress.active} onClick={() => void actions.refreshRemotePluginMarketplaceStatus()} variant="outline">
+            <Button disabled={remotePluginMarketplacePending} onClick={() => void actions.refreshRemotePluginMarketplaceStatus()} variant="outline">
               {t("刷新")}
             </Button>
             <span className="feature-action-status">{remoteMarketplaceStatus}</span>
           </div>
         </div>
-        <div className="hint-line">
-          <Wrench className="h-4 w-4" />
-          <span>{t("新机器没有本地插件市场时，可从 openai/plugins 初始化到当前 CODEX_HOME。")}</span>
-          <Button disabled={pluginMarketplaceProgress.active} variant="secondary" onClick={() => void actions.repairPluginMarketplace()}>
-            {pluginMarketplaceProgress.active ? t("正在修复…") : t("修复插件市场")}
-          </Button>
-        </div>
-        <TaskProgressBox progress={pluginMarketplaceProgress} title={t("插件市场修复进度")} />
-        <TaskProgressBox progress={remotePluginMarketplaceProgress} title={t("官方远端插件缓存进度")} />
         <div className="plugin-inventory-panel">
           <div className="relay-context-head">
             <div>

@@ -182,17 +182,9 @@ export function App() {
     dispose: () => void;
   } | null>(null);
   const [providerSyncActive, setProviderSyncActive] = useState(false);
-  const [pluginMarketplaceProgress, setPluginMarketplaceProgress] = useState<TaskProgress>({
-    active: false,
-    percent: 0,
-    message: t("尚未运行插件市场修复。"),
-  });
+  const [pluginMarketplacePending, setPluginMarketplacePending] = useState(false);
   const [remotePluginMarketplace, setRemotePluginMarketplace] = useState<RemotePluginMarketplaceResult | null>(null);
-  const [remotePluginMarketplaceProgress, setRemotePluginMarketplaceProgress] = useState<TaskProgress>({
-    active: false,
-    percent: 0,
-    message: t("尚未检查官方远端插件缓存。"),
-  });
+  const [remotePluginMarketplacePending, setRemotePluginMarketplacePending] = useState(false);
   const [pluginInventory, setPluginInventory] = useState<PluginMarketplaceInventoryResult | null>(null);
   const [pluginInventoryPending, setPluginInventoryPending] = useState<string | null>(null);
   const [removeOwnedData, setRemoveOwnedData] = useState(false);
@@ -499,41 +491,15 @@ export function App() {
   };
 
   const repairPluginMarketplace = async () => {
-    if (pluginMarketplaceProgress.active) return;
-    setPluginMarketplaceProgress({ active: true, percent: 8, message: t("正在检查本地插件市场…") });
-    const progressTimer = window.setInterval(() => {
-      setPluginMarketplaceProgress((current) => {
-        if (!current.active) return current;
-        const nextPercent = Math.min(92, current.percent + 9);
-        const message =
-          nextPercent < 28
-            ? t("正在连接 openai/plugins…")
-            : nextPercent < 62
-              ? t("正在下载插件市场快照…")
-              : nextPercent < 84
-                ? t("正在解压并校验插件文件…")
-                : t("正在写入 Codex 配置…");
-        return { ...current, percent: nextPercent, message };
-      });
-    }, 500);
+    if (pluginMarketplacePending) return;
+    setPluginMarketplacePending(true);
     try {
       const result = await run(() => managerActions.maintenance.repairPluginMarketplace());
       if (result) {
-        setPluginMarketplaceProgress({
-          active: false,
-          percent: 100,
-          message: result.message,
-        });
-        showNotice(t("插件市场修复"), result.message, result.status);
-      } else {
-        setPluginMarketplaceProgress({
-          active: false,
-          percent: 100,
-          message: t("插件市场修复失败，请查看错误提示后重试。"),
-        });
+        showNotice(t("官方插件市场"), result.message, result.status);
       }
     } finally {
-      window.clearInterval(progressTimer);
+      setPluginMarketplacePending(false);
     }
   };
 
@@ -541,57 +507,22 @@ export function App() {
     const result = await run(() => managerActions.maintenance.remotePluginMarketplaceStatus());
     if (result) {
       setRemotePluginMarketplace(result);
-      if (!silent) {
-        setRemotePluginMarketplaceProgress({
-          active: false,
-          percent: 100,
-          message: result.message,
-        });
-      }
-      if (!silent) showNotice(t("官方远端插件缓存"), result.message, result.status);
+      if (!silent) showNotice(t("内置备用插件市场"), result.message, result.status);
     }
     return result;
   };
 
   const repairRemotePluginMarketplace = async () => {
-    if (remotePluginMarketplaceProgress.active) return;
-    setRemotePluginMarketplaceProgress({
-      active: true,
-      percent: 18,
-      message: t("正在检查内置官方远端插件缓存…"),
-    });
-    const progressTimer = window.setInterval(() => {
-      setRemotePluginMarketplaceProgress((current) => {
-        if (!current.active) return current;
-        const nextPercent = Math.min(92, current.percent + 18);
-        const message =
-          nextPercent < 50
-            ? t("正在释放内置远端插件快照…")
-            : nextPercent < 78
-              ? t("正在注册官方远端插件市场…")
-              : t("正在刷新官方远端插件缓存状态…");
-        return { ...current, percent: nextPercent, message };
-      });
-    }, 450);
+    if (remotePluginMarketplacePending) return;
+    setRemotePluginMarketplacePending(true);
     try {
       const result = await run(() => managerActions.maintenance.repairRemotePluginMarketplace());
       if (result) {
         setRemotePluginMarketplace(result);
-        setRemotePluginMarketplaceProgress({
-          active: false,
-          percent: 100,
-          message: result.message,
-        });
-        showNotice(t("官方远端插件缓存"), result.message, result.status);
-      } else {
-        setRemotePluginMarketplaceProgress({
-          active: false,
-          percent: 100,
-          message: t("官方远端插件缓存修复失败，请查看错误提示后重试。"),
-        });
+        showNotice(t("内置备用插件市场"), result.message, result.status);
       }
     } finally {
-      window.clearInterval(progressTimer);
+      setRemotePluginMarketplacePending(false);
     }
   };
 
@@ -1271,7 +1202,7 @@ export function App() {
       computerUseGuardEnabled: settingsForm.computerUseGuardEnabled,
       codexAppFastStartup: settingsForm.codexAppFastStartup,
     },
-    pluginMarketplaceProgress,
+    pluginMarketplacePending,
     remotePluginMarketplace: remotePluginMarketplace
       ? {
           marketplaceRoot: remotePluginMarketplace.marketplaceRoot ?? null,
@@ -1280,7 +1211,7 @@ export function App() {
           skillCount: remotePluginMarketplace.skillCount,
         }
       : null,
-    remotePluginMarketplaceProgress,
+    remotePluginMarketplacePending,
     pluginInventory,
     pluginInventoryPending,
   };

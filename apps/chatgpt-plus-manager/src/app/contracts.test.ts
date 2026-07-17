@@ -570,9 +570,9 @@ test("composes Enhance through a minimal screen-owned view and action seam", () 
   ]);
   assert.deepEqual(typeKeys("EnhanceView"), [
     "settings",
-    "pluginMarketplaceProgress",
+    "pluginMarketplacePending",
     "remotePluginMarketplace",
-    "remotePluginMarketplaceProgress",
+    "remotePluginMarketplacePending",
     "pluginInventory",
     "pluginInventoryPending",
   ]);
