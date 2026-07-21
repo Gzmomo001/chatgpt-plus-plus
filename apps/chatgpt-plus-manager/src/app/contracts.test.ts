@@ -680,6 +680,11 @@ test("exposes the auto-detected ChatGPT path and manual picker on About", () => 
   assert.match(screen, /chatGptAppPath \|\| t\(["']未检测到["']\)/);
   assert.match(screen, /actions\.chooseChatGptAppPath\(\)/);
   assert.match(screen, /t\(["']选择应用["']\)/);
+  assert.match(
+    app,
+    /isWindows\s*\?\s*\{[\s\S]*?directory:\s*false[\s\S]*?extensions:\s*\[["']exe["']\][\s\S]*?\}\s*:\s*\{[\s\S]*?directory:\s*false[\s\S]*?extensions:\s*\[["']app["']\]/,
+    "the macOS picker must choose .app bundles as files instead of only allowing folders",
+  );
 });
 
 test("exposes diagnostic log controls on the visible About settings route", () => {

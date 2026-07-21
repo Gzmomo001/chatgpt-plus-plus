@@ -1095,9 +1095,10 @@ export function App() {
                   filters: [{ name: t("ChatGPT 应用"), extensions: ["exe"] }],
                 }
               : {
-                  directory: true,
+                  directory: false,
                   multiple: false,
                   title: t("选择 ChatGPT 应用"),
+                  filters: [{ name: t("ChatGPT 应用"), extensions: ["app"] }],
                 },
           );
         } catch (error) {

@@ -209,7 +209,24 @@ fn explicit_quit_releases_manager_owned_runtime_but_window_close_does_not() {
     assert!(!lib_rs.contains("launcher.shutdown"));
     assert!(runtime.contains("handle.wait_for_codex_exit().await"));
     assert!(runtime.contains("handle.shutdown_owned_resources().await"));
-    assert!(runtime.contains("restart_after_configuration_change"));
+    assert!(!runtime.contains("restart_after_configuration_change"));
+}
+
+#[test]
+fn background_configuration_changes_do_not_restart_managed_chatgpt() {
+    let settings = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/commands/settings.rs"
+    ))
+    .expect("read manager settings commands");
+    let relay = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/commands/relay.rs"
+    ))
+    .expect("read manager relay commands");
+
+    assert!(!settings.contains("restart_after_configuration_change"));
+    assert!(!relay.contains("restart_after_configuration_change"));
 }
 
 #[test]
@@ -273,6 +290,7 @@ fn manager_launch_button_uses_the_manager_owned_launch_runtime() {
     .expect("read manager settings commands");
 
     assert!(commands_rs.contains("runtime.start(action, launch_request).await"));
+    assert!(commands_rs.contains("\"ChatGPT 已启动。\""));
     assert!(!commands_rs.contains("std::process::Command::new"));
     assert!(!commands_rs.contains("companion_binary_path"));
     assert!(!commands_rs.contains("start_enhanced_codex"));

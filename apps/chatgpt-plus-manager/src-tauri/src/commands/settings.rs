@@ -146,7 +146,7 @@ async fn request_managed_launch(
         Ok(outcome) => CommandResult {
             status: "accepted".to_string(),
             message: if outcome.already_running {
-                "Codex 已由 ChatGPT++ 主应用管理。".to_string()
+                "ChatGPT 已启动。".to_string()
             } else {
                 accepted_message.to_string()
             },
@@ -170,22 +170,24 @@ pub fn load_settings() -> CommandResult<SettingsPayload> {
 }
 
 #[tauri::command]
-pub fn save_settings(
-    runtime: tauri::State<'_, ManagedLaunchRuntime>,
-    settings: BackendSettings,
-) -> CommandResult<SettingsPayload> {
+pub fn save_settings(settings: BackendSettings) -> CommandResult<SettingsPayload> {
     let settings = normalize_settings_before_save(settings);
     let store = SettingsStore::default();
     let previous = store.load().unwrap_or_default();
+    let restart_required = launch_enhancement_changed(&previous, &settings);
     match store.save(&settings) {
         Ok(()) => {
             chatgpt_plus_core::diagnostic_log::set_diagnostic_log_enabled(
                 settings.diagnostic_log_enabled,
             );
-            if launch_enhancement_changed(&previous, &settings) {
-                runtime.restart_after_configuration_change();
-            }
-            settings_payload("设置已保存。", "设置保存后重新读取失败")
+            settings_payload(
+                if restart_required {
+                    "设置已保存。若 ChatGPT 正在运行，请手动重启后生效。"
+                } else {
+                    "设置已保存。"
+                },
+                "设置保存后重新读取失败",
+            )
         }
         Err(error) => failed(
             &format!("保存设置失败：{error}"),

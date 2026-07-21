@@ -38,7 +38,6 @@ struct LaunchState {
 
 struct ActiveLaunch {
     generation: u64,
-    request: LaunchRequest,
     handle: LaunchHandle,
 }
 
@@ -49,25 +48,33 @@ impl ManagedLaunchRuntime {
         request: LaunchRequest,
     ) -> anyhow::Result<LaunchOutcome> {
         let _operation = self.operation.lock().await;
-        if action == LaunchAction::Launch {
-            let active = self.state.lock().await.active.take();
-            if let Some(active) = active {
-                active.handle.shutdown_owned_resources().await;
-                let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
-                    "manager.launch_runtime.reactivate",
-                    serde_json::json!({
-                        "protocol_proxy_port": active.handle.protocol_proxy_port,
-                        "app_path": active.request.app_path
-                    }),
-                );
-            }
+        let active_protocol_proxy_port = self
+            .state
+            .lock()
+            .await
+            .active
+            .as_ref()
+            .map(|active| active.handle.protocol_proxy_port);
+        let system_chatgpt_running = action == LaunchAction::Launch
+            && active_protocol_proxy_port.is_none()
+            && !chatgpt_plus_core::codex_processes::find_codex_processes().is_empty();
+        if should_report_already_running(
+            action,
+            active_protocol_proxy_port.is_some(),
+            system_chatgpt_running,
+        ) {
+            return Ok(LaunchOutcome {
+                protocol_proxy_port: active_protocol_proxy_port
+                    .unwrap_or(request.protocol_proxy_port),
+                already_running: true,
+            });
         }
 
         let previous = self.state.lock().await.active.take();
         if let Some(previous) = previous {
             previous.handle.shutdown_owned_resources().await;
         }
-        if action == LaunchAction::Restart {
+        if should_stop_existing_codex_processes(action) {
             chatgpt_plus_core::codex_processes::stop_codex_processes_and_wait();
         }
 
@@ -91,35 +98,12 @@ impl ManagedLaunchRuntime {
             let generation = state.generation;
             state.active = Some(ActiveLaunch {
                 generation,
-                request,
                 handle: handle.clone(),
             });
             generation
         };
         self.watch_launch(generation, handle);
         Ok(outcome)
-    }
-
-    pub fn restart_after_configuration_change(&self) {
-        let runtime = self.clone();
-        tauri::async_runtime::spawn(async move {
-            let request = runtime
-                .state
-                .lock()
-                .await
-                .active
-                .as_ref()
-                .map(|active| active.request.clone());
-            let Some(request) = request else {
-                return;
-            };
-            if let Err(error) = runtime.start(LaunchAction::Restart, request).await {
-                let _ = chatgpt_plus_core::diagnostic_log::append_diagnostic_log(
-                    "manager.launch_runtime.config_restart_failed",
-                    serde_json::json!({ "error": error.to_string() }),
-                );
-            }
-        });
     }
 
     pub async fn shutdown_owned_resources(&self) {
@@ -151,6 +135,18 @@ impl ManagedLaunchRuntime {
             }
         });
     }
+}
+
+fn should_report_already_running(
+    action: LaunchAction,
+    has_active_launch: bool,
+    system_chatgpt_running: bool,
+) -> bool {
+    action == LaunchAction::Launch && (has_active_launch || system_chatgpt_running)
+}
+
+fn should_stop_existing_codex_processes(action: LaunchAction) -> bool {
+    action == LaunchAction::Restart
 }
 
 #[derive(Clone)]
@@ -248,5 +244,42 @@ impl LaunchHooks for ManagerLaunchHooks {
 
     async fn terminate_codex(&self, launch: &CodexLaunch) {
         self.core.terminate_codex(launch).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        LaunchAction, should_report_already_running, should_stop_existing_codex_processes,
+    };
+
+    #[test]
+    fn launch_reports_managed_or_system_chatgpt_as_already_running() {
+        assert!(should_report_already_running(
+            LaunchAction::Launch,
+            true,
+            false,
+        ));
+        assert!(should_report_already_running(
+            LaunchAction::Launch,
+            false,
+            true,
+        ));
+        assert!(!should_report_already_running(
+            LaunchAction::Launch,
+            false,
+            false,
+        ));
+        assert!(!should_report_already_running(
+            LaunchAction::Restart,
+            true,
+            true,
+        ));
+    }
+
+    #[test]
+    fn only_explicit_restart_stops_existing_chatgpt_before_launch() {
+        assert!(!should_stop_existing_codex_processes(LaunchAction::Launch));
+        assert!(should_stop_existing_codex_processes(LaunchAction::Restart));
     }
 }

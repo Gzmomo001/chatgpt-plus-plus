@@ -1,4 +1,6 @@
-use chatgpt_plus_core::codex_processes::{codex_process_ids, process_ids_still_running};
+use chatgpt_plus_core::codex_processes::{
+    codex_process_ids, macos_codex_process_ids, process_ids_still_running,
+};
 
 #[cfg(windows)]
 use chatgpt_plus_core::codex_processes::{WindowsProcessInfo, find_codex_processes_from_snapshot};
@@ -50,6 +52,23 @@ fn stop_wait_tracks_only_expected_process_ids() {
         process_ids_still_running(&[10, 20, 30], [5, 20, 40, 30]),
         vec![20, 30]
     );
+}
+
+#[test]
+fn macos_process_filter_keeps_only_official_app_main_processes() {
+    let processes = [
+        (101, "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT"),
+        (102, "/Applications/OpenAI Codex.app/Contents/MacOS/Codex"),
+        (
+            103,
+            "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)",
+        ),
+        (104, "/Applications/ChatGPT.app/Contents/Resources/codex"),
+        (105, "/opt/homebrew/bin/codex"),
+        (106, "/Applications/Other.app/Contents/MacOS/Other"),
+    ];
+
+    assert_eq!(macos_codex_process_ids(processes), [101, 102]);
 }
 
 #[cfg(windows)]

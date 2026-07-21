@@ -304,7 +304,7 @@ fn startup_options_returns_structured_payload() {
 }
 
 #[test]
-fn launch_enhancement_changes_require_a_managed_codex_restart() {
+fn launch_enhancement_changes_require_an_explicit_codex_restart() {
     let previous = BackendSettings::default();
     let fast_startup = BackendSettings {
         codex_app_fast_startup: true,

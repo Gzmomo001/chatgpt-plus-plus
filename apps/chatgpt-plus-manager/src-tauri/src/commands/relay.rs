@@ -203,7 +203,6 @@ pub(super) async fn activate_relay_profile_with_history_sync(
 
 #[tauri::command]
 pub async fn switch_relay_profile(
-    runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
     request: RelayProfileSwitchRequest,
 ) -> Result<CommandResult<RelaySwitchPayload>, String> {
     let _guard = relay_switch_mutex().lock().await;
@@ -242,18 +241,20 @@ pub async fn switch_relay_profile(
                         "historySyncMessage": history_sync.as_ref().map(|sync| &sync.message)
                     }),
                 );
-                runtime.restart_after_configuration_change();
                 let message = match history_sync.as_ref() {
                     Some(sync) if sync.status == chatgpt_plus_data::ProviderSyncStatus::Synced => {
                         format!(
-                            "供应商已切换，历史会话已自动同步到 {}。",
+                            "供应商已切换，历史会话已自动同步到 {}。若 ChatGPT 正在运行，请手动重启后生效。",
                             sync.target_provider
                         )
                     }
                     Some(sync) => {
-                        format!("供应商已切换，但历史会话自动同步未完成：{}", sync.message)
+                        format!(
+                            "供应商已切换，但历史会话自动同步未完成：{}。若 ChatGPT 正在运行，请手动重启后生效。",
+                            sync.message
+                        )
                     }
-                    None => "供应商已切换；model_provider 未变化，无需同步历史会话。".to_string(),
+                    None => "供应商已切换；model_provider 未变化，无需同步历史会话。若 ChatGPT 正在运行，请手动重启后生效。".to_string(),
                 };
                 ok(
                     &message,
@@ -424,41 +425,29 @@ pub async fn diagnose_relay_profile(profile: RelayProfile) -> CommandResult<Prov
 }
 
 #[tauri::command]
-pub fn apply_relay_injection(
-    runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
-) -> CommandResult<RelayPayload> {
+pub fn apply_relay_injection() -> CommandResult<RelayPayload> {
     let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
-    let result = reconcile_relay_injection_in_home(
+    reconcile_relay_injection_in_home(
         "manager.apply_relay_injection",
         &home,
         &settings,
-        "供应商配置已应用。",
+        "供应商配置已应用。若 ChatGPT 正在运行，请手动重启后生效。",
         "应用供应商配置失败",
-    );
-    if result.status == "ok" {
-        runtime.restart_after_configuration_change();
-    }
-    result
+    )
 }
 
 #[tauri::command]
-pub fn apply_pure_api_injection(
-    runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
-) -> CommandResult<RelayPayload> {
+pub fn apply_pure_api_injection() -> CommandResult<RelayPayload> {
     let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
-    let result = reconcile_relay_injection_in_home(
+    reconcile_relay_injection_in_home(
         "manager.apply_pure_api_injection",
         &home,
         &settings,
-        "纯 API 供应商配置已应用。",
+        "纯 API 供应商配置已应用。若 ChatGPT 正在运行，请手动重启后生效。",
         "应用纯 API 供应商配置失败",
-    );
-    if result.status == "ok" {
-        runtime.restart_after_configuration_change();
-    }
-    result
+    )
 }
 
 pub(super) fn reconcile_relay_injection_in_home(
@@ -505,16 +494,10 @@ pub(super) fn reconcile_relay_injection_in_home(
 }
 
 #[tauri::command]
-pub fn clear_relay_injection(
-    runtime: tauri::State<'_, crate::launch_runtime::ManagedLaunchRuntime>,
-) -> CommandResult<RelayPayload> {
+pub fn clear_relay_injection() -> CommandResult<RelayPayload> {
     let home = chatgpt_plus_core::codex_home::default_codex_home_dir();
     let settings = SettingsStore::default().load().unwrap_or_default();
-    let result = clear_relay_injection_in_home(&home, &settings);
-    if result.status == "ok" {
-        runtime.restart_after_configuration_change();
-    }
-    result
+    clear_relay_injection_in_home(&home, &settings)
 }
 
 pub(super) fn clear_relay_injection_in_home(
@@ -538,7 +521,7 @@ pub(super) fn clear_relay_injection_in_home(
                 }),
             );
             ok(
-                "已清除 custom 中转 API 模式，并切换到官方 ChatGPT 登录模式。",
+                "已清除 custom 中转 API 模式，并切换到官方 ChatGPT 登录模式。若 ChatGPT 正在运行，请手动重启后生效。",
                 relay_payload(outcome.status, backup_path),
             )
         }
